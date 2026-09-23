@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Search, Bell, Plus, LogOut } from "lucide-react";
+import { logoutAction } from "@/actions/auth";
 
 export function Navbar() {
   return (
@@ -39,7 +40,7 @@ export function Navbar() {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white" />
         </button>
 
-        {/* Profile Avatar / Menu */}
+        {/* Profile Avatar & Logout */}
         <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
           <div className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs shadow-sm">
             AD
@@ -48,13 +49,15 @@ export function Navbar() {
             <p className="text-xs font-semibold text-slate-900 leading-tight">Admin User</p>
             <p className="text-[11px] text-slate-500 font-medium">Administrator</p>
           </div>
-          <Link
-            href="/login"
-            title="Sign out"
-            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
-          >
-            <LogOut className="w-4 h-4" />
-          </Link>
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title="Sign out"
+              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </form>
         </div>
       </div>
     </header>

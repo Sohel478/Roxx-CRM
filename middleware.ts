@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Add security headers to all responses
@@ -16,11 +17,36 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/api/v1/health") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon.ico");
+    pathname === "/favicon.ico";
 
-  if (!isPublicPath) {
-    // In Phase 2 (Task 005), we will check session token from cookies
-    // For Task 001 architecture setup, pass through with headers attached
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = sessionCookie ? await verifySessionToken(sessionCookie) : null;
+
+  // If already authenticated and trying to access /login, redirect to /dashboard
+  if (session && pathname.startsWith("/login")) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // If not authenticated and trying to access protected CRM routes, redirect to /login
+  if (!session && !isPublicPath && pathname !== "/") {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // If authenticated, forward user identity headers for downstream server components
+  if (session) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", session.id);
+    requestHeaders.set("x-org-id", session.organizationId);
+    requestHeaders.set("x-user-role", session.role);
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+      headers: response.headers,
+    });
   }
 
   return response;
@@ -29,7 +55,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)

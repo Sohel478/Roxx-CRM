@@ -1,5 +1,5 @@
-// This is your Prisma schema file for Roxx CRM MVP
-// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Roxx CRM MVP - Multi-Tenant Enterprise Database Schema
+// Phase 1: Database Foundation
 
 generator client {
   provider = "prisma-client-js"
@@ -11,6 +11,10 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ----------------------------------------------------
+// 1. Tenancy & Access Control
+// ----------------------------------------------------
+
 model Organization {
   id             String          @id @default(cuid())
   name           String
@@ -20,25 +24,64 @@ model Organization {
 
   users          User[]
   roles          Role[]
+  pipelines      Pipeline[]
+  leadSources    LeadSource[]
+  leadStatuses   LeadStatus[]
+  leads          Lead[]
+  companies      Company[]
+  contacts       Contact[]
+  opportunities  Opportunity[]
+  activities     Activity[]
+  tasks          Task[]
+  notes          Note[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
   systemSettings SystemSetting[]
 
   @@map("organizations")
 }
 
 model Role {
-  id             String       @id @default(cuid())
-  organizationId String       @map("organization_id")
-  name           String       // ADMIN, MANAGER, SALES_USER, READ_ONLY
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  name           String           // ADMIN, MANAGER, SALES_USER, READ_ONLY
   description    String?
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   users          User[]
+  permissions    RolePermission[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
   @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  key             String           @unique // e.g. "lead:create", "opportunity:update"
+  module          String           // "leads", "companies", "contacts", "opportunities", "tasks", "reports", "users"
+  description     String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
 }
 
 model User {
@@ -48,6 +91,7 @@ model User {
   email          String       @unique
   name           String
   passwordHash   String       @map("password_hash")
+  avatarUrl      String?      @map("avatar_url")
   isActive       Boolean      @default(true) @map("is_active")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
@@ -55,20 +99,412 @@ model User {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role           Role         @relation(fields: [roleId], references: [id])
 
+  leadsOwned          Lead[]        @relation("LeadOwner")
+  leadsCreated        Lead[]        @relation("LeadCreator")
+  companiesOwned      Company[]     @relation("CompanyOwner")
+  contactsOwned       Contact[]     @relation("ContactOwner")
+  opportunitiesOwned  Opportunity[] @relation("OpportunityOwner")
+  activitiesCreated   Activity[]    @relation("ActivityUser")
+  tasksAssigned       Task[]        @relation("TaskAssignee")
+  tasksCreated        Task[]        @relation("TaskCreator")
+  tasksCompleted      Task[]        @relation("TaskCompleter")
+  notesCreated        Note[]        @relation("NoteCreator")
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+
   @@index([organizationId])
   @@index([email])
   @@map("users")
 }
 
-model SystemSetting {
+// ----------------------------------------------------
+// 2. Pipelines & Stages
+// ----------------------------------------------------
+
+model Pipeline {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  name           String
+  isDefault      Boolean         @default(false) @map("is_default")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages         PipelineStage[]
+  opportunities  Opportunity[]
+
+  @@index([organizationId])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id             String        @id @default(cuid())
+  pipelineId     String        @map("pipeline_id")
+  name           String
+  order          Int           @default(0)
+  probability    Int           @default(10) // 0-100%
+  color          String?       // Hex color or badge token
+  isWon          Boolean       @default(false) @map("is_won")
+  isLost         Boolean       @default(false) @map("is_lost")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  opportunities  Opportunity[]
+
+  @@unique([pipelineId, name])
+  @@index([pipelineId, order])
+  @@map("pipeline_stages")
+}
+
+// ----------------------------------------------------
+// 3. Lead Config & Sources
+// ----------------------------------------------------
+
+model LeadSource {
   id             String       @id @default(cuid())
   organizationId String       @map("organization_id")
-  key            String
-  value          String
+  name           String
+  isDefault      Boolean      @default(false) @map("is_default")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("lead_sources")
+}
+
+model LeadStatus {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  name           String
+  order          Int          @default(0)
+  isDefault      Boolean      @default(false) @map("is_default")
+  isConverted    Boolean      @default(false) @map("is_converted")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId, order])
+  @@map("lead_statuses")
+}
+
+// ----------------------------------------------------
+// 4. Core Sales Entities
+// ----------------------------------------------------
+
+model Lead {
+  id                    String        @id @default(cuid())
+  organizationId        String        @map("organization_id")
+  leadNumber            String?       @map("lead_number")
+  firstName             String        @map("first_name")
+  lastName              String?       @map("last_name")
+  email                 String?
+  phone                 String?
+  companyName           String?       @map("company_name")
+  jobTitle              String?       @map("job_title")
+  source                String        // Website, Referral, etc.
+  sourceDetail          String?       @map("source_detail")
+  status                String        @default("New") // New, Contacted, Qualified, etc.
+  rating                String?       // Hot, Warm, Cold
+  ownerId               String?       @map("owner_id")
+  assignedAt            DateTime?     @map("assigned_at")
+  estimatedValue        Decimal?      @default(0) @db.Decimal(12, 2) @map("estimated_value")
+  currency              String        @default("USD")
+  expectedCloseDate     DateTime?     @map("expected_close_date")
+  description           String?       @db.Text
+  createdById           String?       @map("created_by_id")
+  convertedAt           DateTime?     @map("converted_at")
+  convertedCompanyId    String?       @map("converted_company_id")
+  convertedContactId    String?       @map("converted_contact_id")
+  convertedOpportunityId String?     @map("converted_opportunity_id")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  deletedAt             DateTime?     @map("deleted_at")
+
+  organization          Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                 User?         @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy             User?         @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  activities            Activity[]
+  tasks                 Task[]
+  notes                 Note[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, email])
+  @@index([organizationId, phone])
+  @@index([organizationId, createdAt])
+  @@map("leads")
+}
+
+model Company {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  name           String
+  industry       String?
+  website        String?
+  email          String?
+  phone          String?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  postalCode     String?       @map("postal_code")
+  ownerId        String?       @map("owner_id")
+  status         String        @default("Active")
+  description    String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner          User?         @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  contacts       Contact[]
+  opportunities  Opportunity[]
+  activities     Activity[]
+  tasks          Task[]
+  notes          Note[]
+
+  @@index([organizationId])
+  @@index([organizationId, name])
+  @@index([organizationId, ownerId])
+  @@map("companies")
+}
+
+model Contact {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  companyId      String?       @map("company_id")
+  firstName      String        @map("first_name")
+  lastName       String?       @map("last_name")
+  email          String?
+  phone          String?
+  alternatePhone String?       @map("alternate_phone")
+  jobTitle       String?       @map("job_title")
+  department     String?
+  linkedinUrl    String?       @map("linkedin_url")
+  address        String?
+  ownerId        String?       @map("owner_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company        Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner          User?         @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  opportunities  Opportunity[]
+  activities     Activity[]
+  tasks          Task[]
+  notes          Note[]
+
+  @@index([organizationId])
+  @@index([organizationId, companyId])
+  @@index([organizationId, email])
+  @@index([organizationId, phone])
+  @@map("contacts")
+}
+
+model Opportunity {
+  id                String        @id @default(cuid())
+  organizationId    String        @map("organization_id")
+  companyId         String        @map("company_id")
+  primaryContactId  String?       @map("primary_contact_id")
+  leadId            String?       @map("lead_id")
+  name              String
+  pipelineId        String        @map("pipeline_id")
+  stageId           String        @map("stage_id")
+  ownerId           String        @map("owner_id")
+  amount            Decimal       @default(0) @db.Decimal(12, 2)
+  currency          String        @default("USD")
+  probability       Int           @default(10) // 0-100%
+  expectedCloseDate DateTime?     @map("expected_close_date")
+  status            String        @default("OPEN") // OPEN, WON, LOST
+  lossReason        String?       @map("loss_reason")
+  description       String?       @db.Text
+  closedAt          DateTime?     @map("closed_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  deletedAt         DateTime?     @map("deleted_at")
+
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact    Contact?      @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  pipeline          Pipeline      @relation(fields: [pipelineId], references: [id])
+  stage             PipelineStage @relation(fields: [stageId], references: [id])
+  owner             User          @relation("OpportunityOwner", fields: [ownerId], references: [id])
+
+  activities        Activity[]
+  tasks             Task[]
+  notes             Note[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, stageId])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, expectedCloseDate])
+  @@map("opportunities")
+}
+
+// ----------------------------------------------------
+// 5. Activities, Tasks & Timeline
+// ----------------------------------------------------
+
+model Activity {
+  id              String        @id @default(cuid())
+  organizationId  String        @map("organization_id")
+  type            String        // CALL, EMAIL, MEETING, WHATSAPP, NOTE, OTHER
+  subject         String
+  description     String?       @db.Text
+  leadId          String?       @map("lead_id")
+  companyId       String?       @map("company_id")
+  contactId       String?       @map("contact_id")
+  opportunityId   String?       @map("opportunity_id")
+  userId          String        @map("user_id")
+  activityAt      DateTime      @default(now()) @map("activity_at")
+  durationMinutes Int?          @map("duration_minutes")
+  outcome         String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User          @relation("ActivityUser", fields: [userId], references: [id])
+  lead            Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company         Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact         Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity     Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, leadId])
+  @@index([organizationId, opportunityId])
+  @@index([organizationId, activityAt])
+  @@map("activities")
+}
+
+model Task {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  title          String
+  description    String?       @db.Text
+  assignedToId   String        @map("assigned_to_id")
+  createdById    String        @map("created_by_id")
+  leadId         String?       @map("lead_id")
+  companyId      String?       @map("company_id")
+  contactId      String?       @map("contact_id")
+  opportunityId  String?       @map("opportunity_id")
+  dueAt          DateTime      @map("due_at")
+  priority       String        @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status         String        @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+  completedAt    DateTime?     @map("completed_at")
+  completedById  String?       @map("completed_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedTo     User          @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdBy      User          @relation("TaskCreator", fields: [createdById], references: [id])
+  completedBy    User?         @relation("TaskCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company        Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, assignedToId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueAt])
+  @@map("tasks")
+}
+
+model Note {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  entityType     String        @map("entity_type") // LEAD, COMPANY, CONTACT, OPPORTUNITY
+  entityId       String        @map("entity_id")
+  content        String        @db.Text
+  createdById    String        @map("created_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  leadId         String?       @map("lead_id")
+  companyId      String?       @map("company_id")
+  contactId      String?       @map("contact_id")
+  opportunityId  String?       @map("opportunity_id")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User          @relation("NoteCreator", fields: [createdById], references: [id])
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  company        Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, entityType, entityId])
+  @@map("notes")
+}
+
+// ----------------------------------------------------
+// 6. Notifications, Audit & Settings
+// ----------------------------------------------------
+
+model Notification {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  userId         String        @map("user_id")
+  type           String        // LEAD_ASSIGNED, TASK_DUE, TASK_OVERDUE, OPPORTUNITY_WON, etc.
+  title          String
+  message        String
+  entityType     String?       @map("entity_type")
+  entityId       String?       @map("entity_id")
+  isRead         Boolean       @default(false) @map("is_read")
+  readAt         DateTime?     @map("read_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, isRead])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  userId         String?       @map("user_id")
+  action         String        // USER_LOGIN, LEAD_CREATED, LEAD_CONVERTED, OPPORTUNITY_STAGE_CHANGED, etc.
+  entityType     String        @map("entity_type")
+  entityId       String        @map("entity_id")
+  oldValues      Json?         @map("old_values")
+  newValues      Json?         @map("new_values")
+  ipAddress      String?       @map("ip_address")
+  userAgent      String?       @map("user_agent")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, action])
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  key            String
+  value          String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, key])
   @@index([organizationId])
