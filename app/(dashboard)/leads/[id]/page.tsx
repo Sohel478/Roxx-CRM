@@ -18,9 +18,13 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getLeadByIdAction, updateLeadStatusAction } from "@/actions/leads";
+import { getActivitiesAction } from "@/actions/activities";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConvertLeadModal } from "@/features/leads/components/convert-lead-modal";
+import { ActivityTimeline } from "@/features/activities/components/activity-timeline";
+import { ActivityModal } from "@/features/activities/components/activity-modal";
+import { ActivityItem, ActivityType } from "@/lib/validations/activities";
 
 interface LeadDetailData {
   id: string;
@@ -64,12 +68,22 @@ export default function LeadDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [activityDefaultType, setActivityDefaultType] = useState<ActivityType>("CALL");
 
   const loadLead = useCallback(async () => {
     if (!id) return;
-    const res = await getLeadByIdAction(id);
+    const [res, actRes] = await Promise.all([
+      getLeadByIdAction(id),
+      getActivitiesAction({ leadId: id }),
+    ]);
+
     if (res.success && res.data) {
       setLead(res.data as unknown as LeadDetailData);
+    }
+    if (actRes.success && actRes.data) {
+      setActivities(actRes.data.items);
     }
     setIsLoading(false);
   }, [id]);
@@ -395,27 +409,47 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* Activity Timeline Placeholder */}
+          {/* Lead Activity Timeline */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-blue-600" />
                 <h2 className="text-sm font-bold text-slate-900">Lead Interaction Timeline</h2>
               </div>
-              <span className="text-xs text-slate-400">Activities active in Phase 7</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs h-7 gap-1"
+                onClick={() => {
+                  setActivityDefaultType("CALL");
+                  setIsActivityModalOpen(true);
+                }}
+              >
+                <span>+ Log Touchpoint</span>
+              </Button>
             </div>
-            <div className="space-y-3 py-2">
-              <div className="flex items-start gap-3 text-xs">
-                <div className="w-2 h-2 rounded-full bg-blue-600 mt-1.5 shrink-0" />
-                <div>
-                  <p className="font-semibold text-slate-900">Lead created and entered as {lead.status}</p>
-                  <p className="text-[11px] text-slate-400">{new Date(lead.createdAt).toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
+
+            <ActivityTimeline
+              activities={activities}
+              onOpenLogModal={(type) => {
+                if (type) setActivityDefaultType(type);
+                setIsActivityModalOpen(true);
+              }}
+              onRefresh={loadLead}
+              showFilters={false}
+            />
           </div>
         </div>
       </div>
+
+      {/* Activity Log Modal */}
+      <ActivityModal
+        isOpen={isActivityModalOpen}
+        onClose={() => setIsActivityModalOpen(false)}
+        onSuccess={loadLead}
+        defaultType={activityDefaultType}
+        defaultLeadId={lead.id}
+      />
 
       {/* Convert Lead Modal */}
       <ConvertLeadModal

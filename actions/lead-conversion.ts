@@ -319,10 +319,14 @@ export async function convertLeadAction(
         pipelineId: "pipe_default",
         stageId: `stage_${data.opportunityStage.toLowerCase()}`,
         stageName: data.opportunityStage,
+        probability: 25,
         ownerId: session.id,
         ownerName: session.name,
         status: "OPEN",
+        lossReason: null,
+        description: null,
         expectedCloseDate: data.expectedCloseDate || null,
+        closedAt: null,
         createdAt: new Date().toISOString(),
       };
       mockOpportunitiesStore.unshift(newOpp);
