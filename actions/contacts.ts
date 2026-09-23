@@ -1,83 +1,16 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { mockContactsStore } from "@/lib/db/mock-store";
+import {
+  contactSchema,
+  ContactFormData,
+  ContactItem,
+} from "@/lib/validations/contacts";
 
-export const contactSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().optional(),
-  email: z.string().email("Must be a valid email").or(z.literal("")).optional(),
-  phone: z.string().optional(),
-  alternatePhone: z.string().optional(),
-  jobTitle: z.string().optional(),
-  department: z.string().optional(),
-  linkedinUrl: z.string().url("Must be a valid URL").or(z.literal("")).optional(),
-  companyId: z.string().optional(),
-  address: z.string().optional(),
-});
-
-export type ContactFormData = z.infer<typeof contactSchema>;
-
-export interface ContactItem {
-  id: string;
-  firstName: string;
-  lastName: string | null;
-  fullName: string;
-  email: string | null;
-  phone: string | null;
-  jobTitle: string | null;
-  department: string | null;
-  companyId: string | null;
-  companyName: string | null;
-  createdAt: string;
-}
-
-let mockContactsStore: (ContactItem & { organizationId: string })[] = [
-  {
-    id: "cont_1",
-    organizationId: "demo-org-123",
-    firstName: "Sarah",
-    lastName: "Connor",
-    fullName: "Sarah Connor",
-    email: "s.connor@acme-tech.local",
-    phone: "+1 (555) 019-2831",
-    jobTitle: "VP of Engineering",
-    department: "Engineering",
-    companyId: "comp_1",
-    companyName: "Acme Technologies",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "cont_2",
-    organizationId: "demo-org-123",
-    firstName: "Michael",
-    lastName: "Chang",
-    fullName: "Michael Chang",
-    email: "m.chang@acme-tech.local",
-    phone: "+1 (555) 019-2832",
-    jobTitle: "Head of Procurement",
-    department: "Operations",
-    companyId: "comp_1",
-    companyName: "Acme Technologies",
-    createdAt: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: "cont_3",
-    organizationId: "demo-org-123",
-    firstName: "David",
-    lastName: "Miller",
-    fullName: "David Miller",
-    email: "dmiller@apex-logistics.local",
-    phone: "+1 (555) 732-9104",
-    jobTitle: "Chief Operations Officer",
-    department: "Executive",
-    companyId: "comp_2",
-    companyName: "Apex Global Logistics",
-    createdAt: new Date(Date.now() - 129600000).toISOString(),
-  },
-];
+export type { ContactItem, ContactFormData };
 
 /**
  * Fetch paginated contacts
@@ -405,7 +338,10 @@ export async function deleteContactAction(id: string) {
     revalidatePath("/contacts");
     return { success: true };
   } catch {
-    mockContactsStore = mockContactsStore.filter((c) => c.id !== id);
+    const idx = mockContactsStore.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      mockContactsStore.splice(idx, 1);
+    }
     revalidatePath("/contacts");
     return { success: true };
   }

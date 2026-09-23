@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { companySchema } from "@/actions/companies";
+import { companySchema } from "@/lib/validations/companies";
 
 describe("Company Validation & Business Logic", () => {
   it("validates valid company data", () => {

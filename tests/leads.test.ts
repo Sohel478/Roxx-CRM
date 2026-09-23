@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { leadSchema } from "@/actions/leads";
+import { leadSchema } from "@/lib/validations/leads";
 
 describe("Lead Validation & Duplicate Rules", () => {
   it("validates valid lead data", () => {

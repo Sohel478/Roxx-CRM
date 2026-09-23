@@ -1,129 +1,21 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import {
+  mockLeadsStore,
+  mockCompaniesStore,
+  mockContactsStore,
+  mockOpportunitiesStore,
+} from "@/lib/db/mock-store";
+import {
+  leadSchema,
+  LeadFormData,
+  LeadItem,
+} from "@/lib/validations/leads";
 
-export const leadSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().optional(),
-  email: z.string().email("Must be a valid email").or(z.literal("")).optional(),
-  phone: z.string().optional(),
-  companyName: z.string().optional(),
-  jobTitle: z.string().optional(),
-  source: z.string().default("Website"),
-  sourceDetail: z.string().optional(),
-  status: z.enum(["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),
-  rating: z.enum(["Hot", "Warm", "Cold"]).default("Warm"),
-  estimatedValue: z.coerce.number().min(0, "Estimated value cannot be negative").default(0),
-  currency: z.string().default("USD"),
-  description: z.string().optional(),
-});
-
-export type LeadFormData = z.infer<typeof leadSchema>;
-
-export interface LeadItem {
-  id: string;
-  leadNumber: string;
-  firstName: string;
-  lastName: string | null;
-  fullName: string;
-  email: string | null;
-  phone: string | null;
-  companyName: string | null;
-  jobTitle: string | null;
-  source: string;
-  status: string;
-  rating: string;
-  estimatedValue: number;
-  currency: string;
-  ownerName: string | null;
-  createdAt: string;
-}
-
-let mockLeadsStore: (LeadItem & { organizationId: string; description?: string })[] = [
-  {
-    id: "lead_1",
-    organizationId: "demo-org-123",
-    leadNumber: "LEAD-1001",
-    firstName: "Elena",
-    lastName: "Rostova",
-    fullName: "Elena Rostova",
-    email: "elena.rostova@cyberdynesys.local",
-    phone: "+1 (555) 492-8172",
-    companyName: "Cyberdyne Systems",
-    jobTitle: "Director of IT Operations",
-    source: "Website",
-    status: "New",
-    rating: "Hot",
-    estimatedValue: 45000,
-    currency: "USD",
-    ownerName: "Alex Sales",
-    createdAt: new Date().toISOString(),
-    description: "Inquired about enterprise CRM with 50+ sales seats. Immediate evaluation required.",
-  },
-  {
-    id: "lead_2",
-    organizationId: "demo-org-123",
-    leadNumber: "LEAD-1002",
-    firstName: "Marcus",
-    lastName: "Vance",
-    fullName: "Marcus Vance",
-    email: "mvance@vanguardsec.local",
-    phone: "+1 (555) 381-9021",
-    companyName: "Vanguard Security",
-    jobTitle: "VP Sales & Partnerships",
-    source: "LinkedIn",
-    status: "Contacted",
-    rating: "Warm",
-    estimatedValue: 28000,
-    currency: "USD",
-    ownerName: "Sarah Manager",
-    createdAt: new Date(Date.now() - 36000000).toISOString(),
-    description: "Introductory phone call completed. Budget approved for Q4.",
-  },
-  {
-    id: "lead_3",
-    organizationId: "demo-org-123",
-    leadNumber: "LEAD-1003",
-    firstName: "Sofia",
-    lastName: "Castillo",
-    fullName: "Sofia Castillo",
-    email: "sofia@solardynamics.local",
-    phone: "+1 (555) 923-1184",
-    companyName: "Solar Dynamics",
-    jobTitle: "Procurement Manager",
-    source: "Referral",
-    status: "Qualified",
-    rating: "Hot",
-    estimatedValue: 65000,
-    currency: "USD",
-    ownerName: "Alex Sales",
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    description: "Met technical criteria and budget. Ready for proposal & opportunity creation.",
-  },
-  {
-    id: "lead_4",
-    organizationId: "demo-org-123",
-    leadNumber: "LEAD-1004",
-    firstName: "Liam",
-    lastName: "O'Connor",
-    fullName: "Liam O'Connor",
-    email: "liam@horizonenergy.local",
-    phone: "+1 (555) 120-9482",
-    companyName: "Horizon Energy",
-    jobTitle: "Operations Analyst",
-    source: "Google",
-    status: "Nurture",
-    rating: "Cold",
-    estimatedValue: 15000,
-    currency: "USD",
-    ownerName: "Admin User",
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    description: "Revisit in 6 months when their new regional branch opens.",
-  },
-];
+export type { LeadItem, LeadFormData };
 
 /**
  * Check if a lead with matching email or normalized phone already exists
@@ -343,10 +235,27 @@ export async function getLeadByIdAction(id: string) {
     if (!lead) {
       const mock = mockLeadsStore.find((l) => l.id === id);
       if (mock) {
+        let convertedInfo = null;
+        if (mock.convertedCompanyId || mock.convertedAt) {
+          const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
+          const cont = mockContactsStore.find((ct) => ct.id === mock.convertedContactId);
+          const opp = mockOpportunitiesStore.find((o) => o.id === mock.convertedOpportunityId);
+          convertedInfo = {
+            companyId: mock.convertedCompanyId,
+            companyName: comp?.name || mock.companyName || "Company",
+            contactId: mock.convertedContactId,
+            contactName: cont?.fullName || mock.fullName,
+            opportunityId: mock.convertedOpportunityId || null,
+            opportunityName: opp?.name || null,
+            opportunityAmount: opp?.amount || null,
+          };
+        }
+
         return {
           success: true,
           data: {
             ...mock,
+            convertedInfo,
             owner: { id: "usr_alex", name: mock.ownerName || "Alex Sales" },
             activities: [],
             tasks: [],
@@ -357,10 +266,52 @@ export async function getLeadByIdAction(id: string) {
       return { success: false, error: "Lead not found" };
     }
 
+    let convertedInfo = null;
+    if (lead.convertedCompanyId || lead.convertedAt) {
+      let companyName = null;
+      let contactName = null;
+      let opportunityName = null;
+      let opportunityAmount = null;
+
+      if (lead.convertedCompanyId) {
+        const comp = await prisma.company.findUnique({
+          where: { id: lead.convertedCompanyId },
+          select: { name: true },
+        });
+        companyName = comp?.name || null;
+      }
+      if (lead.convertedContactId) {
+        const ct = await prisma.contact.findUnique({
+          where: { id: lead.convertedContactId },
+          select: { firstName: true, lastName: true },
+        });
+        contactName = ct ? `${ct.firstName} ${ct.lastName || ""}`.trim() : null;
+      }
+      if (lead.convertedOpportunityId) {
+        const opp = await prisma.opportunity.findUnique({
+          where: { id: lead.convertedOpportunityId },
+          select: { name: true, amount: true },
+        });
+        opportunityName = opp?.name || null;
+        opportunityAmount = opp ? Number(opp.amount) : null;
+      }
+
+      convertedInfo = {
+        companyId: lead.convertedCompanyId,
+        companyName: companyName || lead.companyName || "Company",
+        contactId: lead.convertedContactId,
+        contactName: contactName || `${lead.firstName} ${lead.lastName || ""}`.trim(),
+        opportunityId: lead.convertedOpportunityId,
+        opportunityName,
+        opportunityAmount,
+      };
+    }
+
     return {
       success: true,
       data: {
         ...lead,
+        convertedInfo,
         estimatedValue: Number(lead.estimatedValue || 0),
         fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
       },
@@ -368,10 +319,27 @@ export async function getLeadByIdAction(id: string) {
   } catch {
     const mock = mockLeadsStore.find((l) => l.id === id);
     if (mock) {
+      let convertedInfo = null;
+      if (mock.convertedCompanyId || mock.convertedAt) {
+        const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
+        const cont = mockContactsStore.find((ct) => ct.id === mock.convertedContactId);
+        const opp = mockOpportunitiesStore.find((o) => o.id === mock.convertedOpportunityId);
+        convertedInfo = {
+          companyId: mock.convertedCompanyId,
+          companyName: comp?.name || mock.companyName || "Company",
+          contactId: mock.convertedContactId,
+          contactName: cont?.fullName || mock.fullName,
+          opportunityId: mock.convertedOpportunityId || null,
+          opportunityName: opp?.name || null,
+          opportunityAmount: opp?.amount || null,
+        };
+      }
+
       return {
         success: true,
         data: {
           ...mock,
+          convertedInfo,
           owner: { id: "usr_alex", name: mock.ownerName || "Alex Sales" },
           activities: [],
           tasks: [],
@@ -663,7 +631,10 @@ export async function deleteLeadAction(id: string) {
     revalidatePath("/dashboard");
     return { success: true };
   } catch {
-    mockLeadsStore = mockLeadsStore.filter((l) => l.id !== id);
+    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx !== -1) {
+      mockLeadsStore.splice(idx, 1);
+    }
     revalidatePath("/leads");
     revalidatePath("/dashboard");
     return { success: true };

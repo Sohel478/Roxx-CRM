@@ -11,11 +11,16 @@ import {
   Zap,
   Snowflake,
   Clock,
-  ArrowRight,
+  Building2,
+  User,
+  Kanban,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { getLeadByIdAction, updateLeadStatusAction } from "@/actions/leads";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConvertLeadModal } from "@/features/leads/components/convert-lead-modal";
 
 interface LeadDetailData {
   id: string;
@@ -36,6 +41,19 @@ interface LeadDetailData {
   createdAt: string;
   owner?: { id: string; name: string } | null;
   ownerName?: string | null;
+  convertedAt?: string | null;
+  convertedCompanyId?: string | null;
+  convertedContactId?: string | null;
+  convertedOpportunityId?: string | null;
+  convertedInfo?: {
+    companyId?: string | null;
+    companyName?: string | null;
+    contactId?: string | null;
+    contactName?: string | null;
+    opportunityId?: string | null;
+    opportunityName?: string | null;
+    opportunityAmount?: number | null;
+  } | null;
 }
 
 export default function LeadDetailPage() {
@@ -45,6 +63,7 @@ export default function LeadDetailPage() {
   const [lead, setLead] = useState<LeadDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
 
   const loadLead = useCallback(async () => {
     if (!id) return;
@@ -85,6 +104,8 @@ export default function LeadDetailPage() {
       </div>
     );
   }
+
+  const isConverted = lead.status === "Converted" || Boolean(lead.convertedAt);
 
   const getRatingPill = (rating: string) => {
     switch (rating) {
@@ -137,7 +158,13 @@ export default function LeadDetailPage() {
               <span className="text-xs font-mono font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
                 {lead.leadNumber}
               </span>
-              <Badge variant={lead.status === "Qualified" ? "success" : "info"}>{lead.status}</Badge>
+              <Badge
+                variant={
+                  isConverted ? "success" : lead.status === "Qualified" ? "success" : "info"
+                }
+              >
+                {lead.status}
+              </Badge>
               {getRatingPill(lead.rating)}
             </div>
             <p className="text-xs text-slate-500 font-medium">
@@ -150,20 +177,118 @@ export default function LeadDetailPage() {
 
         {/* Action button */}
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-            onClick={() => {
-              alert(
-                `Phase 5 Preview: Lead Conversion for "${lead.fullName}" will create a Company, Contact, and Opportunity in a single atomic transaction.`
-              );
-            }}
-          >
-            <ArrowRight className="w-4 h-4 mr-1.5" />
-            <span>Convert Lead</span>
-          </Button>
+          {isConverted ? (
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Lead Converted</span>
+            </span>
+          ) : (
+            <Button
+              type="button"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5"
+              onClick={() => setIsConvertModalOpen(true)}
+            >
+              <Sparkles className="w-4 h-4 mr-0.5 text-emerald-200" />
+              <span>Convert Lead</span>
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Prominent Lead Converted Banner */}
+      {isConverted && (
+        <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-5 shadow-xs animate-in fade-in duration-200 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-emerald-200/60 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-emerald-950">
+                  Lead Successfully Converted
+                </h2>
+                <p className="text-xs text-emerald-700">
+                  {lead.convertedAt
+                    ? `Converted into customer account on ${new Date(
+                        lead.convertedAt
+                      ).toLocaleDateString(undefined, {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}`
+                    : "Converted into permanent customer records"}
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-full border border-emerald-200 shadow-2xs">
+              Active Customer Account
+            </span>
+          </div>
+
+          {/* Resulting Entity Links Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            {lead.convertedCompanyId ? (
+              <Link
+                href={`/companies/${lead.convertedCompanyId}`}
+                className="bg-white border border-emerald-200/80 hover:border-emerald-400 p-3 rounded-xl transition-all shadow-2xs group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Company Account
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 group-hover:text-blue-600 truncate block">
+                    {lead.convertedInfo?.companyName || lead.companyName || "View Company"}
+                  </span>
+                </div>
+              </Link>
+            ) : null}
+
+            {lead.convertedContactId ? (
+              <Link
+                href={`/contacts/${lead.convertedContactId}`}
+                className="bg-white border border-emerald-200/80 hover:border-emerald-400 p-3 rounded-xl transition-all shadow-2xs group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Primary Contact
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 group-hover:text-emerald-600 truncate block">
+                    {lead.convertedInfo?.contactName || lead.fullName || "View Contact"}
+                  </span>
+                </div>
+              </Link>
+            ) : null}
+
+            {lead.convertedOpportunityId ? (
+              <Link
+                href="/opportunities"
+                className="bg-white border border-emerald-200/80 hover:border-emerald-400 p-3 rounded-xl transition-all shadow-2xs group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <Kanban className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Sales Opportunity
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 group-hover:text-amber-600 truncate block">
+                    {lead.convertedInfo?.opportunityName || "Active Deal"}{" "}
+                    {lead.convertedInfo?.opportunityAmount
+                      ? `($${lead.convertedInfo.opportunityAmount.toLocaleString()})`
+                      : ""}
+                  </span>
+                </div>
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Stage Progression Bar */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
@@ -177,11 +302,13 @@ export default function LeadDetailPage() {
               <button
                 key={s}
                 type="button"
-                disabled={isPending || isCurrent}
+                disabled={isPending || isCurrent || isConverted}
                 onClick={() => handleStatusChange(s)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   isCurrent
                     ? "bg-blue-600 text-white shadow-xs cursor-default"
+                    : isConverted
+                    ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60"
                     : "bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200"
                 }`}
               >
@@ -189,6 +316,11 @@ export default function LeadDetailPage() {
               </button>
             );
           })}
+          {isConverted && (
+            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs">
+              Converted
+            </span>
+          )}
         </div>
       </div>
 
@@ -284,6 +416,16 @@ export default function LeadDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Convert Lead Modal */}
+      <ConvertLeadModal
+        isOpen={isConvertModalOpen}
+        onClose={() => setIsConvertModalOpen(false)}
+        lead={lead}
+        onSuccess={async () => {
+          await loadLead();
+        }}
+      />
     </div>
   );
 }

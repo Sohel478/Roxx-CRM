@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { contactSchema } from "@/actions/contacts";
+import { contactSchema } from "@/lib/validations/contacts";
 
 describe("Contact Validation & Business Logic", () => {
   it("validates valid contact data", () => {

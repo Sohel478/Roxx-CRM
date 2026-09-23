@@ -1,89 +1,16 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { mockCompaniesStore } from "@/lib/db/mock-store";
+import {
+  companySchema,
+  CompanyFormData,
+  CompanyItem,
+} from "@/lib/validations/companies";
 
-// Zod Schema for Company Validation
-export const companySchema = z.object({
-  name: z.string().min(2, "Company name must be at least 2 characters"),
-  industry: z.string().optional(),
-  website: z.string().url("Must be a valid URL (e.g. https://example.com)").or(z.literal("")).optional(),
-  email: z.string().email("Must be a valid email").or(z.literal("")).optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  country: z.string().optional(),
-  status: z.enum(["Active", "Prospect", "Customer", "Inactive"]).default("Active"),
-  description: z.string().optional(),
-});
-
-export type CompanyFormData = z.infer<typeof companySchema>;
-
-export interface CompanyItem {
-  id: string;
-  name: string;
-  industry: string | null;
-  website: string | null;
-  email: string | null;
-  phone: string | null;
-  city: string | null;
-  country: string | null;
-  status: string;
-  createdAt: string;
-  contactCount: number;
-}
-
-// Fallback in-memory companies for development preview if DB connection is offline
-let mockCompaniesStore: (CompanyItem & { organizationId: string; description?: string })[] = [
-  {
-    id: "comp_1",
-    organizationId: "demo-org-123",
-    name: "Acme Technologies",
-    industry: "Enterprise Software",
-    website: "https://acme-tech.local",
-    email: "contact@acme-tech.local",
-    phone: "+1 (555) 234-5678",
-    city: "San Francisco",
-    country: "USA",
-    status: "Customer",
-    createdAt: new Date().toISOString(),
-    contactCount: 2,
-    description: "Leading cloud computing and DevOps enterprise customer.",
-  },
-  {
-    id: "comp_2",
-    organizationId: "demo-org-123",
-    name: "Apex Global Logistics",
-    industry: "Supply Chain",
-    website: "https://apex-logistics.local",
-    email: "info@apex-logistics.local",
-    phone: "+1 (555) 876-5432",
-    city: "Chicago",
-    country: "USA",
-    status: "Prospect",
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    contactCount: 1,
-    description: "Multi-national shipping and freight forwarder looking for CRM integration.",
-  },
-  {
-    id: "comp_3",
-    organizationId: "demo-org-123",
-    name: "Starlight Media",
-    industry: "Digital Marketing",
-    website: "https://starlight.local",
-    email: "hello@starlight.local",
-    phone: "+44 20 7946 0912",
-    city: "London",
-    country: "UK",
-    status: "Active",
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    contactCount: 1,
-    description: "Creative design and video marketing studio.",
-  },
-];
+export type { CompanyItem, CompanyFormData };
 
 /**
  * Fetch paginated companies for the authenticated organization
@@ -401,7 +328,10 @@ export async function deleteCompanyAction(id: string) {
     revalidatePath("/companies");
     return { success: true };
   } catch {
-    mockCompaniesStore = mockCompaniesStore.filter((c) => c.id !== id);
+    const idx = mockCompaniesStore.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      mockCompaniesStore.splice(idx, 1);
+    }
     revalidatePath("/companies");
     return { success: true };
   }
