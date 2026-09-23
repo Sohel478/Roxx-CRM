@@ -649,3 +649,172 @@ export const mockActivitiesStore: MockActivity[] = [
     createdAt: new Date(Date.now() - 259200000).toISOString(),
   },
 ];
+
+export interface MockAuditLog {
+  id: string;
+  organizationId: string;
+  userId: string | null;
+  userName: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export const mockAuditLogsStore: MockAuditLog[] = [
+  {
+    id: "audit_1",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    userName: "Admin User",
+    action: "USER_LOGIN",
+    entityType: "User",
+    entityId: "usr_admin",
+    oldValues: null,
+    newValues: { email: "admin@roxx-crm.local", role: "ADMIN" },
+    ipAddress: "127.0.0.1",
+    createdAt: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: "audit_2",
+    organizationId: "demo-org-123",
+    userId: "usr_alex",
+    userName: "Alex Sales",
+    action: "LEAD_CONVERTED",
+    entityType: "Lead",
+    entityId: "lead_3",
+    oldValues: { status: "Qualified" },
+    newValues: {
+      status: "Converted",
+      companyName: "Solar Dynamics",
+      opportunityName: "Solar Dynamics - Grid Infrastructure Deal",
+      amount: 65000,
+    },
+    ipAddress: "192.168.1.104",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "audit_3",
+    organizationId: "demo-org-123",
+    userId: "usr_alex",
+    userName: "Alex Sales",
+    action: "OPPORTUNITY_STAGE_CHANGED",
+    entityType: "Opportunity",
+    entityId: "opp_1",
+    oldValues: { stage: "Discovery", probability: 40 },
+    newValues: { stage: "Proposal", probability: 60 },
+    ipAddress: "192.168.1.104",
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+  },
+  {
+    id: "audit_4",
+    organizationId: "demo-org-123",
+    userId: "usr_sarah",
+    userName: "Sarah Manager",
+    action: "BULK_IMPORT",
+    entityType: "Lead",
+    entityId: "batch_402",
+    oldValues: null,
+    newValues: { totalRows: 15, importedCount: 15, failedCount: 0 },
+    ipAddress: "192.168.1.112",
+    createdAt: new Date(Date.now() - 259200000).toISOString(),
+  },
+];
+
+export interface MockUser {
+  id: string;
+  organizationId: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "MANAGER" | "SALES_USER" | "READ_ONLY";
+  isActive: boolean;
+  avatarUrl: string | null;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export const mockUsersStore: MockUser[] = [
+  {
+    id: "usr_admin",
+    organizationId: "demo-org-123",
+    name: "Admin User",
+    email: "admin@roxx-crm.local",
+    role: "ADMIN",
+    isActive: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
+    lastLoginAt: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: "usr_sarah",
+    organizationId: "demo-org-123",
+    name: "Sarah Manager",
+    email: "manager@roxx-crm.local",
+    role: "MANAGER",
+    isActive: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
+    lastLoginAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "usr_alex",
+    organizationId: "demo-org-123",
+    name: "Alex Sales",
+    email: "sales@roxx-crm.local",
+    role: "SALES_USER",
+    isActive: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
+    lastLoginAt: new Date(Date.now() - 43200000).toISOString(),
+  },
+  {
+    id: "usr_auditor",
+    organizationId: "demo-org-123",
+    name: "Rachel Auditor",
+    email: "auditor@roxx-crm.local",
+    role: "READ_ONLY",
+    isActive: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
+    lastLoginAt: new Date(Date.now() - 172800000).toISOString(),
+  },
+];
+
+export interface MockOrgSettings {
+  name: string;
+  timezone: string;
+  defaultCurrency: string;
+  fiscalYearStart: string;
+  dateFormat: string;
+}
+
+export const mockOrgSettingsStore: MockOrgSettings = {
+  name: "Roxx Technologies Inc.",
+  timezone: "America/New_York (EST)",
+  defaultCurrency: "USD",
+  fiscalYearStart: "January",
+  dateFormat: "YYYY-MM-DD",
+};
+
+export interface MockPipelineStage {
+  id: string;
+  name: string;
+  order: number;
+  probability: number;
+  color: string;
+  isWon: boolean;
+  isLost: boolean;
+}
+
+export const mockPipelineStagesStore: MockPipelineStage[] = [
+  { id: "stage_disc", name: "Discovery", order: 1, probability: 10, color: "#6366f1", isWon: false, isLost: false },
+  { id: "stage_qual", name: "Qualification", order: 2, probability: 30, color: "#3b82f6", isWon: false, isLost: false },
+  { id: "stage_prop", name: "Proposal", order: 3, probability: 60, color: "#eab308", isWon: false, isLost: false },
+  { id: "stage_nego", name: "Negotiation", order: 4, probability: 80, color: "#f97316", isWon: false, isLost: false },
+  { id: "stage_won", name: "Closed Won", order: 5, probability: 100, color: "#22c55e", isWon: true, isLost: false },
+  { id: "stage_lost", name: "Closed Lost", order: 6, probability: 0, color: "#ef4444", isWon: false, isLost: true },
+];
+

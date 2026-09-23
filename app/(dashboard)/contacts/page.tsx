@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactTable } from "@/features/contacts/components/contact-table";
 import { ContactModal } from "@/features/contacts/components/contact-modal";
+import { ImportModal } from "@/features/imports/components/import-modal";
+import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getContactsAction,
   deleteContactAction,
@@ -17,6 +19,8 @@ export default function ContactsPage() {
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [contactToEdit, setContactToEdit] = useState<(ContactFormData & { id: string }) | null>(null);
   const [, startTransition] = useTransition();
 
@@ -58,6 +62,38 @@ export default function ContactsPage() {
     });
   };
 
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const res = await exportEntityCsvAction("contacts");
+      if (res.success && res.csv && res.filename) {
+        const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", res.filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch {
+      const csvContent =
+        "data:text/csv;charset=utf-8,Name,Company,Title,Email,Phone\n" +
+        contacts
+          .map((c) => `"${c.fullName}","${c.companyName || ""}","${c.jobTitle || ""}","${c.email || ""}","${c.phone || ""}"`)
+          .join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "contacts.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -72,23 +108,19 @@ export default function ContactsPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              const csvContent =
-                "data:text/csv;charset=utf-8,Name,Company,Title,Email,Phone\n" +
-                contacts
-                  .map((c) => `"${c.fullName}","${c.companyName || ""}","${c.jobTitle || ""}","${c.email || ""}","${c.phone || ""}"`)
-                  .join("\n");
-              const encodedUri = encodeURI(csvContent);
-              const link = document.createElement("a");
-              link.setAttribute("href", encodedUri);
-              link.setAttribute("download", "contacts.csv");
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }}
+            onClick={() => setIsImportModalOpen(true)}
+          >
+            <Upload className="w-4 h-4 mr-1.5 text-slate-500" />
+            <span>Import CSV</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isExporting}
+            onClick={handleExportCsv}
           >
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
-            <span>Export</span>
+            <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
           <Button
             type="button"
@@ -122,6 +154,14 @@ export default function ContactsPage() {
         }}
         onSuccess={() => loadContacts()}
         contactToEdit={contactToEdit}
+      />
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => loadContacts()}
+        defaultEntity="contacts"
       />
     </div>
   );

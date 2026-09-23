@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CompanyTable } from "@/features/companies/components/company-table";
 import { CompanyModal } from "@/features/companies/components/company-modal";
+import { ImportModal } from "@/features/imports/components/import-modal";
+import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getCompaniesAction,
   deleteCompanyAction,
@@ -18,6 +20,8 @@ export default function CompaniesPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [companyToEdit, setCompanyToEdit] = useState<(CompanyFormData & { id: string }) | null>(null);
   const [, startTransition] = useTransition();
 
@@ -61,6 +65,36 @@ export default function CompaniesPage() {
     });
   };
 
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const res = await exportEntityCsvAction("companies");
+      if (res.success && res.csv && res.filename) {
+        const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", res.filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch {
+      const csvContent =
+        "data:text/csv;charset=utf-8,Name,Industry,Status,Email,Phone\n" +
+        companies.map((c) => `"${c.name}","${c.industry || ""}","${c.status}","${c.email || ""}","${c.phone || ""}"`).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "companies.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -75,22 +109,19 @@ export default function CompaniesPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              // Quick export mock CSV
-              const csvContent =
-                "data:text/csv;charset=utf-8,Name,Industry,Status,Email,Phone\n" +
-                companies.map((c) => `"${c.name}","${c.industry || ""}","${c.status}","${c.email || ""}","${c.phone || ""}"`).join("\n");
-              const encodedUri = encodeURI(csvContent);
-              const link = document.createElement("a");
-              link.setAttribute("href", encodedUri);
-              link.setAttribute("download", "companies.csv");
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }}
+            onClick={() => setIsImportModalOpen(true)}
+          >
+            <Upload className="w-4 h-4 mr-1.5 text-slate-500" />
+            <span>Import CSV</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isExporting}
+            onClick={handleExportCsv}
           >
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
-            <span>Export</span>
+            <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
           <Button
             type="button"
@@ -126,6 +157,14 @@ export default function CompaniesPage() {
         }}
         onSuccess={() => loadCompanies()}
         companyToEdit={companyToEdit}
+      />
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => loadCompanies()}
+        defaultEntity="companies"
       />
     </div>
   );

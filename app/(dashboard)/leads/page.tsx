@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadTable } from "@/features/leads/components/lead-table";
 import { LeadModal } from "@/features/leads/components/lead-modal";
+import { ImportModal } from "@/features/imports/components/import-modal";
+import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getLeadsAction,
   deleteLeadAction,
@@ -19,8 +21,46 @@ export default function LeadsPage() {
   const [status, setStatus] = useState("ALL");
   const [rating, setRating] = useState("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string }) | null>(null);
   const [, startTransition] = useTransition();
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const res = await exportEntityCsvAction("leads");
+      if (res.success && res.csv && res.filename) {
+        const blob = new Blob([res.csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", res.filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch {
+      // Fallback to client leads export
+      const csvContent =
+        "data:text/csv;charset=utf-8,Number,Name,Company,Status,Rating,Value,Email,Phone\n" +
+        leads
+          .map(
+            (l) =>
+              `"${l.leadNumber}","${l.fullName}","${l.companyName || ""}","${l.status}","${l.rating}",${l.estimatedValue},"${l.email || ""}","${l.phone || ""}"`
+          )
+          .join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "leads.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const loadLeads = useCallback(
     (page = 1, query = search, filterStatus = status, filterRating = rating) => {
@@ -85,26 +125,19 @@ export default function LeadsPage() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              const csvContent =
-                "data:text/csv;charset=utf-8,Number,Name,Company,Status,Rating,Value,Email,Phone\n" +
-                leads
-                  .map(
-                    (l) =>
-                      `"${l.leadNumber}","${l.fullName}","${l.companyName || ""}","${l.status}","${l.rating}",${l.estimatedValue},"${l.email || ""}","${l.phone || ""}"`
-                  )
-                  .join("\n");
-              const encodedUri = encodeURI(csvContent);
-              const link = document.createElement("a");
-              link.setAttribute("href", encodedUri);
-              link.setAttribute("download", "leads.csv");
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }}
+            onClick={() => setIsImportModalOpen(true)}
+          >
+            <Upload className="w-4 h-4 mr-1.5 text-slate-500" />
+            <span>Import CSV</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isExporting}
+            onClick={handleExportCsv}
           >
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
-            <span>Export</span>
+            <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
           <Button
             type="button"
@@ -142,6 +175,14 @@ export default function LeadsPage() {
         }}
         onSuccess={() => loadLeads()}
         leadToEdit={leadToEdit}
+      />
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => loadLeads()}
+        defaultEntity="leads"
       />
     </div>
   );
