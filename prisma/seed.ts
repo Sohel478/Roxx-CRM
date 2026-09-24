@@ -7,12 +7,21 @@ export async function main() {
   console.log("🌱 Starting CRM database seed...");
 
   // 1. Create or Find Organization
+  const trialEnd = new Date();
+  trialEnd.setDate(trialEnd.getDate() + 30);
+
   const org = await prisma.organization.upsert({
     where: { slug: "demo-company" },
     update: {},
     create: {
       name: "Demo Company",
       slug: "demo-company",
+      subscriptionPlan: "FREE_TRIAL",
+      subscriptionStatus: "TRIAL",
+      maxSeats: 20,
+      trialEndsAt: trialEnd,
+      billingEmail: "admin@roxx-crm.local",
+      subscriptionNotes: "Default 30-day Free Trial (20 seats)",
     },
   });
   console.log(`✓ Organization ready: ${org.name} (${org.id})`);
@@ -166,16 +175,19 @@ export async function main() {
       email: "admin@roxx-crm.local",
       name: "Admin User",
       roleName: "ADMIN",
+      isSuperAdmin: true,
     },
     {
       email: "manager@roxx-crm.local",
       name: "Sarah Manager",
       roleName: "MANAGER",
+      isSuperAdmin: false,
     },
     {
       email: "sales@roxx-crm.local",
       name: "Alex Sales",
       roleName: "SALES_USER",
+      isSuperAdmin: false,
     },
   ];
 
@@ -187,6 +199,7 @@ export async function main() {
         passwordHash,
         roleId: roles[u.roleName],
         isActive: true,
+        isSuperAdmin: u.isSuperAdmin,
       },
       create: {
         organizationId: org.id,
@@ -195,6 +208,7 @@ export async function main() {
         passwordHash,
         roleId: roles[u.roleName],
         isActive: true,
+        isSuperAdmin: u.isSuperAdmin,
       },
     });
   }

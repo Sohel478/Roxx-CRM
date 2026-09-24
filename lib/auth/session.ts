@@ -13,6 +13,12 @@ export interface SessionUser {
   role: string;
   permissions: string[];
   expiresAt: number;
+  isSuperAdmin?: boolean;
+  subscriptionPlan?: string;
+  subscriptionStatus?: string;
+  maxSeats?: number;
+  trialEndsAt?: string | null;
+  subscriptionEndsAt?: string | null;
 }
 
 const DEFAULT_SECRET = "roxx-crm-default-development-secret-key-at-least-32-chars";
@@ -205,5 +211,17 @@ export async function requirePermission(permissionKey: string): Promise<SessionU
     throw new Error(`Unauthorized: Missing required permission [${permissionKey}]`);
   }
 
+  return session;
+}
+
+/**
+ * Enforce Super Administrator access.
+ * Throws an error or returns session if authorized.
+ */
+export async function requireSuperAdmin(): Promise<SessionUser> {
+  const session = await requireAuth();
+  if (!session.isSuperAdmin) {
+    throw new Error("Unauthorized: Super Administrator privileges required");
+  }
   return session;
 }

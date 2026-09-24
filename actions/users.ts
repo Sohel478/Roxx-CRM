@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
-import { mockUsersStore, mockAuditLogsStore, MockUser } from "@/lib/db/mock-store";
+import { mockUsersStore, mockAuditLogsStore, mockOrganizationsStore, MockUser } from "@/lib/db/mock-store";
 import {
   userCreateSchema,
   userUpdateSchema,
@@ -15,6 +15,80 @@ import {
 } from "@/lib/validations/settings";
 
 export type { UserItem, UserCreateInput, UserUpdateInput };
+
+export interface TenantSeatUsage {
+  usedSeats: number;
+  maxSeats: number;
+  plan: string;
+  status: string;
+  trialEndsAt: string | null;
+  subscriptionEndsAt: string | null;
+  organizationName: string;
+  isSuperAdmin: boolean;
+}
+
+/**
+ * Fetch tenant subscription and seat usage details
+ */
+export async function getTenantSeatUsageAction(): Promise<{
+  success: boolean;
+  data?: TenantSeatUsage;
+  error?: string;
+}> {
+  const session = await requireAuth();
+
+  try {
+    const org = await prisma.organization.findUnique({
+      where: { id: session.organizationId },
+      select: {
+        id: true,
+        name: true,
+        maxSeats: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
+        subscriptionEndsAt: true,
+      },
+    });
+
+    const activeUserCount = await prisma.user.count({
+      where: { organizationId: session.organizationId, isActive: true },
+    });
+
+    return {
+      success: true,
+      data: {
+        usedSeats: activeUserCount,
+        maxSeats: org?.maxSeats || 20,
+        plan: org?.subscriptionPlan || "FREE_TRIAL",
+        status: org?.subscriptionStatus || "TRIAL",
+        trialEndsAt: org?.trialEndsAt ? org.trialEndsAt.toISOString() : null,
+        subscriptionEndsAt: org?.subscriptionEndsAt ? org.subscriptionEndsAt.toISOString() : null,
+        organizationName: org?.name || session.organizationName || "Company",
+        isSuperAdmin: Boolean(session.isSuperAdmin),
+      },
+    };
+  } catch {
+    const mockOrg = mockOrganizationsStore.find((o) => o.id === session.organizationId);
+    const usedSeats = mockUsersStore.filter(
+      (u) => u.organizationId === session.organizationId && u.isActive
+    ).length;
+
+    return {
+      success: true,
+      data: {
+        usedSeats,
+        maxSeats: mockOrg?.maxSeats || 20,
+        plan: mockOrg?.subscriptionPlan || "FREE_TRIAL",
+        status: mockOrg?.subscriptionStatus || "TRIAL",
+        trialEndsAt: mockOrg?.trialEndsAt || null,
+        subscriptionEndsAt: mockOrg?.subscriptionEndsAt || null,
+        organizationName: mockOrg?.name || session.organizationName || "Company",
+        isSuperAdmin: Boolean(session.isSuperAdmin),
+      },
+    };
+  }
+}
 
 /**
  * Fetch all team members for the organization
@@ -84,6 +158,24 @@ export async function createUserAction(
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
+    // 1. Enforce SaaS Seat Quota
+    const org = await prisma.organization.findUnique({
+      where: { id: session.organizationId },
+      select: { maxSeats: true },
+    });
+    const maxSeats = org?.maxSeats || 20;
+
+    const currentCount = await prisma.user.count({
+      where: { organizationId: session.organizationId, isActive: true },
+    });
+
+    if (currentCount >= maxSeats) {
+      return {
+        success: false,
+        error: `Seat limit reached (${currentCount}/${maxSeats} seats used). Please upgrade your subscription plan to add more team members.`,
+      };
+    }
+
     const existing = await prisma.user.findUnique({
       where: { email: normalizedEmail },
     });
@@ -154,6 +246,19 @@ export async function createUserAction(
     };
   } catch {
     // Fallback in-memory mock store
+    const mockOrg = mockOrganizationsStore.find((o) => o.id === session.organizationId);
+    const mockMaxSeats = mockOrg?.maxSeats || 20;
+    const currentMockCount = mockUsersStore.filter(
+      (u) => u.organizationId === session.organizationId && u.isActive
+    ).length;
+
+    if (currentMockCount >= mockMaxSeats) {
+      return {
+        success: false,
+        error: `Seat limit reached (${currentMockCount}/${mockMaxSeats} seats used). Please upgrade your subscription plan to add more team members.`,
+      };
+    }
+
     const existingMock = mockUsersStore.find(
       (u) => u.email.toLowerCase() === normalizedEmail
     );

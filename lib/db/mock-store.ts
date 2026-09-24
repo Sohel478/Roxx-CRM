@@ -731,6 +731,7 @@ export interface MockUser {
   email: string;
   role: "ADMIN" | "MANAGER" | "SALES_USER" | "READ_ONLY";
   isActive: boolean;
+  isSuperAdmin?: boolean;
   avatarUrl: string | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -744,6 +745,7 @@ export const mockUsersStore: MockUser[] = [
     email: "admin@roxx-crm.local",
     role: "ADMIN",
     isActive: true,
+    isSuperAdmin: true,
     avatarUrl: null,
     createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
     lastLoginAt: new Date(Date.now() - 1800000).toISOString(),
@@ -755,6 +757,7 @@ export const mockUsersStore: MockUser[] = [
     email: "manager@roxx-crm.local",
     role: "MANAGER",
     isActive: true,
+    isSuperAdmin: false,
     avatarUrl: null,
     createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
     lastLoginAt: new Date(Date.now() - 86400000).toISOString(),
@@ -766,6 +769,7 @@ export const mockUsersStore: MockUser[] = [
     email: "sales@roxx-crm.local",
     role: "SALES_USER",
     isActive: true,
+    isSuperAdmin: false,
     avatarUrl: null,
     createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
     lastLoginAt: new Date(Date.now() - 43200000).toISOString(),
@@ -777,6 +781,7 @@ export const mockUsersStore: MockUser[] = [
     email: "auditor@roxx-crm.local",
     role: "READ_ONLY",
     isActive: true,
+    isSuperAdmin: false,
     avatarUrl: null,
     createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
     lastLoginAt: new Date(Date.now() - 172800000).toISOString(),
@@ -816,5 +821,37 @@ export const mockPipelineStagesStore: MockPipelineStage[] = [
   { id: "stage_nego", name: "Negotiation", order: 4, probability: 80, color: "#f97316", isWon: false, isLost: false },
   { id: "stage_won", name: "Closed Won", order: 5, probability: 100, color: "#22c55e", isWon: true, isLost: false },
   { id: "stage_lost", name: "Closed Lost", order: 6, probability: 0, color: "#ef4444", isWon: false, isLost: true },
+];
+
+export interface MockOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  subscriptionPlan: "FREE_TRIAL" | "STARTER_20" | "GROWTH_50" | "ENTERPRISE";
+  subscriptionStatus: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED";
+  maxSeats: number;
+  trialEndsAt: string | null;
+  subscriptionEndsAt: string | null;
+  billingEmail: string | null;
+  billingPhone: string | null;
+  subscriptionNotes: string | null;
+  createdAt: string;
+}
+
+export const mockOrganizationsStore: MockOrganization[] = [
+  {
+    id: "demo-org-123",
+    name: "Demo Company",
+    slug: "demo-company",
+    subscriptionPlan: "FREE_TRIAL",
+    subscriptionStatus: "TRIAL",
+    maxSeats: 20,
+    trialEndsAt: new Date(Date.now() + 24 * 86400000).toISOString(),
+    subscriptionEndsAt: null,
+    billingEmail: "admin@roxx-crm.local",
+    billingPhone: "+91 98765 43210",
+    subscriptionNotes: "Registered via standard 30-day Free Trial (20 seats)",
+    createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
 ];
 

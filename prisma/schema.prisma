@@ -15,12 +15,34 @@ datasource db {
 // 1. Tenancy & Access Control
 // ----------------------------------------------------
 
+enum SubscriptionPlan {
+  FREE_TRIAL
+  STARTER_20
+  GROWTH_50
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+}
+
 model Organization {
-  id             String          @id @default(cuid())
-  name           String
-  slug           String          @unique
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  id                  String             @id @default(cuid())
+  name                String
+  slug                String             @unique
+  subscriptionPlan    SubscriptionPlan   @default(FREE_TRIAL) @map("subscription_plan")
+  subscriptionStatus  SubscriptionStatus @default(TRIAL) @map("subscription_status")
+  maxSeats            Int                @default(20) @map("max_seats")
+  trialEndsAt         DateTime?          @map("trial_ends_at")
+  subscriptionEndsAt  DateTime?          @map("subscription_ends_at")
+  billingEmail        String?            @map("billing_email")
+  billingPhone        String?            @map("billing_phone")
+  subscriptionNotes   String?            @map("subscription_notes")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
 
   users          User[]
   roles          Role[]
@@ -93,6 +115,7 @@ model User {
   passwordHash   String       @map("password_hash")
   avatarUrl      String?      @map("avatar_url")
   isActive       Boolean      @default(true) @map("is_active")
+  isSuperAdmin   Boolean      @default(false) @map("is_super_admin")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 

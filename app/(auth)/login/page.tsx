@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { Flame, Lock, Mail, AlertCircle, Loader2, ShieldCheck, UserCheck, Briefcase } from "lucide-react";
 import { loginAction, AuthState } from "@/actions/auth";
 
@@ -150,7 +151,19 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <div className="mt-6 border-t border-slate-100 pt-4 text-center">
+          <div className="mt-5 text-center">
+            <p className="text-xs text-slate-600">
+              New to Roxx CRM?{" "}
+              <Link
+                href="/register"
+                className="font-bold text-blue-600 hover:text-blue-500 underline"
+              >
+                Start 30-Day Free Trial (20 Seats)
+              </Link>
+            </p>
+          </div>
+
+          <div className="mt-4 border-t border-slate-100 pt-3 text-center">
             <p className="text-xs text-slate-400">
               Demo Company &bull; Default password: <code className="text-slate-600 font-mono">password123</code>
             </p>

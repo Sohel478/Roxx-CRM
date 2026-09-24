@@ -15,6 +15,8 @@ import {
   User as UserIcon,
   KeyRound,
   AlertCircle,
+  Users,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,9 +35,10 @@ import {
 interface TeamMembersTabProps {
   users: UserItem[];
   onRefresh: () => void;
+  maxSeats?: number;
 }
 
-export function TeamMembersTab({ users, onRefresh }: TeamMembersTabProps) {
+export function TeamMembersTab({ users, onRefresh, maxSeats = 20 }: TeamMembersTabProps) {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [userToEdit, setUserToEdit] = useState<UserItem | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -152,9 +155,12 @@ export function TeamMembersTab({ users, onRefresh }: TeamMembersTabProps) {
     }
   };
 
+  const activeUsersCount = users.filter((u) => u.isActive).length;
+  const isSeatLimitReached = activeUsersCount >= maxSeats;
+
   return (
     <div className="space-y-6">
-      {/* Header with Add Member Button */}
+      {/* Header with Add Member Button & Seat Meter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
           <h2 className="text-base font-semibold text-slate-900">
@@ -164,15 +170,41 @@ export function TeamMembersTab({ users, onRefresh }: TeamMembersTabProps) {
             Manage users, assign RBAC security roles, and monitor account activation status.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={openInviteModal}
-          className="gap-2 shrink-0 bg-blue-600 hover:bg-blue-700"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Invite Member</span>
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+            <Users className="w-3.5 h-3.5 text-slate-500" />
+            <span>
+              Seats:{" "}
+              <strong className={isSeatLimitReached ? "text-red-600" : "text-blue-600"}>
+                {activeUsersCount}
+              </strong>{" "}
+              / {maxSeats}
+            </span>
+          </div>
+
+          <Button
+            type="button"
+            onClick={openInviteModal}
+            disabled={isSeatLimitReached}
+            className="gap-2 shrink-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Invite Member</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Seat Limit Alert if reached */}
+      {isSeatLimitReached && (
+        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>All {maxSeats} seats in your plan are currently occupied.</strong> Upgrade your subscription in the <strong>Plan &amp; Billing</strong> tab to add more team members.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Team Members Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
