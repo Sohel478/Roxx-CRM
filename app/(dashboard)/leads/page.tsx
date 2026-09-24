@@ -85,6 +85,15 @@ export default function LeadsPage() {
     loadLeads(1, search, status, rating);
   }, [loadLeads, search, status, rating]);
 
+  // Listen for global lead creation events (e.g. from top header navbar)
+  useEffect(() => {
+    const handleLeadCreated = () => {
+      loadLeads(1, search, status, rating);
+    };
+    window.addEventListener("leadCreated", handleLeadCreated);
+    return () => window.removeEventListener("leadCreated", handleLeadCreated);
+  }, [loadLeads, search, status, rating]);
+
   const handleEdit = (lead: LeadItem) => {
     setLeadToEdit({
       id: lead.id,

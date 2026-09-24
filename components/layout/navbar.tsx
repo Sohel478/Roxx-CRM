@@ -2,12 +2,16 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search, Bell, Plus, LogOut } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 import { CommandPalette } from "@/components/search/command-palette";
+import { LeadModal } from "@/features/leads/components/lead-modal";
 
 export function Navbar() {
+  const router = useRouter();
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
 
   // Global listener for Cmd+K / Ctrl+K
   useEffect(() => {
@@ -41,13 +45,14 @@ export function Navbar() {
       {/* Right Actions */}
       <div className="flex items-center gap-3">
         {/* Quick Add Button */}
-        <Link
-          href="/leads"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+        <button
+          type="button"
+          onClick={() => setIsLeadModalOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>New Lead</span>
-        </Link>
+        </button>
 
         {/* Notifications Icon */}
         <button
@@ -82,6 +87,18 @@ export function Navbar() {
 
       {/* Global Spotlight Search Modal */}
       <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
+
+      {/* Quick Add Lead Modal */}
+      <LeadModal
+        isOpen={isLeadModalOpen}
+        onClose={() => setIsLeadModalOpen(false)}
+        onSuccess={() => {
+          setIsLeadModalOpen(false);
+          window.dispatchEvent(new CustomEvent("leadCreated"));
+          router.push("/leads");
+          router.refresh();
+        }}
+      />
     </header>
   );
 }
