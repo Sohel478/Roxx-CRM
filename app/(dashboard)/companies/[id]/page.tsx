@@ -49,6 +49,7 @@ export default function CompanyDetailPage() {
   const id = params?.id as string;
   const [company, setCompany] = useState<CompanyDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     async function load() {
@@ -81,8 +82,6 @@ export default function CompanyDetailPage() {
       </div>
     );
   }
-
-  const [isPending, startTransition] = useTransition();
 
   const handleDelete = () => {
     if (!confirm(`Are you sure you want to delete company "${company.name}"?`)) return;

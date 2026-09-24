@@ -36,6 +36,7 @@ export default function ContactDetailPage() {
   const id = params?.id as string;
   const [contact, setContact] = useState<ContactDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     async function load() {
@@ -68,8 +69,6 @@ export default function ContactDetailPage() {
       </div>
     );
   }
-
-  const [isPending, startTransition] = useTransition();
 
   const fullName = `${contact.firstName} ${contact.lastName || ""}`.trim();
 

@@ -65,7 +65,7 @@ export default function OpportunitiesPage() {
     loadOpportunities();
   }, [loadOpportunities]);
 
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const handleOpenCloseDeal = (opp: OpportunityItem, status: "WON" | "LOST") => {
     setCloseDealTarget(opp);
