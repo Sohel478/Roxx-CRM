@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { closeOpportunityAction } from "@/actions/opportunities";
 import { LOSS_REASONS, OpportunityItem } from "@/lib/validations/opportunities";
+import { triggerConfetti } from "@/lib/utils/confetti";
 
 interface CloseDealModalProps {
   isOpen: boolean;
@@ -40,6 +41,9 @@ export function CloseDealModal({
       });
 
       if (res.success) {
+        if (status === "WON") {
+          triggerConfetti();
+        }
         onSuccess();
         onClose();
       } else {

@@ -16,15 +16,22 @@ import {
   Kanban,
   CheckCircle2,
   Sparkles,
+  DollarSign,
+  Tag,
 } from "lucide-react";
 import { getLeadByIdAction, updateLeadStatusAction } from "@/actions/leads";
 import { getActivitiesAction } from "@/actions/activities";
+import { getTasksAction } from "@/actions/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConvertLeadModal } from "@/features/leads/components/convert-lead-modal";
 import { ActivityTimeline } from "@/features/activities/components/activity-timeline";
 import { ActivityModal } from "@/features/activities/components/activity-modal";
+import { PropertySidebar } from "@/features/dossier/components/property-sidebar";
+import { InlineComposer } from "@/features/dossier/components/inline-composer";
+import { AssociationsPanel } from "@/features/dossier/components/associations-panel";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
+import { TaskItem } from "@/lib/validations/tasks";
 
 interface LeadDetailData {
   id: string;
@@ -69,14 +76,17 @@ export default function LeadDetailPage() {
   const [isPending, startTransition] = useTransition();
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [activityFilter, setActivityFilter] = useState<string>("ALL");
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
-  const [activityDefaultType, setActivityDefaultType] = useState<ActivityType>("CALL");
+  const [activityDefaultType] = useState<ActivityType>("CALL");
 
   const loadLead = useCallback(async () => {
     if (!id) return;
-    const [res, actRes] = await Promise.all([
+    const [res, actRes, taskRes] = await Promise.all([
       getLeadByIdAction(id),
       getActivitiesAction({ leadId: id }),
+      getTasksAction({ leadId: id }),
     ]);
 
     if (res.success && res.data) {
@@ -84,6 +94,9 @@ export default function LeadDetailPage() {
     }
     if (actRes.success && actRes.data) {
       setActivities(actRes.data.items);
+    }
+    if (taskRes.success && taskRes.data) {
+      setTasks(taskRes.data.items);
     }
     setIsLoading(false);
   }, [id]);
@@ -102,7 +115,7 @@ export default function LeadDetailPage() {
   if (isLoading) {
     return (
       <div className="py-20 text-center text-slate-400">
-        <p className="text-sm font-semibold">Loading lead details...</p>
+        <p className="text-sm font-semibold">Loading HubSpot 360° lead dossier...</p>
       </div>
     );
   }
@@ -145,6 +158,15 @@ export default function LeadDetailPage() {
   };
 
   const statuses = ["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Lost"];
+
+  const daysInactive = lead.createdAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const filteredActivities = activities.filter((act) => {
+    if (activityFilter === "ALL") return true;
+    return act.type === activityFilter;
+  });
 
   return (
     <div className="space-y-6">
@@ -304,145 +326,192 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Stage Progression Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-          Lifecycle Progression
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {statuses.map((s) => {
-            const isCurrent = lead.status === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                disabled={isPending || isCurrent || isConverted}
-                onClick={() => handleStatusChange(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  isCurrent
-                    ? "bg-blue-600 text-white shadow-xs cursor-default"
-                    : isConverted
-                    ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60"
-                    : "bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200"
-                }`}
-              >
-                {s}
-              </button>
-            );
-          })}
-          {isConverted && (
-            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs">
-              Converted
-            </span>
-          )}
-        </div>
-      </div>
+      {/* 3-Column HubSpot Dossier Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Property Sidebar & Discovery Notes */}
+        <div className="lg:col-span-3 space-y-4">
+          <PropertySidebar
+            title={lead.fullName}
+            subtitle={lead.companyName || lead.jobTitle || undefined}
+            badge={lead.status}
+            badgeVariant={
+              isConverted || lead.status === "Qualified"
+                ? "success"
+                : lead.status === "Lost" || lead.status === "Unqualified"
+                ? "danger"
+                : "neutral"
+            }
+            daysInactive={daysInactive}
+            isOpen={!isConverted && lead.status !== "Lost"}
+            properties={[
+              {
+                label: "Estimated Deal Value",
+                value: `$${lead.estimatedValue.toLocaleString()} ${lead.currency}`,
+                icon: <DollarSign className="w-3.5 h-3.5 text-blue-600" />,
+              },
+              {
+                label: "Lead Rating",
+                value: lead.rating,
+                icon: <Flame className="w-3.5 h-3.5 text-amber-500" />,
+              },
+              {
+                label: "Lead Source",
+                value: lead.source,
+                icon: <Tag className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Lead Owner",
+                value: lead.owner?.name || lead.ownerName || "Unassigned",
+                icon: <User className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Email Address",
+                value: lead.email || "Not provided",
+                icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Phone Number",
+                value: lead.phone || "Not provided",
+                icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Created Date",
+                value: new Date(lead.createdAt).toLocaleDateString(),
+                icon: <Clock className="w-3.5 h-3.5 text-slate-400" />,
+              },
+            ]}
+          />
 
-      {/* Grid: Lead Details & Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Deal Value & Contact Info */}
-        <div className="space-y-6">
-          {/* Estimated Value Card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-              Estimated Deal Value
-            </span>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                {lead.estimatedValue > 0 ? `$${lead.estimatedValue.toLocaleString()}` : "$0"}
-              </span>
-              <span className="text-xs text-slate-400 font-medium">USD</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Assigned to: <span className="font-semibold text-slate-700">{lead.owner?.name || lead.ownerName || "Unassigned"}</span>
+          {/* Discovery Notes Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Discovery Notes &amp; Context
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">
+              {lead.description || "No discovery notes recorded yet for this lead."}
             </p>
           </div>
-
-          {/* Contact Details */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-            <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-              Contact Channels
-            </h2>
-            <div className="space-y-2.5 text-xs">
-              <div>
-                <span className="text-slate-400 block font-medium">Email Address</span>
-                {lead.email ? (
-                  <a
-                    href={`mailto:${lead.email}`}
-                    className="text-blue-600 hover:underline font-semibold flex items-center gap-1.5 mt-0.5"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{lead.email}</span>
-                  </a>
-                ) : (
-                  <span className="text-slate-400 italic">No email provided</span>
-                )}
-              </div>
-
-              <div>
-                <span className="text-slate-400 block font-medium">Phone Number</span>
-                {lead.phone ? (
-                  <a
-                    href={`tel:${lead.phone}`}
-                    className="text-slate-800 hover:text-blue-600 font-semibold flex items-center gap-1.5 mt-0.5"
-                  >
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{lead.phone}</span>
-                  </a>
-                ) : (
-                  <span className="text-slate-400 italic">No phone provided</span>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Right Column: Context & Interaction History */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Notes & Description */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-            <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-              Discovery Notes &amp; Context
-            </h2>
-            <div className="text-xs text-slate-600 leading-relaxed bg-slate-50/75 p-3.5 rounded-lg border border-slate-100">
-              {lead.description || "No discovery notes recorded yet for this lead."}
+        {/* Center Column: Lifecycle Stepper, Inline Composer & Timeline */}
+        <div className="lg:col-span-6 space-y-6">
+          {/* Stage Progression Stepper */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
+              Lifecycle Progression
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {statuses.map((s) => {
+                const isCurrent = lead.status === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={isPending || isCurrent || isConverted}
+                    onClick={() => handleStatusChange(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      isCurrent
+                        ? "bg-blue-600 text-white shadow-xs cursor-default"
+                        : isConverted
+                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60"
+                        : "bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+              {isConverted && (
+                <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs">
+                  Converted
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Lead Activity Timeline */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          {/* HubSpot-Style Inline Composer */}
+          <InlineComposer
+            entityId={lead.id}
+            entityType="lead"
+            mergeContext={{
+              firstName: lead.firstName,
+              lastName: lead.lastName || "",
+              companyName: lead.companyName || "",
+              dealName: lead.companyName ? `${lead.companyName} Deal` : `${lead.fullName} Deal`,
+              dealAmount: lead.estimatedValue,
+              repName: lead.owner?.name || lead.ownerName || "",
+            }}
+            onActivityCreated={loadLead}
+          />
+
+          {/* Activity Timeline */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-bold text-slate-900">Lead Interaction Timeline</h2>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Lead Interaction Timeline ({activities.length})
+                </h2>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs h-7 gap-1"
-                onClick={() => {
-                  setActivityDefaultType("CALL");
-                  setIsActivityModalOpen(true);
-                }}
-              >
-                <span>+ Log Touchpoint</span>
-              </Button>
+
+              {/* Feed Filter Tabs */}
+              <div className="flex gap-1 overflow-x-auto">
+                {["ALL", "NOTE", "EMAIL", "CALL", "MEETING"].map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setActivityFilter(f)}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
+                      activityFilter === f
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase() + "s"}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <ActivityTimeline
-              activities={activities}
-              onOpenLogModal={(type) => {
-                if (type) setActivityDefaultType(type);
-                setIsActivityModalOpen(true);
-              }}
+              activities={filteredActivities}
               onRefresh={loadLead}
-              showFilters={false}
             />
           </div>
         </div>
+
+        {/* Right Column: Associations & Open Tasks */}
+        <div className="lg:col-span-3 space-y-4">
+          <AssociationsPanel
+            company={
+              lead.convertedCompanyId
+                ? {
+                    id: lead.convertedCompanyId,
+                    name: lead.convertedInfo?.companyName || lead.companyName || "Associated Account",
+                  }
+                : lead.companyName
+                ? {
+                    id: lead.id,
+                    name: lead.companyName,
+                  }
+                : null
+            }
+            contacts={[
+              {
+                id: lead.convertedContactId || lead.id,
+                fullName: lead.fullName,
+                email: lead.email,
+                phone: lead.phone,
+                jobTitle: lead.jobTitle,
+              },
+            ]}
+            tasks={tasks}
+            onTasksUpdated={loadLead}
+          />
+        </div>
       </div>
 
-      {/* Activity Log Modal */}
+      {/* Activity Log Modal (alternative quick trigger) */}
       <ActivityModal
         isOpen={isActivityModalOpen}
         onClose={() => setIsActivityModalOpen(false)}

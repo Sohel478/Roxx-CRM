@@ -5,28 +5,34 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Building2,
   User,
   CheckCircle2,
   AlertTriangle,
-  Kanban,
   Edit2,
   Trash2,
+  Clock,
+  DollarSign,
+  Calendar,
 } from "lucide-react";
 import {
   getOpportunityByIdAction,
   updateOpportunityStageAction,
   deleteOpportunityAction,
 } from "@/actions/opportunities";
+import { getActivitiesAction } from "@/actions/activities";
+import { getTasksAction } from "@/actions/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CloseDealModal } from "@/features/opportunities/components/close-deal-modal";
 import { OpportunityModal } from "@/features/opportunities/components/opportunity-modal";
-import { getActivitiesAction } from "@/actions/activities";
 import { ActivityTimeline } from "@/features/activities/components/activity-timeline";
 import { ActivityModal } from "@/features/activities/components/activity-modal";
+import { PropertySidebar } from "@/features/dossier/components/property-sidebar";
+import { InlineComposer } from "@/features/dossier/components/inline-composer";
+import { AssociationsPanel } from "@/features/dossier/components/associations-panel";
+import { triggerConfetti } from "@/lib/utils/confetti";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
-import { Clock } from "lucide-react";
+import { TaskItem } from "@/lib/validations/tasks";
 import {
   PIPELINE_STAGES,
   OpportunityItem,
@@ -45,14 +51,17 @@ export default function OpportunityDetailPage() {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [closeStatus, setCloseStatus] = useState<"WON" | "LOST">("WON");
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
-  const [activityDefaultType, setActivityDefaultType] = useState<ActivityType>("CALL");
+  const [activityDefaultType] = useState<ActivityType>("CALL");
+  const [activityFilter, setActivityFilter] = useState<string>("ALL");
 
   const loadOpportunity = useCallback(async () => {
     if (!id) return;
-    const [res, actRes] = await Promise.all([
+    const [res, actRes, taskRes] = await Promise.all([
       getOpportunityByIdAction(id),
       getActivitiesAction({ opportunityId: id }),
+      getTasksAction({ opportunityId: id }),
     ]);
 
     if (res.success && res.data) {
@@ -60,6 +69,9 @@ export default function OpportunityDetailPage() {
     }
     if (actRes.success && actRes.data) {
       setActivities(actRes.data.items);
+    }
+    if (taskRes.success && taskRes.data) {
+      setTasks(taskRes.data.items);
     }
     setIsLoading(false);
   }, [id]);
@@ -74,6 +86,7 @@ export default function OpportunityDetailPage() {
     );
 
     if (stage?.isWon) {
+      triggerConfetti();
       setCloseStatus("WON");
       setIsCloseModalOpen(true);
       return;
@@ -101,7 +114,7 @@ export default function OpportunityDetailPage() {
   if (isLoading) {
     return (
       <div className="py-20 text-center text-slate-400">
-        <p className="text-sm font-semibold">Loading deal details...</p>
+        <p className="text-sm font-semibold">Loading HubSpot 360° customer dossier...</p>
       </div>
     );
   }
@@ -118,59 +131,43 @@ export default function OpportunityDetailPage() {
     );
   }
 
+  const daysInactive = opp.createdAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(opp.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const filteredActivities = activities.filter((act) => {
+    if (activityFilter === "ALL") return true;
+    return act.type === activityFilter;
+  });
+
   return (
     <div className="space-y-6">
-      {/* Back button */}
-      <div>
-        <Link
-          href="/opportunities"
-          className="inline-flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 mr-1" />
-          Back to pipeline
-        </Link>
-      </div>
-
-      {/* Header Profile */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-start gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-blue-500/20 shrink-0">
-            <Kanban className="w-7 h-7" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">{opp.name}</h1>
-              <Badge
-                variant={
-                  opp.status === "WON"
-                    ? "success"
-                    : opp.status === "LOST"
-                    ? "destructive"
-                    : "info"
-                }
-              >
-                {opp.stageName}
-              </Badge>
-              <span className="text-xs font-mono font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
-                {opp.probability}% Win Probability
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Account:{" "}
-              <Link
-                href={`/companies/${opp.companyId}`}
-                className="font-semibold text-blue-600 hover:underline"
-              >
-                {opp.companyName}
-              </Link>
-              {opp.primaryContactName && (
-                <>
-                  {" "}
-                  &bull; Contact:{" "}
-                  <span className="font-semibold text-slate-700">{opp.primaryContactName}</span>
-                </>
-              )}
-            </p>
+      {/* Top Breadcrumb & Action Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <Link
+            href="/opportunities"
+            className="inline-flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+            Back to pipeline
+          </Link>
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{opp.name}</h1>
+            <Badge
+              variant={
+                opp.status === "WON"
+                  ? "success"
+                  : opp.status === "LOST"
+                  ? "destructive"
+                  : "info"
+              }
+            >
+              {opp.stageName}
+            </Badge>
+            <span className="text-sm font-extrabold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
+              ${opp.amount.toLocaleString()} {opp.currency}
+            </span>
           </div>
         </div>
 
@@ -182,6 +179,7 @@ export default function OpportunityDetailPage() {
                 type="button"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5"
                 onClick={() => {
+                  triggerConfetti();
                   setCloseStatus("WON");
                   setIsCloseModalOpen(true);
                 }}
@@ -232,7 +230,7 @@ export default function OpportunityDetailPage() {
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-emerald-950">Closed Won Deal</h3>
+            <h3 className="text-sm font-bold text-emerald-950">Closed Won Deal 🎉</h3>
             <p className="text-xs text-emerald-700">
               This deal was won and recognized as{" "}
               <strong>${opp.amount.toLocaleString()} USD</strong> in revenue.
@@ -256,168 +254,208 @@ export default function OpportunityDetailPage() {
         </div>
       )}
 
-      {/* Pipeline Stage Progression Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-          Pipeline Stage Progression
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          {PIPELINE_STAGES.map((s) => {
-            const isCurrent = opp.stageName.toLowerCase() === s.name.toLowerCase();
-            return (
-              <button
-                key={s.id}
-                type="button"
-                disabled={isPending || isCurrent}
-                onClick={() => handleStageChange(s.name)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  isCurrent
-                    ? "bg-blue-600 text-white shadow-xs cursor-default"
-                    : "bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200"
-                }`}
-              >
-                {s.name} ({s.probability}%)
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* 3-Column HubSpot-Style Dossier Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (Key Properties & Record Overview) */}
+        <div className="lg:col-span-3 space-y-4">
+          <PropertySidebar
+            title={opp.name}
+            subtitle={opp.companyName}
+            badge={opp.stageName}
+            badgeVariant={
+              opp.status === "WON"
+                ? "success"
+                : opp.status === "LOST"
+                ? "danger"
+                : "neutral"
+            }
+            daysInactive={daysInactive}
+            isOpen={opp.status === "OPEN"}
+            properties={[
+              {
+                label: "Deal Value",
+                value: `$${opp.amount.toLocaleString()} ${opp.currency}`,
+                icon: <DollarSign className="w-3.5 h-3.5 text-blue-600" />,
+              },
+              {
+                label: "Win Probability",
+                value: `${opp.probability}%`,
+              },
+              {
+                label: "Pipeline Stage",
+                value: opp.stageName,
+              },
+              {
+                label: "Target Close Date",
+                value: opp.expectedCloseDate || "Not set",
+                icon: <Calendar className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Deal Owner",
+                value: opp.ownerName,
+                icon: <User className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Created Date",
+                value: new Date(opp.createdAt).toLocaleDateString(),
+                icon: <Clock className="w-3.5 h-3.5 text-slate-400" />,
+              },
+            ]}
+          />
 
-      {/* Details Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Financials Card */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-          <div>
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-              Deal Value
-            </span>
-            <div className="mt-1 flex items-baseline gap-1">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                ${opp.amount.toLocaleString()}
+          {/* Strategy Notes Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Strategy &amp; Deal Brief
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">
+              {opp.description || "No strategy notes recorded yet."}
+            </p>
+          </div>
+        </div>
+
+        {/* Center Column (Stage Stepper, Inline Composer & Activity Timeline) */}
+        <div className="lg:col-span-6 space-y-6">
+          {/* Pipeline Stage Progression Stepper */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-900 tracking-tight">
+                Pipeline Progression
               </span>
-              <span className="text-xs text-slate-400 font-semibold">{opp.currency}</span>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Target Close Date</span>
-              <span className="font-semibold text-slate-800">
-                {opp.expectedCloseDate || "Not set"}
+              <span className="text-[11px] text-slate-400">
+                Click any milestone to advance stage
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Deal Owner</span>
-              <span className="font-semibold text-slate-800">{opp.ownerName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Created On</span>
-              <span className="font-semibold text-slate-800">
-                {new Date(opp.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        {/* Company & Contact Linkage */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-          <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-            Related Account &amp; Contacts
-          </h2>
-
-          <div className="space-y-3 text-xs">
-            <div>
-              <span className="text-slate-400 block font-medium">Customer Company</span>
-              <Link
-                href={`/companies/${opp.companyId}`}
-                className="text-blue-600 font-bold hover:underline flex items-center gap-1.5 mt-0.5"
-              >
-                <Building2 className="w-4 h-4 text-slate-400" />
-                <span>{opp.companyName}</span>
-              </Link>
-            </div>
-
-            <div>
-              <span className="text-slate-400 block font-medium">Primary Contact</span>
-              {opp.primaryContactName ? (
-                <div className="flex items-center gap-1.5 font-semibold text-slate-800 mt-0.5">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span>{opp.primaryContactName}</span>
-                </div>
-              ) : (
-                <span className="text-slate-400 italic">No contact assigned</span>
-              )}
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+              {PIPELINE_STAGES.map((s) => {
+                const isCurrent =
+                  s.name.toLowerCase() === opp.stageName.toLowerCase();
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    disabled={isPending || isCurrent}
+                    onClick={() => handleStageChange(s.name)}
+                    className={`py-2 px-1 text-center rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      isCurrent
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200"
+                    }`}
+                  >
+                    <div className="truncate">{s.name}</div>
+                    <div
+                      className={`text-[9px] mt-0.5 ${
+                        isCurrent ? "text-blue-100" : "text-slate-400"
+                      }`}
+                    >
+                      {s.probability}%
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
 
-        {/* Context & Notes */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-          <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-            Deal Strategy &amp; Notes
-          </h2>
-          <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-lg border border-slate-100 whitespace-pre-wrap">
-            {opp.description || "No strategy notes recorded yet for this opportunity."}
-          </div>
-        </div>
-      </div>
-
-      {/* Activity & Touchpoint History */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-bold text-slate-900">Opportunity Touchpoints &amp; Activities</h2>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 gap-1"
-            onClick={() => {
-              setActivityDefaultType("CALL");
-              setIsActivityModalOpen(true);
+          {/* HubSpot-Style Inline Activity & Email Composer */}
+          <InlineComposer
+            entityId={opp.id}
+            entityType="opportunity"
+            mergeContext={{
+              firstName: opp.primaryContactName?.split(" ")[0] || "",
+              lastName: opp.primaryContactName?.split(" ")[1] || "",
+              companyName: opp.companyName,
+              dealName: opp.name,
+              dealAmount: opp.amount,
+              repName: opp.ownerName,
             }}
-          >
-            <span>+ Log Activity</span>
-          </Button>
+            onActivityCreated={loadOpportunity}
+          />
+
+          {/* Unified Activity Stream */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-600" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Activity Timeline ({activities.length})
+                </h2>
+              </div>
+
+              {/* Feed Filter Tabs */}
+              <div className="flex gap-1 overflow-x-auto">
+                {["ALL", "NOTE", "EMAIL", "CALL", "MEETING"].map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setActivityFilter(f)}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
+                      activityFilter === f
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase() + "s"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ActivityTimeline
+              activities={filteredActivities}
+              onRefresh={loadOpportunity}
+            />
+          </div>
         </div>
 
-        <ActivityTimeline
-          activities={activities}
-          onOpenLogModal={(type) => {
-            if (type) setActivityDefaultType(type);
-            setIsActivityModalOpen(true);
-          }}
-          onRefresh={loadOpportunity}
-          showFilters={false}
-        />
+        {/* Right Column (Associated Company, Contacts & Open Tasks Checklist) */}
+        <div className="lg:col-span-3 space-y-4">
+          <AssociationsPanel
+            company={{
+              id: opp.companyId,
+              name: opp.companyName,
+            }}
+            contacts={
+              opp.primaryContactName
+                ? [
+                    {
+                      id: opp.primaryContactId || "contact_default",
+                      fullName: opp.primaryContactName,
+                      jobTitle: "Key Decision Maker",
+                    },
+                  ]
+                : []
+            }
+            tasks={tasks}
+            onTasksUpdated={loadOpportunity}
+          />
+        </div>
       </div>
 
-      {/* Activity Log Modal */}
-      <ActivityModal
-        isOpen={isActivityModalOpen}
-        onClose={() => setIsActivityModalOpen(false)}
-        onSuccess={loadOpportunity}
-        defaultType={activityDefaultType}
-        defaultOpportunityId={opp.id}
-        defaultCompanyId={opp.companyId}
-      />
-
-      {/* Edit Modal */}
+      {/* Edit Opportunity Modal */}
       <OpportunityModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        onSuccess={loadOpportunity}
+        onSuccess={() => loadOpportunity()}
         opportunityToEdit={opp}
       />
 
-      {/* Close Deal Modal */}
+      {/* Close Deal (Won/Lost) Modal */}
       <CloseDealModal
         isOpen={isCloseModalOpen}
         onClose={() => setIsCloseModalOpen(false)}
-        onSuccess={loadOpportunity}
+        onSuccess={() => loadOpportunity()}
         opportunity={opp}
         initialStatus={closeStatus}
+      />
+
+      {/* Quick Activity Modal (fallback / alternative) */}
+      <ActivityModal
+        isOpen={isActivityModalOpen}
+        onClose={() => setIsActivityModalOpen(false)}
+        onSuccess={() => loadOpportunity()}
+        defaultType={activityDefaultType}
+        defaultOpportunityId={opp.id}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
   Award,
   ChevronRight,
   BarChart3,
+  Target,
 } from "lucide-react";
 import { getReportsAnalyticsAction } from "@/actions/reports";
 import { getTasksAction } from "@/actions/tasks";
@@ -51,6 +52,14 @@ export default function DashboardPage() {
   const summary = analytics?.summary;
   const funnel = analytics?.funnel || [];
   const leaderboard = analytics?.teamLeaderboard || [];
+
+  const monthlyQuotaTarget = 100000;
+  const wonRevenue = summary?.totalRevenueWon || 0;
+  const attainmentPercent = Math.round((wonRevenue / monthlyQuotaTarget) * 100);
+  const remainingGap = Math.max(0, monthlyQuotaTarget - wonRevenue);
+  const weightedPipeline = summary?.weightedForecast || 0;
+  const pipelineCoverage =
+    remainingGap > 0 ? ((weightedPipeline / remainingGap) * 100).toFixed(0) : "100";
 
   return (
     <div className="space-y-6">
@@ -187,6 +196,99 @@ export default function DashboardPage() {
             <p className="text-[11px] text-slate-500 mt-1">
               {summary?.qualifiedLeads || 0} qualified of {summary?.totalLeads || 0} total leads
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly Sales Quota & Target Attainment (HubSpot Style) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-bold text-slate-900">
+                  Monthly Team Sales Target &amp; Quota Attainment
+                </h3>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    attainmentPercent >= 100
+                      ? "bg-emerald-100 text-emerald-800"
+                      : attainmentPercent >= 75
+                      ? "bg-blue-100 text-blue-800"
+                      : attainmentPercent >= 50
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-rose-100 text-rose-800"
+                  }`}
+                >
+                  {attainmentPercent >= 100
+                    ? "Quota Crushed 🎉"
+                    : attainmentPercent >= 75
+                    ? "On Track 🚀"
+                    : attainmentPercent >= 50
+                    ? "Pacing Well ⚡"
+                    : "Needs Push 📈"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Pacing against monthly organization goal of ${monthlyQuotaTarget.toLocaleString()} USD
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-baseline gap-1 self-start sm:self-auto">
+            <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+              {attainmentPercent}%
+            </span>
+            <span className="text-xs font-semibold text-slate-400">of goal achieved</span>
+          </div>
+        </div>
+
+        {/* Multi-tier Progress Bar */}
+        <div className="space-y-1.5">
+          <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+            {/* Won Revenue segment */}
+            <div
+              className="bg-emerald-500 h-full rounded-l-full transition-all duration-700"
+              style={{
+                width: `${Math.min(attainmentPercent, 100)}%`,
+              }}
+              title={`Won: $${wonRevenue.toLocaleString()}`}
+            />
+            {/* Weighted Pipeline contribution preview */}
+            {attainmentPercent < 100 && (
+              <div
+                className="bg-blue-400/80 h-full transition-all duration-700"
+                style={{
+                  width: `${Math.min(
+                    Math.round((weightedPipeline / monthlyQuotaTarget) * 100),
+                    100 - Math.min(attainmentPercent, 100)
+                  )}%`,
+                }}
+                title={`Weighted Forecast: $${weightedPipeline.toLocaleString()}`}
+              />
+            )}
+          </div>
+
+          {/* Progress Legend */}
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1 gap-2">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span>Closed Won: <strong className="text-slate-900">${wonRevenue.toLocaleString()}</strong></span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                <span>Weighted Forecast: <strong className="text-slate-900">${weightedPipeline.toLocaleString()}</strong></span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>Remaining Gap: <strong className="text-slate-800">${remainingGap.toLocaleString()}</strong></span>
+              <span>&bull;</span>
+              <span>Pipeline Coverage: <strong className="text-blue-600">{pipelineCoverage}%</strong></span>
+            </div>
           </div>
         </div>
       </div>

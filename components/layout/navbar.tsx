@@ -1,22 +1,41 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Search, Bell, Plus, LogOut } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
+import { CommandPalette } from "@/components/search/command-palette";
 
 export function Navbar() {
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+
+  // Global listener for Cmd+K / Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <header className="h-16 border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-20 flex items-center justify-between px-6">
-      {/* Global Search */}
+      {/* Global Search Button / Trigger */}
       <div className="flex items-center w-full max-w-md">
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search leads, companies, contacts, deals... (⌘K)"
-            className="w-full pl-9 pr-4 py-2 bg-slate-100/80 border border-slate-200 rounded-lg text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-          />
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsPaletteOpen(true)}
+          className="relative w-full flex items-center text-left pl-9 pr-3 py-2 bg-slate-100/80 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-lg text-sm text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer group"
+        >
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 group-hover:text-slate-600 transition-colors" />
+          <span className="flex-1 truncate">Search leads, companies, contacts, deals...</span>
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-white text-slate-500 rounded border border-slate-200 shadow-2xs">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* Right Actions */}
@@ -60,6 +79,9 @@ export function Navbar() {
           </form>
         </div>
       </div>
+
+      {/* Global Spotlight Search Modal */}
+      <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
     </header>
   );
 }

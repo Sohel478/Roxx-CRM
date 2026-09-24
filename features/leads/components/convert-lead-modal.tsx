@@ -18,6 +18,7 @@ import {
   ConversionFormData,
   ConversionResult,
 } from "@/lib/validations/lead-conversion";
+import { triggerConfetti } from "@/lib/utils/confetti";
 
 interface ConvertLeadModalProps {
   isOpen: boolean;
@@ -126,6 +127,7 @@ export function ConvertLeadModal({
     startTransition(async () => {
       const res = await convertLeadAction(lead.id, payload);
       if (res.success && res.data) {
+        triggerConfetti();
         onSuccess(res.data);
         onClose();
       } else {

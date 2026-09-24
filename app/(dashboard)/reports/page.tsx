@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   Loader2,
+  Target,
 } from "lucide-react";
 import {
   getReportsAnalyticsAction,
@@ -386,25 +387,68 @@ export default function ReportsPage() {
       {/* Tab 4: Team Productivity */}
       {activeTab === "leaderboard" && (
         <div className="bg-white rounded-b-xl border border-t-0 border-slate-200 p-6 shadow-xs space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-slate-900">
                 Sales Rep Quota &amp; Activity Productivity
               </h3>
               <p className="text-xs text-slate-500">
-                Performance tracking by closed revenue, open pipeline, and touchpoint counts
+                Performance tracking by closed revenue, quota attainment %, open pipeline, and touchpoint counts
               </p>
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleExportCsv("leaderboard")}
-              className="text-xs h-8 gap-1.5"
+              className="text-xs h-8 gap-1.5 self-start sm:self-auto"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Export Team CSV</span>
             </Button>
           </div>
+
+          {/* Rep Quota Summary KPI Card */}
+          {(() => {
+            const repQuota = 50000;
+            const totalRepQuota = Math.max(leaderboard.length * repQuota, repQuota);
+            const totalWon = summary?.totalRevenueWon || 0;
+            const teamAttainment = Math.round((totalWon / totalRepQuota) * 100);
+            const metQuotaCount = leaderboard.filter((r) => r.revenueWon >= repQuota).length;
+
+            return (
+              <div className="bg-slate-50/80 rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">
+                        Monthly Rep Quota Benchmark: ${repQuota.toLocaleString()} USD / rep
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        {metQuotaCount} of {leaderboard.length} reps met or exceeded monthly quota
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">Team Attainment:</span>
+                    <span className="text-sm font-extrabold text-emerald-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                      {teamAttainment}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(teamAttainment, 100)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -414,6 +458,7 @@ export default function ReportsPage() {
                   <th className="py-2.5 px-4">Role</th>
                   <th className="py-2.5 px-4 text-center">Deals Won</th>
                   <th className="py-2.5 px-4 text-right">Closed Revenue</th>
+                  <th className="py-2.5 px-4 text-center">Monthly Quota</th>
                   <th className="py-2.5 px-4 text-center">Active Deals</th>
                   <th className="py-2.5 px-4 text-right">Open Pipeline</th>
                   <th className="py-2.5 px-4 text-center">Calls</th>
@@ -422,27 +467,52 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {leaderboard.map((r) => (
-                  <tr key={r.userId} className="hover:bg-slate-50/75 transition-colors">
-                    <td className="py-3 px-4 font-bold text-slate-900">{r.userName}</td>
-                    <td className="py-3 px-4 text-slate-500 font-medium">{r.role}</td>
-                    <td className="py-3 px-4 text-center font-bold text-emerald-700">
-                      {r.dealsWon}
-                    </td>
-                    <td className="py-3 px-4 text-right font-extrabold text-emerald-700">
-                      ${r.revenueWon.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-center text-slate-700">{r.activeDeals}</td>
-                    <td className="py-3 px-4 text-right font-bold text-slate-900">
-                      ${r.pipelineValue.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-center text-slate-600">{r.callsLogged}</td>
-                    <td className="py-3 px-4 text-center text-slate-600">{r.meetingsLogged}</td>
-                    <td className="py-3 px-4 text-center font-bold text-blue-600">
-                      {r.activitiesLogged}
-                    </td>
-                  </tr>
-                ))}
+                {leaderboard.map((r) => {
+                  const repQuota = 50000;
+                  const repPercent = Math.round((r.revenueWon / repQuota) * 100);
+                  const isMet = repPercent >= 100;
+
+                  return (
+                    <tr key={r.userId} className="hover:bg-slate-50/75 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900">{r.userName}</td>
+                      <td className="py-3 px-4 text-slate-500 font-medium">{r.role}</td>
+                      <td className="py-3 px-4 text-center font-bold text-emerald-700">
+                        {r.dealsWon}
+                      </td>
+                      <td className="py-3 px-4 text-right font-extrabold text-emerald-700">
+                        ${r.revenueWon.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="inline-flex items-center gap-2">
+                          <div className="w-16 bg-slate-200 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                isMet ? "bg-emerald-500" : "bg-blue-500"
+                              }`}
+                              style={{ width: `${Math.min(repPercent, 100)}%` }}
+                            />
+                          </div>
+                          <span
+                            className={`font-bold text-[11px] ${
+                              isMet ? "text-emerald-700" : "text-slate-700"
+                            }`}
+                          >
+                            {repPercent}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center text-slate-700">{r.activeDeals}</td>
+                      <td className="py-3 px-4 text-right font-bold text-slate-900">
+                        ${r.pipelineValue.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-center text-slate-600">{r.callsLogged}</td>
+                      <td className="py-3 px-4 text-center text-slate-600">{r.meetingsLogged}</td>
+                      <td className="py-3 px-4 text-center font-bold text-blue-600">
+                        {r.activitiesLogged}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
