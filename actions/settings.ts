@@ -14,8 +14,6 @@ import {
   PipelineStageItem,
 } from "@/lib/validations/settings";
 
-export type { OrganizationSettings, PipelineStageItem };
-
 /**
  * Fetch organization profile and preferences
  */

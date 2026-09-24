@@ -11,8 +11,6 @@ import {
   ContactItem,
 } from "@/lib/validations/contacts";
 
-export type { ContactItem, ContactFormData };
-
 /**
  * Fetch paginated contacts
  */

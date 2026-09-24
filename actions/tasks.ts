@@ -19,8 +19,6 @@ import {
   TaskStatus,
 } from "@/lib/validations/tasks";
 
-export type { TaskItem, TaskFormData };
-
 function getTodayString(): string {
   return new Date().toISOString().split("T")[0];
 }

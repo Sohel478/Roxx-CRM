@@ -18,7 +18,8 @@ import {
   FileSpreadsheet,
   CheckSquare,
 } from "lucide-react";
-import { globalSearchAction, GlobalSearchResults, GlobalSearchResultItem } from "@/actions/search";
+import { globalSearchAction } from "@/actions/search";
+import type { GlobalSearchResults, GlobalSearchResultItem } from "@/lib/validations/search";
 
 interface CommandPaletteProps {
   isOpen: boolean;

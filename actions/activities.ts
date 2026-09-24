@@ -18,8 +18,6 @@ import {
   ActivityType,
 } from "@/lib/validations/activities";
 
-export type { ActivityItem, ActivityFormData };
-
 /**
  * Fetch activities with chronological ordering and type metrics
  */

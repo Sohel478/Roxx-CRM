@@ -10,9 +10,8 @@ import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getLeadsAction,
   deleteLeadAction,
-  LeadItem,
-  LeadFormData,
 } from "@/actions/leads";
+import type { LeadItem, LeadFormData } from "@/lib/validations/leads";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<LeadItem[]>([]);

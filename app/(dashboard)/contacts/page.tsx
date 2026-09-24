@@ -10,9 +10,8 @@ import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getContactsAction,
   deleteContactAction,
-  ContactItem,
-  ContactFormData,
 } from "@/actions/contacts";
+import type { ContactItem, ContactFormData } from "@/lib/validations/contacts";
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactItem[]>([]);

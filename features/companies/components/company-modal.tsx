@@ -4,7 +4,8 @@ import { useState, useEffect, useTransition } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { createCompanyAction, updateCompanyAction, CompanyFormData } from "@/actions/companies";
+import { createCompanyAction, updateCompanyAction } from "@/actions/companies";
+import type { CompanyFormData } from "@/lib/validations/companies";
 
 interface CompanyModalProps {
   isOpen: boolean;

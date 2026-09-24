@@ -19,8 +19,6 @@ import {
   RepProductivityMetric,
 } from "@/lib/validations/reports";
 
-export type { ReportsAnalyticsData, ReportSummary, DateRangeOption };
-
 function getDateCutoff(range: DateRangeOption): Date {
   const now = new Date();
   switch (range) {

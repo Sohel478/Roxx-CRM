@@ -15,7 +15,8 @@ import {
   Sparkles,
   ArrowRight,
 } from "lucide-react";
-import { registerOrganizationAction, AuthState } from "@/actions/auth";
+import { registerOrganizationAction } from "@/actions/auth";
+import type { AuthState } from "@/types/auth";
 
 const initialState: AuthState = {
   success: false,

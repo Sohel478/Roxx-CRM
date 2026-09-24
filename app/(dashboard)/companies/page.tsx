@@ -10,9 +10,8 @@ import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getCompaniesAction,
   deleteCompanyAction,
-  CompanyItem,
-  CompanyFormData,
 } from "@/actions/companies";
+import type { CompanyItem, CompanyFormData } from "@/lib/validations/companies";
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<CompanyItem[]>([]);

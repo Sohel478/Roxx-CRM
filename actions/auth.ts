@@ -30,7 +30,9 @@ const registerSchema = z.object({
   phone: z.string().optional(),
 });
 
-export const ALL_ADMIN_PERMISSIONS = [
+import type { AuthState } from "@/types/auth";
+
+const ALL_ADMIN_PERMISSIONS = [
   "lead:create", "lead:read", "lead:update", "lead:delete", "lead:assign",
   "company:create", "company:read", "company:update", "company:delete",
   "contact:create", "contact:read", "contact:update", "contact:delete",
@@ -42,10 +44,6 @@ export const ALL_ADMIN_PERMISSIONS = [
   "settings:read", "settings:update",
 ];
 
-export interface AuthState {
-  success: boolean;
-  error?: string;
-}
 
 // Built-in demo accounts to allow immediate local testing before Neon DB connection is configured
 const DEMO_FALLBACK_USERS: Record<

@@ -14,8 +14,6 @@ import {
   GlobalSearchResultItem,
 } from "@/lib/validations/search";
 
-export type { GlobalSearchResults, GlobalSearchResultItem };
-
 /**
  * Searches the in-memory store immediately
  */

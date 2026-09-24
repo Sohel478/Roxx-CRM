@@ -5,8 +5,6 @@ import { requireAuth } from "@/lib/auth/session";
 import { mockAuditLogsStore } from "@/lib/db/mock-store";
 import { AuditLogItem, AuditLogFilterParams } from "@/lib/validations/audit";
 
-export type { AuditLogItem, AuditLogFilterParams };
-
 /**
  * Fetch audit logs with entity, action, and keyword filters
  */

@@ -5,34 +5,8 @@ import { prisma } from "@/lib/db/prisma";
 import { requireSuperAdmin } from "@/lib/auth/session";
 import { mockOrganizationsStore, mockUsersStore, mockLeadsStore, mockOpportunitiesStore } from "@/lib/db/mock-store";
 import { ensureDatabaseSchema } from "@/lib/db/migrate";
+import type { TenantItem, UpdateTenantSubscriptionInput } from "@/lib/validations/admin";
 
-export interface TenantItem {
-  id: string;
-  name: string;
-  slug: string;
-  subscriptionPlan: "FREE_TRIAL" | "STARTER_20" | "GROWTH_50" | "ENTERPRISE";
-  subscriptionStatus: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED";
-  maxSeats: number;
-  trialEndsAt: string | null;
-  subscriptionEndsAt: string | null;
-  billingEmail: string | null;
-  billingPhone: string | null;
-  subscriptionNotes: string | null;
-  createdAt: string;
-  usersCount: number;
-  leadsCount: number;
-  dealsCount: number;
-}
-
-export interface UpdateTenantSubscriptionInput {
-  organizationId: string;
-  subscriptionPlan?: "FREE_TRIAL" | "STARTER_20" | "GROWTH_50" | "ENTERPRISE";
-  subscriptionStatus?: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED";
-  maxSeats?: number;
-  extendMonths?: number;
-  subscriptionNotes?: string;
-  customExpiryDate?: string;
-}
 
 /**
  * Fetch all registered tenant organizations for Super Admin overview

@@ -4,8 +4,10 @@ import { useState, useEffect, useTransition } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { createContactAction, updateContactAction, ContactFormData } from "@/actions/contacts";
-import { getCompaniesAction, CompanyItem } from "@/actions/companies";
+import { createContactAction, updateContactAction } from "@/actions/contacts";
+import type { ContactFormData } from "@/lib/validations/contacts";
+import { getCompaniesAction } from "@/actions/companies";
+import type { CompanyItem } from "@/lib/validations/companies";
 
 interface ContactModalProps {
   isOpen: boolean;

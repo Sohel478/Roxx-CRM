@@ -19,8 +19,8 @@ import { Modal } from "@/components/ui/modal";
 import {
   getTenantsAction,
   updateTenantSubscriptionAction,
-  TenantItem,
 } from "@/actions/admin";
+import type { TenantItem } from "@/lib/validations/admin";
 
 export default function SuperAdminTenantsPage() {
   const [tenants, setTenants] = useState<TenantItem[]>([]);

@@ -16,7 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { CompanyItem } from "@/actions/companies";
+import type { CompanyItem } from "@/lib/validations/companies";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 

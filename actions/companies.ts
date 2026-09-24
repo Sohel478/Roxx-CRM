@@ -11,8 +11,6 @@ import {
   CompanyItem,
 } from "@/lib/validations/companies";
 
-export type { CompanyItem, CompanyFormData };
-
 /**
  * Fetch paginated companies for the authenticated organization
  */

@@ -19,8 +19,6 @@ import {
   OpportunityItem,
 } from "@/lib/validations/opportunities";
 
-export type { OpportunityItem, OpportunityFormData, CloseOpportunityFormData };
-
 /**
  * Fetch all opportunities with stage metrics and totals
  */

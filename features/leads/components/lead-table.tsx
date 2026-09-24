@@ -15,7 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { LeadItem } from "@/actions/leads";
+import type { LeadItem } from "@/lib/validations/leads";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 

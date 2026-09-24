@@ -12,7 +12,8 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getCompaniesAction, CompanyItem } from "@/actions/companies";
+import { getCompaniesAction } from "@/actions/companies";
+import type { CompanyItem } from "@/lib/validations/companies";
 import { convertLeadAction } from "@/actions/lead-conversion";
 import {
   ConversionFormData,

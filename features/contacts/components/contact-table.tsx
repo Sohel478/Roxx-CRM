@@ -13,7 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { ContactItem } from "@/actions/contacts";
+import type { ContactItem } from "@/lib/validations/contacts";
 import { Button } from "@/components/ui/button";
 
 interface ContactTableProps {

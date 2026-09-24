@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { Flame, Lock, Mail, AlertCircle, Loader2, ShieldCheck, UserCheck, Briefcase } from "lucide-react";
-import { loginAction, AuthState } from "@/actions/auth";
+import { loginAction } from "@/actions/auth";
+import type { AuthState } from "@/types/auth";
 
 const initialState: AuthState = {
   success: false,

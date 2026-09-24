@@ -15,9 +15,12 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { logActivityAction } from "@/actions/activities";
-import { getCompaniesAction, CompanyItem } from "@/actions/companies";
-import { getOpportunitiesAction, OpportunityItem } from "@/actions/opportunities";
-import { getLeadsAction, LeadItem } from "@/actions/leads";
+import { getCompaniesAction } from "@/actions/companies";
+import type { CompanyItem } from "@/lib/validations/companies";
+import { getOpportunitiesAction } from "@/actions/opportunities";
+import type { OpportunityItem } from "@/lib/validations/opportunities";
+import { getLeadsAction } from "@/actions/leads";
+import type { LeadItem } from "@/lib/validations/leads";
 import {
   ACTIVITY_TYPES,
   ActivityType,

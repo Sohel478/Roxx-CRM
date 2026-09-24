@@ -57,3 +57,15 @@ export interface UserItem {
   createdAt: string;
   lastLoginAt: string | null;
 }
+
+export interface TenantSeatUsage {
+  usedSeats: number;
+  maxSeats: number;
+  plan: string;
+  status: string;
+  trialEndsAt: string | null;
+  subscriptionEndsAt: string | null;
+  organizationName: string;
+  isSuperAdmin: boolean;
+}
+

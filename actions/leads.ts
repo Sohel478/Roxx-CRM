@@ -16,8 +16,6 @@ import {
   LeadItem,
 } from "@/lib/validations/leads";
 
-export type { LeadItem, LeadFormData };
-
 /**
  * Check if a lead with matching email or normalized phone already exists
  */

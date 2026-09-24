@@ -5,7 +5,8 @@ import { AlertTriangle, Flame, Snowflake, Zap } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { createLeadAction, updateLeadAction, checkLeadDuplicateAction, LeadFormData } from "@/actions/leads";
+import { createLeadAction, updateLeadAction, checkLeadDuplicateAction } from "@/actions/leads";
+import type { LeadFormData } from "@/lib/validations/leads";
 
 interface LeadModalProps {
   isOpen: boolean;

@@ -15,14 +15,18 @@ import { AuditTrailTab } from "@/features/settings/components/audit-trail-tab";
 import { OrganizationProfileTab } from "@/features/settings/components/organization-profile-tab";
 import { PipelineStagesTab } from "@/features/settings/components/pipeline-stages-tab";
 import { BillingTab } from "@/features/settings/components/billing-tab";
-import { getUsersAction, getTenantSeatUsageAction, UserItem, TenantSeatUsage } from "@/actions/users";
-import { getAuditLogsAction, AuditLogItem } from "@/actions/audit";
+import { getUsersAction, getTenantSeatUsageAction } from "@/actions/users";
+import type { UserItem, TenantSeatUsage } from "@/lib/validations/settings";
+import { getAuditLogsAction } from "@/actions/audit";
+import type { AuditLogItem } from "@/lib/validations/audit";
 import {
   getOrganizationSettingsAction,
   getPipelineStagesAction,
+} from "@/actions/settings";
+import type {
   OrganizationSettings,
   PipelineStageItem,
-} from "@/actions/settings";
+} from "@/lib/validations/settings";
 
 type TabType = "team" | "audit" | "organization" | "stages" | "billing";
 

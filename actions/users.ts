@@ -13,20 +13,9 @@ import {
   UserUpdateInput,
   UserItem,
   UserRole,
+  TenantSeatUsage,
 } from "@/lib/validations/settings";
 
-export type { UserItem, UserCreateInput, UserUpdateInput };
-
-export interface TenantSeatUsage {
-  usedSeats: number;
-  maxSeats: number;
-  plan: string;
-  status: string;
-  trialEndsAt: string | null;
-  subscriptionEndsAt: string | null;
-  organizationName: string;
-  isSuperAdmin: boolean;
-}
 
 /**
  * Fetch tenant subscription and seat usage details

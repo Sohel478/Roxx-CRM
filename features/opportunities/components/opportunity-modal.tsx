@@ -5,8 +5,10 @@ import { Kanban, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getCompaniesAction, CompanyItem } from "@/actions/companies";
-import { getContactsAction, ContactItem } from "@/actions/contacts";
+import { getCompaniesAction } from "@/actions/companies";
+import type { CompanyItem } from "@/lib/validations/companies";
+import { getContactsAction } from "@/actions/contacts";
+import type { ContactItem } from "@/lib/validations/contacts";
 import {
   createOpportunityAction,
   updateOpportunityAction,

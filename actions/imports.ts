@@ -20,8 +20,6 @@ import {
   contactImportRowSchema,
 } from "@/lib/validations/imports";
 
-export type { ImportResult, ImportEntityType, RowImportError };
-
 /**
  * Bulk Import entities from CSV string
  */
