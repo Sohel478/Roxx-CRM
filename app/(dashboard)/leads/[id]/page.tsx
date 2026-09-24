@@ -19,10 +19,12 @@ import {
   DollarSign,
   Tag,
   Trash2,
+  Edit2,
 } from "lucide-react";
 import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction } from "@/actions/leads";
 import { getActivitiesAction } from "@/actions/activities";
 import { getTasksAction } from "@/actions/tasks";
+import { LeadModal } from "@/features/leads/components/lead-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConvertLeadModal } from "@/features/leads/components/convert-lead-modal";
@@ -76,6 +78,7 @@ export default function LeadDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [activityFilter, setActivityFilter] = useState<string>("ALL");
@@ -237,6 +240,17 @@ export default function LeadDetailPage() {
               <span>Convert Lead</span>
             </Button>
           )}
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-1.5"
+            title="Edit Lead"
+          >
+            <Edit2 className="w-4 h-4 text-slate-500" />
+            <span>Edit</span>
+          </Button>
 
           <Button
             type="button"
@@ -550,6 +564,34 @@ export default function LeadDetailPage() {
         onSuccess={async () => {
           await loadLead();
         }}
+      />
+
+      {/* Edit Lead Modal */}
+      <LeadModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={async () => {
+          await loadLead();
+        }}
+        leadToEdit={
+          lead
+            ? {
+                id: lead.id,
+                firstName: lead.firstName,
+                lastName: lead.lastName || "",
+                email: lead.email || "",
+                phone: lead.phone || "",
+                companyName: lead.companyName || "",
+                jobTitle: lead.jobTitle || "",
+                source: lead.source,
+                status: (lead.status as "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
+                rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",
+                estimatedValue: lead.estimatedValue,
+                currency: lead.currency || "USD",
+                description: lead.description || "",
+              }
+            : null
+        }
       />
     </div>
   );

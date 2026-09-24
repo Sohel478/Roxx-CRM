@@ -108,7 +108,7 @@ export default function LeadsPage() {
       rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",
       estimatedValue: lead.estimatedValue,
       currency: lead.currency || "USD",
-      description: "",
+      description: lead.description || "",
     });
     setIsModalOpen(true);
   };

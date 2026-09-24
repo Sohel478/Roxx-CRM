@@ -159,6 +159,7 @@ export async function getLeadsAction(params: {
           rating: l.rating || "Warm",
           estimatedValue: Number(l.estimatedValue || 0),
           currency: l.currency,
+          description: l.description,
           ownerName: l.owner?.name || null,
           createdAt: l.createdAt.toISOString(),
         })),

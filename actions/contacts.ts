@@ -73,10 +73,13 @@ export async function getContactsAction(params: {
           fullName: `${c.firstName} ${c.lastName || ""}`.trim(),
           email: c.email,
           phone: c.phone,
+          alternatePhone: c.alternatePhone,
           jobTitle: c.jobTitle,
           department: c.department,
+          linkedinUrl: c.linkedinUrl,
           companyId: c.companyId,
           companyName: c.company?.name || null,
+          address: c.address,
           createdAt: c.createdAt.toISOString(),
         })),
         meta: {

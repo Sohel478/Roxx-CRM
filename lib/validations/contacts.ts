@@ -22,9 +22,12 @@ export interface ContactItem {
   fullName: string;
   email: string | null;
   phone: string | null;
+  alternatePhone?: string | null;
   jobTitle: string | null;
   department: string | null;
+  linkedinUrl?: string | null;
   companyId: string | null;
   companyName: string | null;
+  address?: string | null;
   createdAt: string;
 }

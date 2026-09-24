@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useCallback, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,8 +11,10 @@ import {
   Globe,
   Activity,
   Trash2,
+  Edit2,
 } from "lucide-react";
 import { getContactByIdAction, deleteContactAction } from "@/actions/contacts";
+import { ContactModal } from "@/features/contacts/components/contact-modal";
 import { Button } from "@/components/ui/button";
 
 interface ContactDetailData {
@@ -28,6 +30,7 @@ interface ContactDetailData {
   companyId?: string | null;
   companyName?: string | null;
   company?: { id: string; name: string; industry?: string | null } | null;
+  address?: string | null;
 }
 
 export default function ContactDetailPage() {
@@ -37,18 +40,20 @@ export default function ContactDetailPage() {
   const [contact, setContact] = useState<ContactDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    const res = await getContactByIdAction(id);
+    if (res.success && res.data) {
+      setContact(res.data as unknown as ContactDetailData);
+    }
+    setIsLoading(false);
+  }, [id]);
 
   useEffect(() => {
-    async function load() {
-      if (!id) return;
-      const res = await getContactByIdAction(id);
-      if (res.success && res.data) {
-        setContact(res.data as unknown as ContactDetailData);
-      }
-      setIsLoading(false);
-    }
     load();
-  }, [id]);
+  }, [load]);
 
   if (isLoading) {
     return (
@@ -149,6 +154,17 @@ export default function ContactDetailPage() {
           <Button
             type="button"
             variant="outline"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs h-8"
+            title="Edit Contact"
+          >
+            <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Edit</span>
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
             disabled={isPending}
             onClick={handleDelete}
             className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 flex items-center gap-1.5 text-xs h-8"
@@ -233,6 +249,30 @@ export default function ContactDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Contact Modal */}
+      <ContactModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={load}
+        contactToEdit={
+          contact
+            ? {
+                id: contact.id,
+                firstName: contact.firstName,
+                lastName: contact.lastName || "",
+                email: contact.email || "",
+                phone: contact.phone || "",
+                alternatePhone: contact.alternatePhone || "",
+                jobTitle: contact.jobTitle || "",
+                department: contact.department || "",
+                linkedinUrl: contact.linkedinUrl || "",
+                companyId: contact.companyId || "",
+                address: contact.address || "",
+              }
+            : null
+        }
+      />
     </div>
   );
 }

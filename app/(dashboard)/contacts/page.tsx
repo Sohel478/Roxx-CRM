@@ -48,9 +48,12 @@ export default function ContactsPage() {
       lastName: contact.lastName || "",
       email: contact.email || "",
       phone: contact.phone || "",
+      alternatePhone: contact.alternatePhone || "",
       jobTitle: contact.jobTitle || "",
       department: contact.department || "",
+      linkedinUrl: contact.linkedinUrl || "",
       companyId: contact.companyId || "",
+      address: contact.address || "",
     });
     setIsModalOpen(true);
   };

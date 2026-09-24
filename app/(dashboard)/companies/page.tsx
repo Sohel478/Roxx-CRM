@@ -53,7 +53,7 @@ export default function CompaniesPage() {
       city: company.city || "",
       country: company.country || "",
       status: (company.status as "Active" | "Prospect" | "Customer" | "Inactive") || "Active",
-      description: "",
+      description: company.description || "",
     });
     setIsModalOpen(true);
   };

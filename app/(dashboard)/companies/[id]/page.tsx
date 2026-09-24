@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useCallback, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,8 +13,10 @@ import {
   Plus,
   MapPin,
   Trash2,
+  Edit2,
 } from "lucide-react";
 import { getCompanyByIdAction, deleteCompanyAction } from "@/actions/companies";
+import { CompanyModal } from "@/features/companies/components/company-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -50,18 +52,20 @@ export default function CompanyDetailPage() {
   const [company, setCompany] = useState<CompanyDetailData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    const res = await getCompanyByIdAction(id);
+    if (res.success && res.data) {
+      setCompany(res.data as unknown as CompanyDetailData);
+    }
+    setIsLoading(false);
+  }, [id]);
 
   useEffect(() => {
-    async function load() {
-      if (!id) return;
-      const res = await getCompanyByIdAction(id);
-      if (res.success && res.data) {
-        setCompany(res.data as unknown as CompanyDetailData);
-      }
-      setIsLoading(false);
-    }
     load();
-  }, [id]);
+  }, [load]);
 
   if (isLoading) {
     return (
@@ -154,6 +158,17 @@ export default function CompanyDetailPage() {
               <span>{company.phone}</span>
             </a>
           )}
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs h-8"
+            title="Edit Company"
+          >
+            <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Edit</span>
+          </Button>
 
           <Button
             type="button"
@@ -269,6 +284,29 @@ export default function CompanyDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Company Modal */}
+      <CompanyModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={load}
+        companyToEdit={
+          company
+            ? {
+                id: company.id,
+                name: company.name,
+                industry: company.industry || "",
+                website: company.website || "",
+                email: company.email || "",
+                phone: company.phone || "",
+                city: company.city || "",
+                country: company.country || "",
+                status: (company.status as "Active" | "Prospect" | "Customer" | "Inactive") || "Active",
+                description: company.description || "",
+              }
+            : null
+        }
+      />
     </div>
   );
 }

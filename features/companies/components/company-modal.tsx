@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,39 @@ export function CompanyModal({ isOpen, onClose, onSuccess, companyToEdit }: Comp
     status: (companyToEdit?.status as any) || "Active",
     description: companyToEdit?.description || "",
   });
+
+  // Synchronize form fields whenever modal opens or companyToEdit changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setError(null);
+
+    if (companyToEdit) {
+      setFormData({
+        name: companyToEdit.name || "",
+        industry: companyToEdit.industry || "",
+        website: companyToEdit.website || "",
+        email: companyToEdit.email || "",
+        phone: companyToEdit.phone || "",
+        city: companyToEdit.city || "",
+        country: companyToEdit.country || "",
+        status: (companyToEdit.status as any) || "Active",
+        description: (companyToEdit as any).description || "",
+      });
+    } else {
+      setFormData({
+        name: "",
+        industry: "",
+        website: "",
+        email: "",
+        phone: "",
+        city: "",
+        country: "",
+        status: "Active",
+        description: "",
+      });
+    }
+  }, [isOpen, companyToEdit]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

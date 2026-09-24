@@ -34,6 +34,46 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalP
     description: leadToEdit?.description || "",
   });
 
+  // Synchronize form fields whenever modal opens or leadToEdit changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setError(null);
+    setDuplicateWarning(null);
+
+    if (leadToEdit) {
+      setFormData({
+        firstName: leadToEdit.firstName || "",
+        lastName: leadToEdit.lastName || "",
+        email: leadToEdit.email || "",
+        phone: leadToEdit.phone || "",
+        companyName: leadToEdit.companyName || "",
+        jobTitle: leadToEdit.jobTitle || "",
+        source: leadToEdit.source || "Website",
+        status: (leadToEdit.status as any) || "New",
+        rating: (leadToEdit.rating as any) || "Warm",
+        estimatedValue: leadToEdit.estimatedValue || 0,
+        currency: leadToEdit.currency || "USD",
+        description: leadToEdit.description || "",
+      });
+    } else {
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        companyName: "",
+        jobTitle: "",
+        source: "Website",
+        status: "New",
+        rating: "Warm",
+        estimatedValue: 0,
+        currency: "USD",
+        description: "",
+      });
+    }
+  }, [isOpen, leadToEdit]);
+
   // Duplicate detection debounced check
   useEffect(() => {
     if (!isOpen || leadToEdit) return;

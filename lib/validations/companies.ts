@@ -26,6 +26,7 @@ export interface CompanyItem {
   city: string | null;
   country: string | null;
   status: string;
+  description?: string | null;
   createdAt: string;
   contactCount: number;
 }

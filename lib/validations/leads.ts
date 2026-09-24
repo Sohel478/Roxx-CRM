@@ -33,6 +33,7 @@ export interface LeadItem {
   rating: string;
   estimatedValue: number;
   currency: string;
+  description?: string | null;
   ownerName: string | null;
   createdAt: string;
   convertedAt?: string | null;

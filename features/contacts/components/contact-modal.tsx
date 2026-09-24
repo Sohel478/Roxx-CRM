@@ -39,6 +39,41 @@ export function ContactModal({
     address: contactToEdit?.address || "",
   });
 
+  // Synchronize form fields whenever modal opens or contactToEdit changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setError(null);
+
+    if (contactToEdit) {
+      setFormData({
+        firstName: contactToEdit.firstName || "",
+        lastName: contactToEdit.lastName || "",
+        email: contactToEdit.email || "",
+        phone: contactToEdit.phone || "",
+        alternatePhone: (contactToEdit as any).alternatePhone || "",
+        jobTitle: contactToEdit.jobTitle || "",
+        department: contactToEdit.department || "",
+        linkedinUrl: (contactToEdit as any).linkedinUrl || "",
+        companyId: contactToEdit.companyId || defaultCompanyId || "",
+        address: (contactToEdit as any).address || "",
+      });
+    } else {
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        alternatePhone: "",
+        jobTitle: "",
+        department: "",
+        linkedinUrl: "",
+        companyId: defaultCompanyId || "",
+        address: "",
+      });
+    }
+  }, [isOpen, contactToEdit, defaultCompanyId]);
+
   useEffect(() => {
     async function loadCompanies() {
       const res = await getCompaniesAction({ limit: 100 });

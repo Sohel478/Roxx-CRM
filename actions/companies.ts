@@ -75,6 +75,7 @@ export async function getCompaniesAction(params: {
           city: c.city,
           country: c.country,
           status: c.status,
+          description: c.description,
           createdAt: c.createdAt.toISOString(),
           contactCount: c._count.contacts,
         })),
