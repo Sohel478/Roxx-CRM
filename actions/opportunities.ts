@@ -274,31 +274,32 @@ export async function getOpportunityByIdAction(id: string) {
  * Create a new opportunity
  */
 export async function createOpportunityAction(data: OpportunityFormData) {
-  const session = await requirePermission("opportunity:create");
-  const { organizationId, userId } = await resolveTenantContext(session);
-  const parsed = opportunitySchema.safeParse(data);
-
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
-  }
-
-  const {
-    name,
-    amount,
-    currency,
-    companyId,
-    primaryContactId,
-    leadId,
-    stageName,
-    expectedCloseDate,
-    description,
-  } = parsed.data;
-
-  const stageMeta = PIPELINE_STAGES.find(
-    (s) => s.name.toLowerCase() === stageName.toLowerCase()
-  ) || PIPELINE_STAGES[1];
-
   try {
+    const session = await requirePermission("opportunity:create");
+    const { organizationId, userId } = await resolveTenantContext(session);
+    const parsed = opportunitySchema.safeParse(data);
+
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
+    }
+
+    const {
+      name,
+      amount,
+      currency,
+      companyId,
+      primaryContactId,
+      leadId,
+      stageName,
+      expectedCloseDate,
+      description,
+    } = parsed.data;
+
+    const stageMeta = PIPELINE_STAGES.find(
+      (s) => s.name.toLowerCase() === stageName.toLowerCase()
+    ) || PIPELINE_STAGES[1];
+
+    try {
     // Find pipeline
     let pipeline = await prisma.pipeline.findFirst({
       where: { organizationId, isDefault: true },
@@ -414,6 +415,12 @@ export async function createOpportunityAction(data: OpportunityFormData) {
     revalidatePath("/opportunities");
     revalidatePath("/dashboard");
     return { success: true, data: newOpp };
+    }
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to create opportunity" };
   }
 }
 
@@ -421,9 +428,9 @@ export async function createOpportunityAction(data: OpportunityFormData) {
  * Update an existing opportunity
  */
 export async function updateOpportunityAction(id: string, raw: Partial<OpportunityFormData>) {
-  await requirePermission("opportunity:update");
-
   try {
+    await requirePermission("opportunity:update");
+
     const data: any = {};
     if (raw.name !== undefined) data.name = raw.name;
     if (raw.amount !== undefined) data.amount = raw.amount;
@@ -444,38 +451,15 @@ export async function updateOpportunityAction(id: string, raw: Partial<Opportuni
       }
     }
 
-    await prisma.opportunity.update({
-      where: { id },
-      data,
-    });
-
-    const mockOpp = mockOpportunitiesStore.find((o) => o.id === id);
-    if (mockOpp) {
-      if (raw.name !== undefined) mockOpp.name = raw.name;
-      if (raw.amount !== undefined) mockOpp.amount = raw.amount;
-      if (raw.expectedCloseDate !== undefined) mockOpp.expectedCloseDate = raw.expectedCloseDate || null;
-      if (raw.description !== undefined) mockOpp.description = raw.description || null;
-      if (raw.companyId) {
-        const comp = mockCompaniesStore.find((c) => c.id === raw.companyId);
-        if (comp) {
-          mockOpp.companyId = comp.id;
-          mockOpp.companyName = comp.name;
-        }
-      }
-      if (raw.primaryContactId) {
-        const cont = mockContactsStore.find((c) => c.id === raw.primaryContactId);
-        if (cont) {
-          mockOpp.primaryContactId = cont.id;
-          mockOpp.primaryContactName = cont.fullName;
-        }
-      }
+    try {
+      await prisma.opportunity.update({
+        where: { id },
+        data,
+      });
+    } catch (dbErr) {
+      console.warn("[updateOpportunityAction] Live database update error:", dbErr);
     }
 
-    revalidatePath("/opportunities");
-    revalidatePath(`/opportunities/${id}`);
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch {
     const mockOpp = mockOpportunitiesStore.find((o) => o.id === id);
     if (mockOpp) {
       if (raw.name !== undefined) mockOpp.name = raw.name;
@@ -501,7 +485,16 @@ export async function updateOpportunityAction(id: string, raw: Partial<Opportuni
       revalidatePath("/dashboard");
       return { success: true };
     }
-    return { success: false, error: "Opportunity not found" };
+
+    revalidatePath("/opportunities");
+    revalidatePath(`/opportunities/${id}`);
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to update opportunity" };
   }
 }
 
@@ -509,86 +502,93 @@ export async function updateOpportunityAction(id: string, raw: Partial<Opportuni
  * Move opportunity to a new stage
  */
 export async function updateOpportunityStageAction(id: string, newStageName: string) {
-  const session = await requirePermission("opportunity:update");
-
-  const stageMeta = PIPELINE_STAGES.find(
-    (s) => s.name.toLowerCase() === newStageName.toLowerCase()
-  );
-
-  if (!stageMeta) {
-    return { success: false, error: "Invalid pipeline stage" };
-  }
-
-  const status: "OPEN" | "WON" | "LOST" = stageMeta.isWon
-    ? "WON"
-    : stageMeta.isLost
-    ? "LOST"
-    : "OPEN";
-
-  const closedAt = status !== "OPEN" ? new Date() : null;
-
   try {
-    const opp = await prisma.opportunity.findFirst({
-      where: { id, deletedAt: null },
-      include: { pipeline: { include: { stages: true } } },
-    });
+    const session = await requirePermission("opportunity:update");
 
-    if (!opp) {
-      return { success: false, error: "Opportunity not found" };
-    }
-
-    let targetStageId = opp.pipeline.stages.find(
+    const stageMeta = PIPELINE_STAGES.find(
       (s) => s.name.toLowerCase() === newStageName.toLowerCase()
-    )?.id;
+    );
 
-    if (!targetStageId) {
-      targetStageId = opp.stageId;
+    if (!stageMeta) {
+      return { success: false, error: "Invalid pipeline stage" };
     }
 
-    const updated = await prisma.opportunity.update({
-      where: { id },
-      data: {
-        stageId: targetStageId,
-        probability: stageMeta.probability,
-        status,
-        closedAt,
-      },
-    });
+    const status: "OPEN" | "WON" | "LOST" = stageMeta.isWon
+      ? "WON"
+      : stageMeta.isLost
+      ? "LOST"
+      : "OPEN";
+
+    const closedAt = status !== "OPEN" ? new Date() : null;
 
     try {
-      await prisma.auditLog.create({
+      const opp = await prisma.opportunity.findFirst({
+        where: { id, deletedAt: null },
+        include: { pipeline: { include: { stages: true } } },
+      });
+
+      if (!opp) {
+        return { success: false, error: "Opportunity not found" };
+      }
+
+      let targetStageId = opp.pipeline.stages.find(
+        (s) => s.name.toLowerCase() === newStageName.toLowerCase()
+      )?.id;
+
+      if (!targetStageId) {
+        targetStageId = opp.stageId;
+      }
+
+      const updated = await prisma.opportunity.update({
+        where: { id },
         data: {
-          organizationId: opp.organizationId,
-          userId: session.id,
-          action: "OPPORTUNITY_STAGE_CHANGED",
-          entityType: "Opportunity",
-          entityId: id,
-          newValues: { stageName: newStageName, probability: stageMeta.probability, status },
+          stageId: targetStageId,
+          probability: stageMeta.probability,
+          status,
+          closedAt,
         },
       });
-    } catch {}
 
-    revalidatePath("/opportunities");
-    revalidatePath(`/opportunities/${id}`);
-    revalidatePath("/dashboard");
-    return { success: true, data: updated };
-  } catch {
-    const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
-    if (idx !== -1) {
-      mockOpportunitiesStore[idx] = {
-        ...mockOpportunitiesStore[idx],
-        stageId: stageMeta.id,
-        stageName: stageMeta.name,
-        probability: stageMeta.probability,
-        status,
-        closedAt: closedAt ? closedAt.toISOString() : null,
-      };
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: opp.organizationId,
+            userId: session.id,
+            action: "OPPORTUNITY_STAGE_CHANGED",
+            entityType: "Opportunity",
+            entityId: id,
+            newValues: { stageName: newStageName, probability: stageMeta.probability, status },
+          },
+        });
+      } catch {}
+
       revalidatePath("/opportunities");
       revalidatePath(`/opportunities/${id}`);
       revalidatePath("/dashboard");
-      return { success: true, data: mockOpportunitiesStore[idx] };
+      return { success: true, data: updated };
+    } catch {
+      const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
+      if (idx !== -1) {
+        mockOpportunitiesStore[idx] = {
+          ...mockOpportunitiesStore[idx],
+          stageId: stageMeta.id,
+          stageName: stageMeta.name,
+          probability: stageMeta.probability,
+          status,
+          closedAt: closedAt ? closedAt.toISOString() : null,
+        };
+        revalidatePath("/opportunities");
+        revalidatePath(`/opportunities/${id}`);
+        revalidatePath("/dashboard");
+        return { success: true, data: mockOpportunitiesStore[idx] };
+      }
+      return { success: false, error: "Opportunity not found" };
     }
-    return { success: false, error: "Opportunity not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to update opportunity stage" };
   }
 }
 
@@ -596,78 +596,85 @@ export async function updateOpportunityStageAction(id: string, newStageName: str
  * Close opportunity as Won or Lost
  */
 export async function closeOpportunityAction(id: string, data: CloseOpportunityFormData) {
-  const session = await requirePermission("opportunity:update");
-  const parsed = closeOpportunitySchema.safeParse(data);
-
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message || "Invalid close data" };
-  }
-
-  const { status, lossReason, lossNotes } = parsed.data;
-  const stageName = status === "WON" ? "Won" : "Lost";
-  const probability = status === "WON" ? 100 : 0;
-  const closedAt = new Date();
-
   try {
-    const opp = await prisma.opportunity.findFirst({
-      where: { id, deletedAt: null },
-      include: { pipeline: { include: { stages: true } } },
-    });
+    const session = await requirePermission("opportunity:update");
+    const parsed = closeOpportunitySchema.safeParse(data);
 
-    if (!opp) {
-      return { success: false, error: "Opportunity not found" };
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message || "Invalid close data" };
     }
 
-    const targetStageId = opp.pipeline.stages.find(
-      (s) => s.name.toLowerCase() === stageName.toLowerCase()
-    )?.id || opp.stageId;
-
-    const updated = await prisma.opportunity.update({
-      where: { id },
-      data: {
-        stageId: targetStageId,
-        status,
-        probability,
-        closedAt,
-        lossReason: status === "LOST" ? lossReason : null,
-        description: lossNotes ? `${opp.description || ""}\nLoss Notes: ${lossNotes}`.trim() : opp.description,
-      },
-    });
+    const { status, lossReason, lossNotes } = parsed.data;
+    const stageName = status === "WON" ? "Won" : "Lost";
+    const probability = status === "WON" ? 100 : 0;
+    const closedAt = new Date();
 
     try {
-      await prisma.auditLog.create({
+      const opp = await prisma.opportunity.findFirst({
+        where: { id, deletedAt: null },
+        include: { pipeline: { include: { stages: true } } },
+      });
+
+      if (!opp) {
+        return { success: false, error: "Opportunity not found" };
+      }
+
+      const targetStageId = opp.pipeline.stages.find(
+        (s) => s.name.toLowerCase() === stageName.toLowerCase()
+      )?.id || opp.stageId;
+
+      const updated = await prisma.opportunity.update({
+        where: { id },
         data: {
-          organizationId: opp.organizationId,
-          userId: session.id,
-          action: status === "WON" ? "OPPORTUNITY_WON" : "OPPORTUNITY_LOST",
-          entityType: "Opportunity",
-          entityId: id,
-          newValues: { status, lossReason, amount: Number(opp.amount) },
+          stageId: targetStageId,
+          status,
+          probability,
+          closedAt,
+          lossReason: status === "LOST" ? lossReason : null,
+          description: lossNotes ? `${opp.description || ""}\nLoss Notes: ${lossNotes}`.trim() : opp.description,
         },
       });
-    } catch {}
 
-    revalidatePath("/opportunities");
-    revalidatePath(`/opportunities/${id}`);
-    revalidatePath("/dashboard");
-    return { success: true, data: updated };
-  } catch {
-    const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
-    if (idx !== -1) {
-      mockOpportunitiesStore[idx] = {
-        ...mockOpportunitiesStore[idx],
-        stageName,
-        probability,
-        status,
-        closedAt: closedAt.toISOString(),
-        lossReason: status === "LOST" ? lossReason || null : null,
-      };
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: opp.organizationId,
+            userId: session.id,
+            action: status === "WON" ? "OPPORTUNITY_WON" : "OPPORTUNITY_LOST",
+            entityType: "Opportunity",
+            entityId: id,
+            newValues: { status, lossReason, amount: Number(opp.amount) },
+          },
+        });
+      } catch {}
+
       revalidatePath("/opportunities");
       revalidatePath(`/opportunities/${id}`);
       revalidatePath("/dashboard");
-      return { success: true, data: mockOpportunitiesStore[idx] };
+      return { success: true, data: updated };
+    } catch {
+      const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
+      if (idx !== -1) {
+        mockOpportunitiesStore[idx] = {
+          ...mockOpportunitiesStore[idx],
+          stageName,
+          probability,
+          status,
+          closedAt: closedAt.toISOString(),
+          lossReason: status === "LOST" ? lossReason || null : null,
+        };
+        revalidatePath("/opportunities");
+        revalidatePath(`/opportunities/${id}`);
+        revalidatePath("/dashboard");
+        return { success: true, data: mockOpportunitiesStore[idx] };
+      }
+      return { success: false, error: "Opportunity not found" };
     }
-    return { success: false, error: "Opportunity not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to close opportunity" };
   }
 }
 
@@ -675,37 +682,44 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
  * Soft delete opportunity
  */
 export async function deleteOpportunityAction(id: string) {
-  await requirePermission("opportunity:delete");
-
   try {
-    const opp = await prisma.opportunity.findUnique({
-      where: { id },
-      select: { id: true },
-    });
+    await requirePermission("opportunity:delete");
 
-    if (opp) {
-      await prisma.opportunity.update({
+    try {
+      const opp = await prisma.opportunity.findUnique({
         where: { id },
-        data: { deletedAt: new Date() },
+        select: { id: true },
       });
-    } else {
+
+      if (opp) {
+        await prisma.opportunity.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
+      } else {
+        const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
+        if (idx !== -1) {
+          mockOpportunitiesStore.splice(idx, 1);
+        }
+      }
+
+      revalidatePath("/opportunities");
+      revalidatePath("/dashboard");
+      return { success: true };
+    } catch (err) {
+      console.error("[deleteOpportunityAction] Error deleting opportunity:", err);
       const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
       if (idx !== -1) {
         mockOpportunitiesStore.splice(idx, 1);
       }
+      revalidatePath("/opportunities");
+      revalidatePath("/dashboard");
+      return { success: true };
     }
-
-    revalidatePath("/opportunities");
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch (err) {
-    console.error("[deleteOpportunityAction] Error deleting opportunity:", err);
-    const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
-    if (idx !== -1) {
-      mockOpportunitiesStore.splice(idx, 1);
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
     }
-    revalidatePath("/opportunities");
-    revalidatePath("/dashboard");
-    return { success: true };
+    return { success: false, error: err?.message || "Failed to delete opportunity" };
   }
 }

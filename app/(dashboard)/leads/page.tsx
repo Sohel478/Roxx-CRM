@@ -65,16 +65,20 @@ export default function LeadsPage() {
   const loadLeads = useCallback(
     (page = 1, query = search, filterStatus = status, filterRating = rating) => {
       startTransition(async () => {
-        const res = await getLeadsAction({
-          page,
-          limit: 10,
-          search: query,
-          status: filterStatus,
-          rating: filterRating,
-        });
-        if (res.success && res.data) {
-          setLeads(res.data.items);
-          setMeta(res.data.meta);
+        try {
+          const res = await getLeadsAction({
+            page,
+            limit: 10,
+            search: query,
+            status: filterStatus,
+            rating: filterRating,
+          });
+          if (res?.success && res.data) {
+            setLeads(res.data.items);
+            setMeta(res.data.meta);
+          }
+        } catch (err) {
+          console.error("Failed to load leads:", err);
         }
       });
     },
@@ -115,8 +119,12 @@ export default function LeadsPage() {
 
   const handleDelete = (id: string) => {
     startTransition(async () => {
-      await deleteLeadAction(id);
-      loadLeads();
+      try {
+        await deleteLeadAction(id);
+        loadLeads();
+      } catch (err) {
+        console.error("Failed to delete lead:", err);
+      }
     });
   };
 

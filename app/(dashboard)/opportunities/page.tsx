@@ -48,17 +48,22 @@ export default function OpportunitiesPage() {
 
   const loadOpportunities = useCallback(async () => {
     setIsLoading(true);
-    const res = await getOpportunitiesAction({
-      search: search.trim() || undefined,
-      status: statusFilter,
-      stageName: stageFilter !== "ALL" ? stageFilter : undefined,
-    });
+    try {
+      const res = await getOpportunitiesAction({
+        search: search.trim() || undefined,
+        status: statusFilter,
+        stageName: stageFilter !== "ALL" ? stageFilter : undefined,
+      });
 
-    if (res.success && res.data) {
-      setOpportunities(res.data.items);
-      setSummary(res.data.summary);
+      if (res.success && res.data) {
+        setOpportunities(res.data.items);
+        setSummary(res.data.summary);
+      }
+    } catch (err) {
+      console.error("[OpportunitiesPage] load error:", err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [search, statusFilter, stageFilter]);
 
   useEffect(() => {
@@ -79,8 +84,12 @@ export default function OpportunitiesPage() {
 
   const handleDelete = (id: string) => {
     startTransition(async () => {
-      await deleteOpportunityAction(id);
-      loadOpportunities();
+      try {
+        await deleteOpportunityAction(id);
+        loadOpportunities();
+      } catch (err) {
+        console.error("[OpportunitiesPage] delete error:", err);
+      }
     });
   };
 

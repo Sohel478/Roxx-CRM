@@ -67,18 +67,22 @@ export function CompanyModal({ isOpen, onClose, onSuccess, companyToEdit }: Comp
     setError(null);
 
     startTransition(async () => {
-      let result;
-      if (companyToEdit) {
-        result = await updateCompanyAction(companyToEdit.id, formData);
-      } else {
-        result = await createCompanyAction(formData);
-      }
+      try {
+        let result;
+        if (companyToEdit) {
+          result = await updateCompanyAction(companyToEdit.id, formData);
+        } else {
+          result = await createCompanyAction(formData);
+        }
 
-      if (result.success) {
-        onSuccess();
-        onClose();
-      } else {
-        setError(result.error || "An error occurred");
+        if (result?.success) {
+          onSuccess();
+          onClose();
+        } else {
+          setError(result?.error || "Failed to save company");
+        }
+      } catch (err: any) {
+        setError(err?.message || "An unexpected error occurred while saving");
       }
     });
   };

@@ -110,18 +110,22 @@ export function OpportunityModal({
     };
 
     startTransition(async () => {
-      let res;
-      if (opportunityToEdit) {
-        res = await updateOpportunityAction(opportunityToEdit.id, payload);
-      } else {
-        res = await createOpportunityAction(payload);
-      }
+      try {
+        let res;
+        if (opportunityToEdit) {
+          res = await updateOpportunityAction(opportunityToEdit.id, payload);
+        } else {
+          res = await createOpportunityAction(payload);
+        }
 
-      if (res.success) {
-        onSuccess();
-        onClose();
-      } else {
-        setError(res.error || "Failed to save opportunity");
+        if (res.success) {
+          onSuccess();
+          onClose();
+        } else {
+          setError(res.error || "Failed to save opportunity");
+        }
+      } catch (err: any) {
+        setError(err?.message || "An unexpected error occurred while saving opportunity");
       }
     });
   };

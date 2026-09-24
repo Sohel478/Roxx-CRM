@@ -190,73 +190,80 @@ export async function getContactByIdAction(id: string) {
  * Create a new contact
  */
 export async function createContactAction(data: ContactFormData) {
-  const session = await requirePermission("contact:create");
-  const { organizationId, userId } = await resolveTenantContext(session);
-  const parsed = contactSchema.safeParse(data);
-
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
-  }
-
-  const { firstName, lastName, email, phone, alternatePhone, jobTitle, department, linkedinUrl, companyId, address } =
-    parsed.data;
-
   try {
-    const created = await prisma.contact.create({
-      data: {
-        organizationId,
-        firstName,
-        lastName: lastName || null,
-        email: email || null,
-        phone: phone || null,
-        alternatePhone: alternatePhone || null,
-        jobTitle: jobTitle || null,
-        department: department || null,
-        linkedinUrl: linkedinUrl || null,
-        companyId: companyId || null,
-        address: address || null,
-        ownerId: userId,
-      },
-      include: {
-        company: { select: { name: true } },
-      },
-    });
+    const session = await requirePermission("contact:create");
+    const { organizationId, userId } = await resolveTenantContext(session);
+    const parsed = contactSchema.safeParse(data);
+
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
+    }
+
+    const { firstName, lastName, email, phone, alternatePhone, jobTitle, department, linkedinUrl, companyId, address } =
+      parsed.data;
 
     try {
-      await prisma.auditLog.create({
+      const created = await prisma.contact.create({
         data: {
           organizationId,
-          userId,
-          action: "CONTACT_CREATED",
-          entityType: "Contact",
-          entityId: created.id,
-          newValues: { name: `${created.firstName} ${created.lastName || ""}`.trim() },
+          firstName: firstName.trim(),
+          lastName: lastName?.trim() || null,
+          email: email?.trim() || null,
+          phone: phone?.trim() || null,
+          alternatePhone: alternatePhone?.trim() || null,
+          jobTitle: jobTitle?.trim() || null,
+          department: department?.trim() || null,
+          linkedinUrl: linkedinUrl?.trim() || null,
+          companyId: companyId || null,
+          address: address?.trim() || null,
+          ownerId: userId,
+        },
+        include: {
+          company: { select: { name: true } },
         },
       });
-    } catch {}
 
-    revalidatePath("/contacts");
-    if (companyId) revalidatePath(`/companies/${companyId}`);
-    return { success: true, data: created };
-  } catch {
-    const fullName = `${firstName} ${lastName || ""}`.trim();
-    const newContact: ContactItem & { organizationId: string } = {
-      id: `cont_${Date.now()}`,
-      organizationId,
-      firstName,
-      lastName: lastName || null,
-      fullName,
-      email: email || null,
-      phone: phone || null,
-      jobTitle: jobTitle || null,
-      department: department || null,
-      companyId: companyId || null,
-      companyName: companyId ? "Acme Technologies" : null,
-      createdAt: new Date().toISOString(),
-    };
-    mockContactsStore.unshift(newContact);
-    revalidatePath("/contacts");
-    return { success: true, data: newContact };
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId,
+            userId,
+            action: "CONTACT_CREATED",
+            entityType: "Contact",
+            entityId: created.id,
+            newValues: { name: `${created.firstName} ${created.lastName || ""}`.trim() },
+          },
+        });
+      } catch {}
+
+      revalidatePath("/contacts");
+      if (companyId) revalidatePath(`/companies/${companyId}`);
+      return { success: true, data: created };
+    } catch {
+      const fullName = `${firstName} ${lastName || ""}`.trim();
+      const newContact: ContactItem & { organizationId: string } = {
+        id: `cont_${Date.now()}`,
+        organizationId,
+        firstName: firstName.trim(),
+        lastName: lastName?.trim() || null,
+        fullName,
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+        jobTitle: jobTitle?.trim() || null,
+        department: department?.trim() || null,
+        companyId: companyId || null,
+        companyName: companyId ? "Acme Technologies" : null,
+        createdAt: new Date().toISOString(),
+      };
+      mockContactsStore.unshift(newContact);
+      revalidatePath("/contacts");
+      return { success: true, data: newContact };
+    }
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to create contact" };
   }
 }
 
@@ -264,70 +271,74 @@ export async function createContactAction(data: ContactFormData) {
  * Update contact
  */
 export async function updateContactAction(id: string, data: Partial<ContactFormData>) {
-  const session = await requirePermission("contact:update");
-  const { userId } = await resolveTenantContext(session);
-
   try {
-    const existing = await prisma.contact.findUnique({
-      where: { id },
-      select: { id: true, organizationId: true },
-    });
+    const session = await requirePermission("contact:update");
+    const { userId } = await resolveTenantContext(session);
 
-    if (existing) {
-      const updated = await prisma.contact.update({
+    const updatePayload: Record<string, any> = {};
+    if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
+    if (data.lastName !== undefined) updatePayload.lastName = data.lastName?.trim() || null;
+    if (data.email !== undefined) updatePayload.email = data.email?.trim() || null;
+    if (data.phone !== undefined) updatePayload.phone = data.phone?.trim() || null;
+    if (data.alternatePhone !== undefined) updatePayload.alternatePhone = data.alternatePhone?.trim() || null;
+    if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
+    if (data.department !== undefined) updatePayload.department = data.department?.trim() || null;
+    if (data.linkedinUrl !== undefined) updatePayload.linkedinUrl = data.linkedinUrl?.trim() || null;
+    if (data.companyId !== undefined) updatePayload.companyId = data.companyId || null;
+    if (data.address !== undefined) updatePayload.address = data.address?.trim() || null;
+
+    try {
+      const existing = await prisma.contact.findUnique({
         where: { id },
-        data: {
-          ...data,
-        },
+        select: { id: true, organizationId: true },
       });
 
-      try {
-        await prisma.auditLog.create({
-          data: {
-            organizationId: existing.organizationId,
-            userId,
-            action: "CONTACT_UPDATED",
-            entityType: "Contact",
-            entityId: id,
-            newValues: data,
-          },
+      if (existing) {
+        const updated = await prisma.contact.update({
+          where: { id },
+          data: updatePayload,
         });
-      } catch {}
 
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${id}`);
-      return { success: true, data: updated };
+        try {
+          await prisma.auditLog.create({
+            data: {
+              organizationId: existing.organizationId,
+              userId,
+              action: "CONTACT_UPDATED",
+              entityType: "Contact",
+              entityId: id,
+              newValues: updatePayload,
+            },
+          });
+        } catch {}
+
+        revalidatePath("/contacts");
+        revalidatePath(`/contacts/${id}`);
+        return { success: true, data: updated };
+      }
+    } catch (dbErr) {
+      console.warn("[updateContactAction] Live database update error:", dbErr);
     }
 
     const idx = mockContactsStore.findIndex((c) => c.id === id);
     if (idx !== -1) {
       const updated = {
         ...mockContactsStore[idx],
-        ...data,
+        ...updatePayload,
       };
-      if (data.firstName || data.lastName !== undefined) {
-        updated.fullName = `${data.firstName || updated.firstName} ${data.lastName !== undefined ? data.lastName : updated.lastName || ""}`.trim();
+      if (updatePayload.firstName || updatePayload.lastName !== undefined) {
+        updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
       }
       mockContactsStore[idx] = updated;
       revalidatePath("/contacts");
       return { success: true, data: updated };
     }
     return { success: false, error: "Contact not found" };
-  } catch {
-    const idx = mockContactsStore.findIndex((c) => c.id === id);
-    if (idx !== -1) {
-      const updated = {
-        ...mockContactsStore[idx],
-        ...data,
-      };
-      if (data.firstName || data.lastName !== undefined) {
-        updated.fullName = `${data.firstName || updated.firstName} ${data.lastName !== undefined ? data.lastName : updated.lastName || ""}`.trim();
-      }
-      mockContactsStore[idx] = updated;
-      revalidatePath("/contacts");
-      return { success: true, data: updated };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
     }
-    return { success: false, error: "Contact not found" };
+    return { success: false, error: err?.message || "Failed to update contact" };
   }
 }
 
@@ -335,52 +346,59 @@ export async function updateContactAction(id: string, data: Partial<ContactFormD
  * Soft delete contact
  */
 export async function deleteContactAction(id: string) {
-  const session = await requirePermission("contact:delete");
-  const { userId } = await resolveTenantContext(session);
-
   try {
-    const cont = await prisma.contact.findUnique({
-      where: { id },
-      select: { id: true, organizationId: true },
-    });
+    const session = await requirePermission("contact:delete");
+    const { userId } = await resolveTenantContext(session);
 
-    if (cont) {
-      await prisma.contact.update({
+    try {
+      const cont = await prisma.contact.findUnique({
         where: { id },
-        data: {
-          deletedAt: new Date(),
-        },
+        select: { id: true, organizationId: true },
       });
 
-      try {
-        await prisma.auditLog.create({
+      if (cont) {
+        await prisma.contact.update({
+          where: { id },
           data: {
-            organizationId: cont.organizationId,
-            userId,
-            action: "CONTACT_DELETED",
-            entityType: "Contact",
-            entityId: id,
+            deletedAt: new Date(),
           },
         });
-      } catch {}
-    } else {
+
+        try {
+          await prisma.auditLog.create({
+            data: {
+              organizationId: cont.organizationId,
+              userId,
+              action: "CONTACT_DELETED",
+              entityType: "Contact",
+              entityId: id,
+            },
+          });
+        } catch {}
+      } else {
+        const idx = mockContactsStore.findIndex((c) => c.id === id);
+        if (idx !== -1) {
+          mockContactsStore.splice(idx, 1);
+        }
+      }
+
+      revalidatePath("/contacts");
+      revalidatePath("/dashboard");
+      return { success: true };
+    } catch (err) {
+      console.error("[deleteContactAction] Error deleting contact:", err);
       const idx = mockContactsStore.findIndex((c) => c.id === id);
       if (idx !== -1) {
         mockContactsStore.splice(idx, 1);
       }
+      revalidatePath("/contacts");
+      revalidatePath("/dashboard");
+      return { success: true };
     }
-
-    revalidatePath("/contacts");
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch (err) {
-    console.error("[deleteContactAction] Error deleting contact:", err);
-    const idx = mockContactsStore.findIndex((c) => c.id === id);
-    if (idx !== -1) {
-      mockContactsStore.splice(idx, 1);
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
     }
-    revalidatePath("/contacts");
-    revalidatePath("/dashboard");
-    return { success: true };
+    return { success: false, error: err?.message || "Failed to delete contact" };
   }
 }

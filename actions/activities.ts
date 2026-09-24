@@ -150,119 +150,126 @@ export async function getActivitiesAction(params: {
 }
 
 export async function logActivityAction(raw: ActivityFormData) {
-  const session = await requirePermission("activity:create");
-
-  const validated = activitySchema.safeParse(raw);
-  if (!validated.success) {
-    return {
-      success: false,
-      error: validated.error.errors[0]?.message || "Invalid activity data",
-    };
-  }
-
-  const data = validated.data;
-  const actId = `act_${Date.now()}`;
-  const now = new Date().toISOString();
-  const activityDate = data.activityAt ? new Date(data.activityAt) : new Date();
-
-  // Resolve entity names for mock store
-  let compName = null;
-  if (data.companyId) {
-    const comp = mockCompaniesStore.find((c) => c.id === data.companyId);
-    if (comp) compName = comp.name;
-  }
-  let contactName = null;
-  if (data.contactId) {
-    const cont = mockContactsStore.find((c) => c.id === data.contactId);
-    if (cont) contactName = cont.fullName;
-  }
-  let oppName = null;
-  if (data.opportunityId) {
-    const opp = mockOpportunitiesStore.find((o) => o.id === data.opportunityId);
-    if (opp) oppName = opp.name;
-  }
-  let leadName = null;
-  if (data.leadId) {
-    const lead = mockLeadsStore.find((l) => l.id === data.leadId);
-    if (lead) leadName = lead.fullName;
-  }
-
   try {
-    const { organizationId, userId } = await resolveTenantContext(session);
-    const activity = await prisma.activity.create({
-      data: {
-        organizationId,
+    const session = await requirePermission("activity:create");
+
+    const validated = activitySchema.safeParse(raw);
+    if (!validated.success) {
+      return {
+        success: false,
+        error: validated.error.errors[0]?.message || "Invalid activity data",
+      };
+    }
+
+    const data = validated.data;
+    const actId = `act_${Date.now()}`;
+    const now = new Date().toISOString();
+    const activityDate = data.activityAt ? new Date(data.activityAt) : new Date();
+
+    // Resolve entity names for mock store
+    let compName = null;
+    if (data.companyId) {
+      const comp = mockCompaniesStore.find((c) => c.id === data.companyId);
+      if (comp) compName = comp.name;
+    }
+    let contactName = null;
+    if (data.contactId) {
+      const cont = mockContactsStore.find((c) => c.id === data.contactId);
+      if (cont) contactName = cont.fullName;
+    }
+    let oppName = null;
+    if (data.opportunityId) {
+      const opp = mockOpportunitiesStore.find((o) => o.id === data.opportunityId);
+      if (opp) oppName = opp.name;
+    }
+    let leadName = null;
+    if (data.leadId) {
+      const lead = mockLeadsStore.find((l) => l.id === data.leadId);
+      if (lead) leadName = lead.fullName;
+    }
+
+    try {
+      const { organizationId, userId } = await resolveTenantContext(session);
+      const activity = await prisma.activity.create({
+        data: {
+          organizationId,
+          type: data.type,
+          subject: data.subject,
+          description: data.description || null,
+          leadId: data.leadId || null,
+          companyId: data.companyId || null,
+          contactId: data.contactId || null,
+          opportunityId: data.opportunityId || null,
+          userId: userId || session.id,
+          activityAt: activityDate,
+          durationMinutes: data.durationMinutes || null,
+          outcome: data.outcome || null,
+        },
+      });
+
+      // Also sync mock store
+      mockActivitiesStore.unshift({
+        id: activity.id,
+        organizationId: session.organizationId,
         type: data.type,
         subject: data.subject,
         description: data.description || null,
         leadId: data.leadId || null,
+        leadName,
         companyId: data.companyId || null,
+        companyName: compName,
         contactId: data.contactId || null,
+        contactName,
         opportunityId: data.opportunityId || null,
-        userId: userId || session.id,
-        activityAt: activityDate,
+        opportunityName: oppName,
+        userId: session.id,
+        userName: session.name || "Alex Sales",
+        activityAt: activityDate.toISOString(),
         durationMinutes: data.durationMinutes || null,
         outcome: data.outcome || null,
-      },
-    });
+        createdAt: now,
+      });
 
-    // Also sync mock store
-    mockActivitiesStore.unshift({
-      id: activity.id,
-      organizationId: session.organizationId,
-      type: data.type,
-      subject: data.subject,
-      description: data.description || null,
-      leadId: data.leadId || null,
-      leadName,
-      companyId: data.companyId || null,
-      companyName: compName,
-      contactId: data.contactId || null,
-      contactName,
-      opportunityId: data.opportunityId || null,
-      opportunityName: oppName,
-      userId: session.id,
-      userName: session.name || "Alex Sales",
-      activityAt: activityDate.toISOString(),
-      durationMinutes: data.durationMinutes || null,
-      outcome: data.outcome || null,
-      createdAt: now,
-    });
+      revalidatePath("/activities");
+      revalidatePath("/tasks");
+      if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
+      if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
+      return { success: true, data: { id: activity.id } };
+    } catch {
+      // In-memory fallback
+      mockActivitiesStore.unshift({
+        id: actId,
+        organizationId: session.organizationId,
+        type: data.type,
+        subject: data.subject,
+        description: data.description || null,
+        leadId: data.leadId || null,
+        leadName,
+        companyId: data.companyId || null,
+        companyName: compName,
+        contactId: data.contactId || null,
+        contactName,
+        opportunityId: data.opportunityId || null,
+        opportunityName: oppName,
+        userId: session.id,
+        userName: session.name || "Alex Sales",
+        activityAt: activityDate.toISOString(),
+        durationMinutes: data.durationMinutes || null,
+        outcome: data.outcome || null,
+        createdAt: now,
+      });
 
-    revalidatePath("/activities");
-    revalidatePath("/tasks");
-    if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
-    if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
-    return { success: true, data: { id: activity.id } };
-  } catch {
-    // In-memory fallback
-    mockActivitiesStore.unshift({
-      id: actId,
-      organizationId: session.organizationId,
-      type: data.type,
-      subject: data.subject,
-      description: data.description || null,
-      leadId: data.leadId || null,
-      leadName,
-      companyId: data.companyId || null,
-      companyName: compName,
-      contactId: data.contactId || null,
-      contactName,
-      opportunityId: data.opportunityId || null,
-      opportunityName: oppName,
-      userId: session.id,
-      userName: session.name || "Alex Sales",
-      activityAt: activityDate.toISOString(),
-      durationMinutes: data.durationMinutes || null,
-      outcome: data.outcome || null,
-      createdAt: now,
-    });
-
-    revalidatePath("/activities");
-    revalidatePath("/tasks");
-    if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
-    if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
-    return { success: true, data: { id: actId } };
+      revalidatePath("/activities");
+      revalidatePath("/tasks");
+      if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
+      if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
+      return { success: true, data: { id: actId } };
+    }
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to log activity" };
   }
 }
 
@@ -270,27 +277,34 @@ export async function logActivityAction(raw: ActivityFormData) {
  * Delete an activity log
  */
 export async function deleteActivityAction(id: string) {
-  await requireAuth();
-
   try {
-    await prisma.activity.delete({
-      where: { id },
-    });
+    await requireAuth();
 
-    const index = mockActivitiesStore.findIndex((a) => a.id === id);
-    if (index !== -1) mockActivitiesStore.splice(index, 1);
+    try {
+      await prisma.activity.delete({
+        where: { id },
+      });
 
-    revalidatePath("/activities");
-    revalidatePath("/dashboard");
-    return { success: true };
-  } catch {
-    const index = mockActivitiesStore.findIndex((a) => a.id === id);
-    if (index !== -1) {
-      mockActivitiesStore.splice(index, 1);
+      const index = mockActivitiesStore.findIndex((a) => a.id === id);
+      if (index !== -1) mockActivitiesStore.splice(index, 1);
+
       revalidatePath("/activities");
       revalidatePath("/dashboard");
       return { success: true };
+    } catch {
+      const index = mockActivitiesStore.findIndex((a) => a.id === id);
+      if (index !== -1) {
+        mockActivitiesStore.splice(index, 1);
+        revalidatePath("/activities");
+        revalidatePath("/dashboard");
+        return { success: true };
+      }
+      return { success: false, error: "Activity not found" };
     }
-    return { success: false, error: "Activity not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to delete activity" };
   }
 }

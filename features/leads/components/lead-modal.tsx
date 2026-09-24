@@ -102,18 +102,22 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalP
     setError(null);
 
     startTransition(async () => {
-      let result;
-      if (leadToEdit) {
-        result = await updateLeadAction(leadToEdit.id, formData);
-      } else {
-        result = await createLeadAction(formData);
-      }
+      try {
+        let result;
+        if (leadToEdit) {
+          result = await updateLeadAction(leadToEdit.id, formData);
+        } else {
+          result = await createLeadAction(formData);
+        }
 
-      if (result.success) {
-        onSuccess();
-        onClose();
-      } else {
-        setError(result.error || "Failed to save lead");
+        if (result?.success) {
+          onSuccess();
+          onClose();
+        } else {
+          setError(result?.error || "Failed to save lead");
+        }
+      } catch (err: any) {
+        setError(err?.message || "An unexpected error occurred while saving lead");
       }
     });
   };

@@ -28,10 +28,14 @@ export default function CompaniesPage() {
   const loadCompanies = useCallback(
     (page = 1, query = search, filterStatus = status) => {
       startTransition(async () => {
-        const res = await getCompaniesAction({ page, limit: 10, search: query, status: filterStatus });
-        if (res.success && res.data) {
-          setCompanies(res.data.items);
-          setMeta(res.data.meta);
+        try {
+          const res = await getCompaniesAction({ page, limit: 10, search: query, status: filterStatus });
+          if (res?.success && res.data) {
+            setCompanies(res.data.items);
+            setMeta(res.data.meta);
+          }
+        } catch (err) {
+          console.error("Failed to load companies:", err);
         }
       });
     },
@@ -60,8 +64,12 @@ export default function CompaniesPage() {
 
   const handleDelete = (id: string) => {
     startTransition(async () => {
-      await deleteCompanyAction(id);
-      loadCompanies();
+      try {
+        await deleteCompanyAction(id);
+        loadCompanies();
+      } catch (err) {
+        console.error("Failed to delete company:", err);
+      }
     });
   };
 

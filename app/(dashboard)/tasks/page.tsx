@@ -31,12 +31,17 @@ export default function TasksPage() {
 
   const loadTasks = useCallback(async () => {
     setIsLoading(true);
-    const res = await getTasksAction();
-    if (res.success && res.data) {
-      setTasks(res.data.items);
-      setSummary(res.data.summary);
+    try {
+      const res = await getTasksAction();
+      if (res.success && res.data) {
+        setTasks(res.data.items);
+        setSummary(res.data.summary);
+      }
+    } catch (err) {
+      console.error("[TasksPage] load error:", err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {

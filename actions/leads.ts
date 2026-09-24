@@ -459,45 +459,62 @@ export async function createLeadAction(data: LeadFormData) {
  * Update an existing lead
  */
 export async function updateLeadAction(id: string, data: Partial<LeadFormData>) {
-  const session = await requirePermission("lead:update");
-
   try {
-    const updated = await prisma.lead.update({
-      where: {
-        id,
-        organizationId: session.organizationId,
-      },
-      data: {
-        ...data,
-      },
-    });
+    const session = await requirePermission("lead:update");
+
+    const updatePayload: Record<string, any> = {};
+    if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
+    if (data.lastName !== undefined) updatePayload.lastName = data.lastName?.trim() || null;
+    if (data.email !== undefined) updatePayload.email = data.email?.trim() || null;
+    if (data.phone !== undefined) updatePayload.phone = data.phone?.trim() || null;
+    if (data.companyName !== undefined) updatePayload.companyName = data.companyName?.trim() || null;
+    if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
+    if (data.source !== undefined) updatePayload.source = data.source;
+    if (data.sourceDetail !== undefined) updatePayload.sourceDetail = data.sourceDetail?.trim() || null;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.rating !== undefined) updatePayload.rating = data.rating;
+    if (data.estimatedValue !== undefined) updatePayload.estimatedValue = Number(data.estimatedValue) || 0;
+    if (data.currency !== undefined) updatePayload.currency = data.currency || "USD";
+    if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
 
     try {
-      await prisma.auditLog.create({
-        data: {
+      const updated = await prisma.lead.update({
+        where: {
+          id,
           organizationId: session.organizationId,
-          userId: session.id,
-          action: "LEAD_UPDATED",
-          entityType: "Lead",
-          entityId: id,
-          newValues: data,
         },
+        data: updatePayload,
       });
-    } catch {}
 
-    revalidatePath("/leads");
-    revalidatePath(`/leads/${id}`);
-    revalidatePath("/dashboard");
-    return { success: true, data: updated };
-  } catch {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: session.organizationId,
+            userId: session.id,
+            action: "LEAD_UPDATED",
+            entityType: "Lead",
+            entityId: id,
+            newValues: updatePayload,
+          },
+        });
+      } catch {}
+
+      revalidatePath("/leads");
+      revalidatePath(`/leads/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: updated };
+    } catch (dbErr) {
+      console.warn("[updateLeadAction] Live database update error:", dbErr);
+    }
+
     const idx = mockLeadsStore.findIndex((l) => l.id === id);
     if (idx !== -1) {
       const updated = {
         ...mockLeadsStore[idx],
-        ...data,
+        ...updatePayload,
       };
-      if (data.firstName || data.lastName !== undefined) {
-        updated.fullName = `${data.firstName || updated.firstName} ${data.lastName !== undefined ? data.lastName : updated.lastName || ""}`.trim();
+      if (updatePayload.firstName || updatePayload.lastName !== undefined) {
+        updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
       }
       mockLeadsStore[idx] = updated;
       revalidatePath("/leads");
@@ -506,6 +523,11 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       return { success: true, data: updated };
     }
     return { success: false, error: "Lead not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to update lead" };
   }
 }
 
@@ -513,37 +535,41 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
  * Advance or change lead status
  */
 export async function updateLeadStatusAction(id: string, newStatus: string) {
-  const session = await requirePermission("lead:update");
-
   try {
-    const updated = await prisma.lead.update({
-      where: {
-        id,
-        organizationId: session.organizationId,
-      },
-      data: {
-        status: newStatus,
-      },
-    });
+    const session = await requirePermission("lead:update");
 
     try {
-      await prisma.auditLog.create({
-        data: {
+      const updated = await prisma.lead.update({
+        where: {
+          id,
           organizationId: session.organizationId,
-          userId: session.id,
-          action: "LEAD_STATUS_CHANGED",
-          entityType: "Lead",
-          entityId: id,
-          newValues: { newStatus },
+        },
+        data: {
+          status: newStatus,
         },
       });
-    } catch {}
 
-    revalidatePath("/leads");
-    revalidatePath(`/leads/${id}`);
-    revalidatePath("/dashboard");
-    return { success: true, data: updated };
-  } catch {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: session.organizationId,
+            userId: session.id,
+            action: "LEAD_STATUS_CHANGED",
+            entityType: "Lead",
+            entityId: id,
+            newValues: { newStatus },
+          },
+        });
+      } catch {}
+
+      revalidatePath("/leads");
+      revalidatePath(`/leads/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: updated };
+    } catch (dbErr) {
+      console.warn("[updateLeadStatusAction] Live database update error:", dbErr);
+    }
+
     const idx = mockLeadsStore.findIndex((l) => l.id === id);
     if (idx !== -1) {
       mockLeadsStore[idx].status = newStatus;
@@ -553,6 +579,11 @@ export async function updateLeadStatusAction(id: string, newStatus: string) {
       return { success: true, data: mockLeadsStore[idx] };
     }
     return { success: false, error: "Lead not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to update lead status" };
   }
 }
 

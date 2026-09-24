@@ -91,18 +91,22 @@ export function ContactModal({
     setError(null);
 
     startTransition(async () => {
-      let result;
-      if (contactToEdit) {
-        result = await updateContactAction(contactToEdit.id, formData);
-      } else {
-        result = await createContactAction(formData);
-      }
+      try {
+        let result;
+        if (contactToEdit) {
+          result = await updateContactAction(contactToEdit.id, formData);
+        } else {
+          result = await createContactAction(formData);
+        }
 
-      if (result.success) {
-        onSuccess();
-        onClose();
-      } else {
-        setError(result.error || "Failed to save contact");
+        if (result?.success) {
+          onSuccess();
+          onClose();
+        } else {
+          setError(result?.error || "Failed to save contact");
+        }
+      } catch (err: any) {
+        setError(err?.message || "An unexpected error occurred while saving contact");
       }
     });
   };

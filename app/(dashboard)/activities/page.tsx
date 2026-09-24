@@ -31,12 +31,17 @@ export default function ActivitiesPage() {
 
   const loadActivities = useCallback(async () => {
     setIsLoading(true);
-    const res = await getActivitiesAction();
-    if (res.success && res.data) {
-      setActivities(res.data.items);
-      setSummary(res.data.summary);
+    try {
+      const res = await getActivitiesAction();
+      if (res.success && res.data) {
+        setActivities(res.data.items);
+        setSummary(res.data.summary);
+      }
+    } catch (err) {
+      console.error("[ActivitiesPage] load error:", err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {

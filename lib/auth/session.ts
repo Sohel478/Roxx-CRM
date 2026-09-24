@@ -195,11 +195,13 @@ export async function requirePermission(permissionKey: string): Promise<SessionU
   const session = await requireAuth();
 
   // Admin role automatically possesses all permissions
-  if (session.role === "ADMIN") {
+  const roleUpper = session.role?.toUpperCase();
+  if (roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR") {
     return session;
   }
 
-  if (!session.permissions.includes(permissionKey)) {
+  const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
+  if (!permissions.includes(permissionKey)) {
     throw new Error(`Unauthorized: Missing required permission [${permissionKey}]`);
   }
 

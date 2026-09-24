@@ -34,20 +34,24 @@ export function CloseDealModal({
     setError(null);
 
     startTransition(async () => {
-      const res = await closeOpportunityAction(opportunity.id, {
-        status,
-        lossReason: status === "LOST" ? lossReason : undefined,
-        lossNotes: status === "LOST" ? lossNotes : undefined,
-      });
+      try {
+        const res = await closeOpportunityAction(opportunity.id, {
+          status,
+          lossReason: status === "LOST" ? lossReason : undefined,
+          lossNotes: status === "LOST" ? lossNotes : undefined,
+        });
 
-      if (res.success) {
-        if (status === "WON") {
-          triggerConfetti();
+        if (res.success) {
+          if (status === "WON") {
+            triggerConfetti();
+          }
+          onSuccess();
+          onClose();
+        } else {
+          setError(res.error || "Failed to update deal status");
         }
-        onSuccess();
-        onClose();
-      } else {
-        setError(res.error || "Failed to update deal status");
+      } catch (err: any) {
+        setError(err?.message || "An unexpected error occurred while updating deal status");
       }
     });
   };

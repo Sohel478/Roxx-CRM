@@ -27,10 +27,14 @@ export default function ContactsPage() {
   const loadContacts = useCallback(
     (page = 1, query = search) => {
       startTransition(async () => {
-        const res = await getContactsAction({ page, limit: 10, search: query });
-        if (res.success && res.data) {
-          setContacts(res.data.items);
-          setMeta(res.data.meta);
+        try {
+          const res = await getContactsAction({ page, limit: 10, search: query });
+          if (res?.success && res.data) {
+            setContacts(res.data.items);
+            setMeta(res.data.meta);
+          }
+        } catch (err) {
+          console.error("Failed to load contacts:", err);
         }
       });
     },
@@ -60,8 +64,12 @@ export default function ContactsPage() {
 
   const handleDelete = (id: string) => {
     startTransition(async () => {
-      await deleteContactAction(id);
-      loadContacts();
+      try {
+        await deleteContactAction(id);
+        loadContacts();
+      } catch (err) {
+        console.error("Failed to delete contact:", err);
+      }
     });
   };
 
