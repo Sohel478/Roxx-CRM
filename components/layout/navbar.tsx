@@ -9,7 +9,7 @@ import { LeadModal } from "@/features/leads/components/lead-modal";
 import type { SessionUser } from "@/lib/auth/session";
 
 function formatRoleName(role?: string): string {
-  if (!role) return "User";
+  if (!role || typeof role !== "string") return "User";
   const upper = role.toUpperCase();
   if (upper === "ADMIN" || upper === "ADMINISTRATOR") return "Administrator";
   if (upper === "MANAGER") return "Manager";
@@ -19,15 +19,15 @@ function formatRoleName(role?: string): string {
 }
 
 function getInitials(name?: string, email?: string): string {
-  if (name && name.trim()) {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
+  if (typeof name === "string" && name.trim()) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2 && parts[0] && parts[1]) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
-    return name.slice(0, 2).toUpperCase();
+    return name.trim().slice(0, 2).toUpperCase();
   }
-  if (email && email.trim()) {
-    return email.slice(0, 2).toUpperCase();
+  if (typeof email === "string" && email.trim()) {
+    return email.trim().slice(0, 2).toUpperCase();
   }
   return "U";
 }
@@ -46,9 +46,13 @@ export function Navbar({ session: initialSession }: NavbarProps = {}) {
     if (initialSession) {
       setSession(initialSession);
     } else {
-      getCurrentUserAction().then((s) => {
-        if (s) setSession(s);
-      });
+      getCurrentUserAction()
+        .then((s) => {
+          if (s) setSession(s);
+        })
+        .catch(() => {
+          // ignore session fetch error
+        });
     }
   }, [initialSession]);
 

@@ -37,15 +37,20 @@ interface SidebarProps {
 export function Sidebar({ session }: SidebarProps = {}) {
   const pathname = usePathname();
 
-  const orgName = session?.organizationName || "Demo Company";
+  const orgName = (session?.organizationName && typeof session.organizationName === "string" && session.organizationName.trim())
+    ? session.organizationName.trim()
+    : "Demo Company";
+
   const orgInitials = orgName
     .split(/\s+/)
+    .filter(Boolean)
     .map((w) => w[0])
+    .filter(Boolean)
     .join("")
     .slice(0, 2)
     .toUpperCase() || "DC";
 
-  const orgIdDisplay = session?.organizationId
+  const orgIdDisplay = session?.organizationId && typeof session.organizationId === "string"
     ? `Org: ${session.organizationId.length > 14 ? session.organizationId.slice(0, 12) + "…" : session.organizationId}`
     : "Org: demo-org";
 

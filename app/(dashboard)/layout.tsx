@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Navbar } from "@/components/layout/navbar";
 import { getSession } from "@/lib/auth/session";
@@ -8,6 +9,10 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
+
+  if (!session) {
+    redirect("/login");
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex">

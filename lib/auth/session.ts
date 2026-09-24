@@ -79,36 +79,47 @@ async function sign(data: string, secret: string): Promise<string> {
  * Generate a cryptographically signed session token.
  */
 export async function createSessionToken(user: Omit<SessionUser, "expiresAt">): Promise<string> {
-  const payload: SessionUser = {
-    ...user,
-    expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
-  };
-  const json = JSON.stringify(payload);
-  const encodedPayload = base64UrlEncode(stringToUint8Array(json));
-  const signature = await sign(encodedPayload, getSecretKey());
-  return `${encodedPayload}.${signature}`;
+  try {
+    const payload: SessionUser = {
+      ...user,
+      expiresAt: Date.now() + SESSION_MAX_AGE * 1000,
+    };
+    const json = JSON.stringify(payload);
+    const encodedPayload = base64UrlEncode(stringToUint8Array(json));
+    const signature = await sign(encodedPayload, getSecretKey());
+    return `${encodedPayload}.${signature}`;
+  } catch (err) {
+    console.error("Failed to create session token:", err);
+    throw new Error("Failed to create session token");
+  }
 }
 
 /**
  * Verify and decode a session token. Returns null if expired or signature invalid.
  */
 export async function verifySessionToken(token: string): Promise<SessionUser | null> {
-  if (!token || typeof token !== "string") return null;
-
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-
-  const [encodedPayload, signature] = parts;
-  const expectedSignature = await sign(encodedPayload, getSecretKey());
-
-  if (signature !== expectedSignature) {
-    return null; // Tampered or invalid signature
-  }
-
   try {
+    if (!token || typeof token !== "string") return null;
+
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+
+    const [encodedPayload, signature] = parts;
+    if (!encodedPayload || !signature) return null;
+
+    const expectedSignature = await sign(encodedPayload, getSecretKey());
+
+    if (!expectedSignature || signature !== expectedSignature) {
+      return null; // Tampered or invalid signature
+    }
+
     const jsonBytes = base64UrlDecode(encodedPayload);
     const jsonStr = uint8ArrayToString(jsonBytes);
     const payload: SessionUser = JSON.parse(jsonStr);
+
+    if (!payload || !payload.id || !payload.organizationId) {
+      return null;
+    }
 
     if (Date.now() > payload.expiresAt) {
       return null; // Session expired
@@ -124,32 +135,44 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
  * Server-side helper to write the session cookie.
  */
 export async function setSessionCookie(token: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_MAX_AGE,
-    path: "/",
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_MAX_AGE,
+      path: "/",
+    });
+  } catch {
+    // Ignore cookie write errors if called after response sent
+  }
 }
 
 /**
  * Server-side helper to delete the session cookie.
  */
 export async function clearSessionCookie(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  try {
+    const cookieStore = await cookies();
+    cookieStore.delete(SESSION_COOKIE_NAME);
+  } catch {
+    // Ignore cookie delete errors if called after response sent
+  }
 }
 
 /**
  * Get the currently authenticated user from cookies.
  */
 export async function getSession(): Promise<SessionUser | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    if (!token) return null;
+    return await verifySessionToken(token);
+  } catch {
+    return null;
+  }
 }
 
 /**

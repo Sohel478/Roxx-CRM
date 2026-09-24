@@ -19,8 +19,15 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 
-  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = sessionCookie ? await verifySessionToken(sessionCookie) : null;
+  let session = null;
+  try {
+    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    if (sessionCookie) {
+      session = await verifySessionToken(sessionCookie);
+    }
+  } catch {
+    session = null;
+  }
 
   // If already authenticated and trying to access /login, redirect to /dashboard
   if (session && pathname.startsWith("/login")) {
@@ -28,9 +35,11 @@ export async function middleware(request: NextRequest) {
   }
 
   // If not authenticated and trying to access protected CRM routes, redirect to /login
-  if (!session && !isPublicPath && pathname !== "/") {
+  if (!session && !isPublicPath) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    if (pathname !== "/") {
+      loginUrl.searchParams.set("callbackUrl", pathname);
+    }
     return NextResponse.redirect(loginUrl);
   }
 
