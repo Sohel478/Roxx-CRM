@@ -199,6 +199,10 @@ export async function loginAction(
   redirect("/dashboard");
 }
 
+export async function getCurrentUserAction(): Promise<SessionUser | null> {
+  return await getSession();
+}
+
 export async function logoutAction(): Promise<void> {
   const session = await getSession();
   if (session) {

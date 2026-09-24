@@ -28,8 +28,26 @@ export const navigationItems = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function Sidebar() {
+import type { SessionUser } from "@/lib/auth/session";
+
+interface SidebarProps {
+  session?: SessionUser | null;
+}
+
+export function Sidebar({ session }: SidebarProps = {}) {
   const pathname = usePathname();
+
+  const orgName = session?.organizationName || "Demo Company";
+  const orgInitials = orgName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "DC";
+
+  const orgIdDisplay = session?.organizationId
+    ? `Org: ${session.organizationId.length > 14 ? session.organizationId.slice(0, 12) + "…" : session.organizationId}`
+    : "Org: demo-org";
 
   return (
     <aside className="w-64 border-r border-slate-200 bg-white flex flex-col h-screen fixed left-0 top-0 z-30 select-none">
@@ -70,12 +88,16 @@ export function Sidebar() {
       {/* Organization Badge Footer */}
       <div className="p-4 border-t border-slate-200 bg-slate-50/70">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold">
-            DC
+          <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
+            {orgInitials}
           </div>
           <div className="truncate">
-            <p className="text-xs font-semibold text-slate-900 truncate">Demo Company</p>
-            <p className="text-[11px] text-slate-500 truncate">Org ID: demo-org</p>
+            <p className="text-xs font-semibold text-slate-900 truncate" title={orgName}>
+              {orgName}
+            </p>
+            <p className="text-[11px] text-slate-500 truncate" title={session?.organizationId || "demo-org"}>
+              {orgIdDisplay}
+            </p>
           </div>
         </div>
       </div>

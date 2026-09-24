@@ -3,14 +3,54 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Bell, Plus, LogOut } from "lucide-react";
-import { logoutAction } from "@/actions/auth";
+import { logoutAction, getCurrentUserAction } from "@/actions/auth";
 import { CommandPalette } from "@/components/search/command-palette";
 import { LeadModal } from "@/features/leads/components/lead-modal";
+import type { SessionUser } from "@/lib/auth/session";
 
-export function Navbar() {
+function formatRoleName(role?: string): string {
+  if (!role) return "User";
+  const upper = role.toUpperCase();
+  if (upper === "ADMIN" || upper === "ADMINISTRATOR") return "Administrator";
+  if (upper === "MANAGER") return "Manager";
+  if (upper === "SALES_USER" || upper === "SALES") return "Sales Rep";
+  if (upper === "READ_ONLY") return "Viewer";
+  return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase().replace(/_/g, " ");
+}
+
+function getInitials(name?: string, email?: string): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  }
+  if (email && email.trim()) {
+    return email.slice(0, 2).toUpperCase();
+  }
+  return "U";
+}
+
+interface NavbarProps {
+  session?: SessionUser | null;
+}
+
+export function Navbar({ session: initialSession }: NavbarProps = {}) {
   const router = useRouter();
+  const [session, setSession] = useState<SessionUser | null>(initialSession || null);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialSession) {
+      setSession(initialSession);
+    } else {
+      getCurrentUserAction().then((s) => {
+        if (s) setSession(s);
+      });
+    }
+  }, [initialSession]);
 
   // Global listener for Cmd+K / Ctrl+K
   useEffect(() => {
@@ -23,6 +63,10 @@ export function Navbar() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  const userName = session?.name || "User";
+  const userRole = formatRoleName(session?.role);
+  const userInitials = getInitials(session?.name, session?.email);
 
   return (
     <header className="h-16 border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-20 flex items-center justify-between px-6">
@@ -65,18 +109,25 @@ export function Navbar() {
 
         {/* Profile Avatar & Logout */}
         <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
-          <div className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-            AD
+          <div
+            className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-xs shadow-sm select-none"
+            title={userName}
+          >
+            {userInitials}
           </div>
           <div className="hidden md:block text-left">
-            <p className="text-xs font-semibold text-slate-900 leading-tight">Admin User</p>
-            <p className="text-[11px] text-slate-500 font-medium">Administrator</p>
+            <p className="text-xs font-semibold text-slate-900 leading-tight truncate max-w-[130px]">
+              {userName}
+            </p>
+            <p className="text-[11px] text-slate-500 font-medium truncate max-w-[130px]">
+              {userRole}
+            </p>
           </div>
           <form action={logoutAction}>
             <button
               type="submit"
               title="Sign out"
-              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1"
+              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors ml-1 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
