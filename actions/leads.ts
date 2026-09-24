@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockLeadsStore,
   mockCompaniesStore,
@@ -95,13 +96,14 @@ export async function getLeadsAction(params: {
   rating?: string;
 }) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
   const page = Math.max(1, params.page || 1);
   const limit = Math.min(100, Math.max(1, params.limit || 10));
   const skip = (page - 1) * limit;
 
   try {
     const where: any = {
-      organizationId: session.organizationId,
+      organizationId,
       deletedAt: null,
     };
 
@@ -208,12 +210,13 @@ export async function getLeadsAction(params: {
  */
 export async function getLeadByIdAction(id: string) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
 
   try {
     const lead = await prisma.lead.findFirst({
       where: {
         id,
-        organizationId: session.organizationId,
+        organizationId,
         deletedAt: null,
       },
       include: {
@@ -357,6 +360,7 @@ export async function getLeadByIdAction(id: string) {
  */
 export async function createLeadAction(data: LeadFormData) {
   const session = await requirePermission("lead:create");
+  const { organizationId, userId } = await resolveTenantContext(session);
   const parsed = leadSchema.safeParse(data);
 
   if (!parsed.success) {
@@ -384,7 +388,7 @@ export async function createLeadAction(data: LeadFormData) {
   try {
     const created = await prisma.lead.create({
       data: {
-        organizationId: session.organizationId,
+        organizationId,
         leadNumber,
         firstName,
         lastName: lastName || null,
@@ -399,16 +403,16 @@ export async function createLeadAction(data: LeadFormData) {
         estimatedValue,
         currency,
         description: description || null,
-        ownerId: session.id,
-        createdById: session.id,
+        ownerId: userId,
+        createdById: userId,
       },
     });
 
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
+          organizationId,
+          userId,
           action: "LEAD_CREATED",
           entityType: "Lead",
           entityId: created.id,
@@ -425,7 +429,7 @@ export async function createLeadAction(data: LeadFormData) {
     const fullName = `${firstName} ${lastName || ""}`.trim();
     const newLead: LeadItem & { organizationId: string; description?: string } = {
       id: `lead_${Date.now()}`,
-      organizationId: session.organizationId,
+      organizationId,
       leadNumber,
       firstName,
       lastName: lastName || null,

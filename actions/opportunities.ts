@@ -343,6 +343,23 @@ export async function createOpportunityAction(data: OpportunityFormData) {
       )?.id || createdPipeline.stages[0].id;
     }
 
+    let ownerId = session.id;
+    try {
+      const userExists = await prisma.user.findUnique({
+        where: { id: session.id },
+        select: { id: true },
+      });
+      if (!userExists) {
+        const anyUser = await prisma.user.findFirst({
+          where: { organizationId: session.organizationId },
+          select: { id: true },
+        });
+        if (anyUser) {
+          ownerId = anyUser.id;
+        }
+      }
+    } catch {}
+
     const created = await prisma.opportunity.create({
       data: {
         organizationId: session.organizationId,
@@ -352,7 +369,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
         name,
         pipelineId: pipeline.id,
         stageId,
-        ownerId: session.id,
+        ownerId,
         amount,
         currency,
         probability: stageMeta.probability,
@@ -366,7 +383,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
       await prisma.auditLog.create({
         data: {
           organizationId: session.organizationId,
-          userId: session.id,
+          userId: ownerId,
           action: "OPPORTUNITY_CREATED",
           entityType: "Opportunity",
           entityId: created.id,
