@@ -74,6 +74,7 @@ export interface MergeContext {
   dealName?: string;
   dealAmount?: number | string;
   repName?: string;
+  email?: string;
 }
 
 /**
@@ -93,6 +94,7 @@ export function applyMergeTags(text: string, context: MergeContext): string {
   result = result.replace(/\{\{deal_name\}\}/gi, context.dealName || "our discussion");
   result = result.replace(/\{\{deal_amount\}\}/gi, formattedAmount);
   result = result.replace(/\{\{rep_name\}\}/gi, context.repName || "Account Representative");
+  result = result.replace(/\{\{email\}\}/gi, context.email || "");
 
   return result;
 }

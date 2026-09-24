@@ -200,7 +200,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Monthly Sales Quota & Target Attainment (HubSpot Style) */}
+      {/* Monthly Sales Quota & Target Attainment */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">

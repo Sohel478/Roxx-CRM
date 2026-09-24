@@ -222,6 +222,7 @@ export async function getOpportunityByIdAction(id: string) {
         primaryContactName: opp.primaryContact
           ? `${opp.primaryContact.firstName} ${opp.primaryContact.lastName || ""}`.trim()
           : null,
+        primaryContactEmail: opp.primaryContact?.email || null,
         leadId: opp.leadId,
         stageId: opp.stageId,
         stageName: opp.stage.name,
@@ -242,13 +243,20 @@ export async function getOpportunityByIdAction(id: string) {
   } catch {
     const mock = mockOpportunitiesStore.find((o) => o.id === id);
     if (mock) {
+      const contact = mockContactsStore.find((c) => c.id === mock.primaryContactId);
       return {
         success: true,
         data: {
           ...mock,
+          primaryContactEmail: contact?.email || null,
           company: { id: mock.companyId, name: mock.companyName },
           primaryContact: mock.primaryContactId
-            ? { id: mock.primaryContactId, firstName: mock.primaryContactName || "", lastName: "" }
+            ? {
+                id: mock.primaryContactId,
+                firstName: mock.primaryContactName || "",
+                lastName: "",
+                email: contact?.email || "",
+              }
             : null,
           owner: { id: mock.ownerId, name: mock.ownerName },
           activities: [],

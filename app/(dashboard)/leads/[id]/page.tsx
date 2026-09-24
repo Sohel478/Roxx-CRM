@@ -115,7 +115,7 @@ export default function LeadDetailPage() {
   if (isLoading) {
     return (
       <div className="py-20 text-center text-slate-400">
-        <p className="text-sm font-semibold">Loading HubSpot 360° lead dossier...</p>
+        <p className="text-sm font-semibold">Loading 360° lead dossier...</p>
       </div>
     );
   }
@@ -326,7 +326,7 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* 3-Column HubSpot Dossier Layout */}
+      {/* 3-Column 360° Lead Dossier Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Property Sidebar & Discovery Notes */}
         <div className="lg:col-span-3 space-y-4">
@@ -429,13 +429,14 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* HubSpot-Style Inline Composer */}
+          {/* Inline Activity & Email Composer */}
           <InlineComposer
             entityId={lead.id}
             entityType="lead"
             mergeContext={{
               firstName: lead.firstName,
               lastName: lead.lastName || "",
+              email: lead.email || "",
               companyName: lead.companyName || "",
               dealName: lead.companyName ? `${lead.companyName} Deal` : `${lead.fullName} Deal`,
               dealAmount: lead.estimatedValue,

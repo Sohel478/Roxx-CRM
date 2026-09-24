@@ -104,7 +104,7 @@ export function KanbanBoard({
           </button>
           {staleDealsCount > 0 && !filterStaleOnly && (
             <span className="text-[11px] text-slate-500 hidden sm:inline">
-              HubSpot alert: {staleDealsCount} open deals have no recent touchpoint (&gt;7 days)
+              Deal health alert: {staleDealsCount} open deal(s) have no recent touchpoint (&gt;7 days)
             </span>
           )}
         </div>

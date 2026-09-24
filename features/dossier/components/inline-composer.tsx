@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import {
   FileText,
   Mail,
@@ -13,6 +13,7 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,14 @@ export function InlineComposer({
   // Common fields
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [toEmail, setToEmail] = useState(mergeContext.email || "");
+
+  // Keep toEmail synchronized if mergeContext.email changes
+  useEffect(() => {
+    if (mergeContext.email) {
+      setToEmail(mergeContext.email);
+    }
+  }, [mergeContext.email]);
 
   // Call / Meeting fields
   const [callOutcome, setCallOutcome] = useState("Connected");
@@ -79,9 +88,10 @@ export function InlineComposer({
     setSelectedTemplateId("");
     setCallOutcome("Connected");
     setDuration(15);
+    setToEmail(mergeContext.email || "");
   };
 
-  const handleSaveActivity = (type: ActivityType) => {
+  const handleSaveActivity = (type: ActivityType, customSubject?: string) => {
     if (!description.trim() && type === "NOTE") return;
 
     setErrorBanner(null);
@@ -89,18 +99,23 @@ export function InlineComposer({
 
     const defaultSubjects: Record<ActivityType, string> = {
       NOTE: "Internal Strategy Note",
-      EMAIL: subject.trim() || `Email to ${mergeContext.firstName || "Customer"}`,
+      EMAIL: customSubject || subject.trim() || `Email to ${toEmail || mergeContext.firstName || "Customer"}`,
       CALL: subject.trim() || `Call with ${mergeContext.firstName || "Customer"}`,
       MEETING: subject.trim() || `Meeting with ${mergeContext.companyName || "Client"}`,
       WHATSAPP: "WhatsApp Message",
       OTHER: "Other touchpoint",
     };
 
+    const finalDescription =
+      type === "EMAIL" && toEmail
+        ? `To: ${toEmail}\n\n${description.trim()}`
+        : description.trim();
+
     startTransition(async () => {
       const res = await logActivityAction({
         type,
-        subject: subject.trim() || defaultSubjects[type],
-        description: description.trim(),
+        subject: customSubject || subject.trim() || defaultSubjects[type],
+        description: finalDescription,
         activityAt: new Date().toISOString(),
         durationMinutes: type === "CALL" || type === "MEETING" ? duration : undefined,
         outcome: type === "CALL" ? callOutcome : undefined,
@@ -113,7 +128,7 @@ export function InlineComposer({
       if (res.success) {
         setSuccessBanner(
           type === "EMAIL"
-            ? "Email logged & touchpoint recorded."
+            ? "Email logged & touchpoint recorded to timeline."
             : type === "NOTE"
             ? "Note saved to activity feed."
             : `${type.toLowerCase()} logged successfully.`
@@ -125,6 +140,27 @@ export function InlineComposer({
         setErrorBanner(res.error || "Failed to log activity");
       }
     });
+  };
+
+  const handleSendViaMailClient = () => {
+    if (!toEmail.trim()) {
+      setErrorBanner("Please specify a recipient email address.");
+      return;
+    }
+
+    const emailSubject =
+      subject.trim() ||
+      `Regarding our discussion — ${mergeContext.companyName || "Roxx CRM"}`;
+
+    const mailtoUrl = `mailto:${encodeURIComponent(toEmail.trim())}?subject=${encodeURIComponent(
+      emailSubject
+    )}&body=${encodeURIComponent(description)}`;
+
+    // Open user's default email client (Gmail, Apple Mail, Outlook, etc.)
+    window.open(mailtoUrl, "_blank");
+
+    // Automatically record this touchpoint into the CRM activity timeline
+    handleSaveActivity("EMAIL", emailSubject);
   };
 
   const handleCreateTask = () => {
@@ -256,20 +292,20 @@ export function InlineComposer({
           </div>
         )}
 
-        {/* EMAIL TAB: Template Selector & Subject */}
+        {/* EMAIL TAB: Template Selector, Recipient & Subject */}
         {activeTab === "EMAIL" && (
           <div className="space-y-2.5">
             <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
                 <span className="text-xs font-bold text-purple-900">
-                  HubSpot Template Snippet:
+                  Quick Sales Template:
                 </span>
               </div>
               <select
                 value={selectedTemplateId}
                 onChange={(e) => handleSelectTemplate(e.target.value)}
-                className="text-xs rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-purple-950 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="text-xs rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-purple-950 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
               >
                 <option value="">Insert a sales template...</option>
                 {SALES_EMAIL_TEMPLATES.map((t) => (
@@ -280,13 +316,29 @@ export function InlineComposer({
               </select>
             </div>
 
-            <Input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Subject: e.g. Following up on our platform evaluation..."
-              className="text-xs font-semibold"
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div className="sm:col-span-5">
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-[11px] font-bold text-slate-400">To:</span>
+                  <Input
+                    type="email"
+                    value={toEmail}
+                    onChange={(e) => setToEmail(e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="text-xs pl-8 font-medium"
+                  />
+                </div>
+              </div>
+              <div className="sm:col-span-7">
+                <Input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Subject: e.g. Following up on our platform evaluation..."
+                  className="text-xs font-semibold"
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -418,14 +470,21 @@ export function InlineComposer({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-1 gap-2">
           <div className="text-[11px] text-slate-400">
-            {activeTab === "EMAIL" && "Merge tags automatically applied from customer record"}
+            {activeTab === "EMAIL" && (
+              <span className="inline-flex items-center gap-1.5 text-purple-700 font-medium">
+                <Mail className="w-3.5 h-3.5" />
+                <span>Opens in your mail client &amp; auto-logs to CRM timeline</span>
+              </span>
+            )}
             {activeTab === "NOTE" && "Visible immediately to all team members"}
             {activeTab === "CALL" && `Duration: ${duration} minutes • ${callOutcome}`}
+            {activeTab === "MEETING" && `Scheduled Duration: ${duration} minutes`}
+            {activeTab === "TASK" && `Due: ${taskDueDate} • Priority: ${taskPriority}`}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 justify-end">
             {(description || subject) && (
               <Button
                 type="button"
@@ -453,6 +512,37 @@ export function InlineComposer({
                 )}
                 <span>Create Task</span>
               </Button>
+            ) : activeTab === "EMAIL" ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSaveActivity("EMAIL")}
+                  disabled={isPending || (!description.trim() && !subject.trim())}
+                  className="text-xs h-8 text-slate-700 border-slate-300 hover:bg-slate-50 gap-1.5"
+                  title="Log email touchpoint directly to the record without opening mail app"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Log Email Only</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSendViaMailClient}
+                  disabled={isPending || !toEmail.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 gap-1.5 font-semibold shadow-xs"
+                  title="Open draft in Gmail / Outlook / Apple Mail and log to CRM timeline"
+                >
+                  {isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  )}
+                  <span>Open in Mail App &amp; Log</span>
+                </Button>
+              </div>
             ) : (
               <Button
                 type="button"
@@ -460,24 +550,18 @@ export function InlineComposer({
                 onClick={() => handleSaveActivity(activeTab as ActivityType)}
                 disabled={isPending || (!description.trim() && activeTab === "NOTE")}
                 className={`text-xs h-8 gap-1.5 ${
-                  activeTab === "EMAIL"
-                    ? "bg-purple-600 hover:bg-purple-700"
-                    : activeTab === "CALL"
+                  activeTab === "CALL"
                     ? "bg-emerald-600 hover:bg-emerald-700"
                     : "bg-blue-600 hover:bg-blue-700"
                 }`}
               >
                 {isPending ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : activeTab === "EMAIL" ? (
-                  <Send className="w-3.5 h-3.5" />
                 ) : (
                   <FileText className="w-3.5 h-3.5" />
                 )}
                 <span>
-                  {activeTab === "EMAIL"
-                    ? "Log Email"
-                    : activeTab === "NOTE"
+                  {activeTab === "NOTE"
                     ? "Save Note"
                     : activeTab === "CALL"
                     ? "Save Call"

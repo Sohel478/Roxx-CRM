@@ -114,7 +114,7 @@ export default function OpportunityDetailPage() {
   if (isLoading) {
     return (
       <div className="py-20 text-center text-slate-400">
-        <p className="text-sm font-semibold">Loading HubSpot 360° customer dossier...</p>
+        <p className="text-sm font-semibold">Loading 360° customer dossier...</p>
       </div>
     );
   }
@@ -254,7 +254,7 @@ export default function OpportunityDetailPage() {
         </div>
       )}
 
-      {/* 3-Column HubSpot-Style Dossier Layout */}
+      {/* 3-Column Dossier Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (Key Properties & Record Overview) */}
         <div className="lg:col-span-3 space-y-4">
@@ -357,7 +357,7 @@ export default function OpportunityDetailPage() {
             </div>
           </div>
 
-          {/* HubSpot-Style Inline Activity & Email Composer */}
+          {/* Inline Activity & Email Composer */}
           <InlineComposer
             entityId={opp.id}
             entityType="opportunity"
@@ -368,6 +368,7 @@ export default function OpportunityDetailPage() {
               dealName: opp.name,
               dealAmount: opp.amount,
               repName: opp.ownerName,
+              email: opp.primaryContactEmail || "",
             }}
             onActivityCreated={loadOpportunity}
           />

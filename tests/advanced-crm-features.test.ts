@@ -6,11 +6,11 @@ import {
 } from "@/lib/templates/email-templates";
 import { globalSearchSchema } from "@/lib/validations/search";
 
-describe("HubSpot-Inspired Features & Engines", () => {
+describe("Advanced CRM Features & Engines", () => {
   describe("Email Templates & Dynamic Merge Tag Engine", () => {
-    it("interpolates all supported merge tags accurately", () => {
+    it("interpolates all supported merge tags accurately including email", () => {
       const template =
-        "Hi {{first_name}}, following up regarding {{deal_name}} for {{company_name}} valued at {{deal_amount}}. Best, {{rep_name}}";
+        "Hi {{first_name}}, following up regarding {{deal_name}} for {{company_name}} valued at {{deal_amount}}. Reaching you at {{email}}. Best, {{rep_name}}";
 
       const context: MergeContext = {
         firstName: "Sarah",
@@ -19,11 +19,12 @@ describe("HubSpot-Inspired Features & Engines", () => {
         dealName: "Enterprise AI Security",
         dealAmount: 120000,
         repName: "Alex Vance",
+        email: "sarah@cyberdyne.local",
       };
 
       const result = applyMergeTags(template, context);
       expect(result).toBe(
-        "Hi Sarah, following up regarding Enterprise AI Security for Cyberdyne Systems valued at $120,000. Best, Alex Vance"
+        "Hi Sarah, following up regarding Enterprise AI Security for Cyberdyne Systems valued at $120,000. Reaching you at sarah@cyberdyne.local. Best, Alex Vance"
       );
     });
 

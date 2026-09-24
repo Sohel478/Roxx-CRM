@@ -73,6 +73,7 @@ export interface OpportunityItem {
   companyName: string;
   primaryContactId: string | null;
   primaryContactName: string | null;
+  primaryContactEmail?: string | null;
   leadId: string | null;
   pipelineId?: string;
   stageId: string;
