@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireSuperAdmin } from "@/lib/auth/session";
 import { mockOrganizationsStore, mockUsersStore, mockLeadsStore, mockOpportunitiesStore } from "@/lib/db/mock-store";
+import { ensureDatabaseSchema } from "@/lib/db/migrate";
 
 export interface TenantItem {
   id: string;
@@ -51,6 +52,7 @@ export async function getTenantsAction(): Promise<{
 }> {
   try {
     await requireSuperAdmin();
+    await ensureDatabaseSchema();
 
     try {
       const orgs = await prisma.organization.findMany({
@@ -68,20 +70,20 @@ export async function getTenantsAction(): Promise<{
 
       const tenants: TenantItem[] = orgs.map((o) => ({
         id: o.id,
-        name: o.name,
+        name: o.name || "Unnamed Organization",
         slug: o.slug,
-        subscriptionPlan: o.subscriptionPlan,
-        subscriptionStatus: o.subscriptionStatus,
-        maxSeats: o.maxSeats,
-        trialEndsAt: o.trialEndsAt ? o.trialEndsAt.toISOString() : null,
-        subscriptionEndsAt: o.subscriptionEndsAt ? o.subscriptionEndsAt.toISOString() : null,
-        billingEmail: o.billingEmail,
-        billingPhone: o.billingPhone,
-        subscriptionNotes: o.subscriptionNotes,
-        createdAt: o.createdAt.toISOString(),
-        usersCount: o._count.users,
-        leadsCount: o._count.leads,
-        dealsCount: o._count.opportunities,
+        subscriptionPlan: o.subscriptionPlan || "FREE_TRIAL",
+        subscriptionStatus: o.subscriptionStatus || "TRIAL",
+        maxSeats: typeof o.maxSeats === "number" ? o.maxSeats : 20,
+        trialEndsAt: o.trialEndsAt ? new Date(o.trialEndsAt).toISOString() : null,
+        subscriptionEndsAt: o.subscriptionEndsAt ? new Date(o.subscriptionEndsAt).toISOString() : null,
+        billingEmail: o.billingEmail || null,
+        billingPhone: o.billingPhone || null,
+        subscriptionNotes: o.subscriptionNotes || null,
+        createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
+        usersCount: o._count?.users || 0,
+        leadsCount: o._count?.leads || 0,
+        dealsCount: o._count?.opportunities || 0,
       }));
 
       const activeCount = tenants.filter((t) => t.subscriptionStatus === "ACTIVE").length;

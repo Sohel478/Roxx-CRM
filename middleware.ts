@@ -14,6 +14,7 @@ export async function middleware(request: NextRequest) {
   // Public paths that do not require authentication
   const isPublicPath =
     pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/api/v1/health") ||
     pathname.startsWith("/_next") ||
@@ -30,7 +31,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // If already authenticated and trying to access /login, redirect to /dashboard
-  if (session && pathname.startsWith("/login")) {
+  // UNLESS explicitly resetting or logging out (prevents infinite error recovery loops)
+  const isReset =
+    request.nextUrl.searchParams.has("reset") ||
+    request.nextUrl.searchParams.has("logout");
+
+  if (session && pathname.startsWith("/login") && !isReset) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -46,16 +52,21 @@ export async function middleware(request: NextRequest) {
   // If authenticated, forward user identity headers for downstream server components
   if (session) {
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-user-id", session.id);
-    requestHeaders.set("x-org-id", session.organizationId);
-    requestHeaders.set("x-user-role", session.role);
+    requestHeaders.set("x-user-id", String(session.id || ""));
+    requestHeaders.set("x-org-id", String(session.organizationId || ""));
+    requestHeaders.set("x-user-role", String(session.role || "User"));
 
-    return NextResponse.next({
+    const authResponse = NextResponse.next({
       request: {
         headers: requestHeaders,
       },
-      headers: response.headers,
     });
+
+    authResponse.headers.set("X-Frame-Options", "DENY");
+    authResponse.headers.set("X-Content-Type-Options", "nosniff");
+    authResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+    return authResponse;
   }
 
   return response;

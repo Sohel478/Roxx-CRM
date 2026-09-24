@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { SessionUser } from "./session";
+import { ensureDatabaseSchema } from "@/lib/db/migrate";
 
 /**
  * Resolves the real database organizationId and userId for a given session.
@@ -21,6 +22,8 @@ export async function resolveTenantContext(session: SessionUser): Promise<{
         userId: session.id,
       };
     }
+
+    await ensureDatabaseSchema();
 
     // 1. Resolve Organization
     let org = await prisma.organization.findUnique({

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import { mockUsersStore, mockAuditLogsStore, mockOrganizationsStore, MockUser } from "@/lib/db/mock-store";
+import { ensureDatabaseSchema } from "@/lib/db/migrate";
 import {
   userCreateSchema,
   userUpdateSchema,
@@ -36,6 +37,7 @@ export async function getTenantSeatUsageAction(): Promise<{
   error?: string;
 }> {
   const session = await requireAuth();
+  await ensureDatabaseSchema();
 
   try {
     const org = await prisma.organization.findUnique({
@@ -99,6 +101,7 @@ export async function getUsersAction(): Promise<{
   error?: string;
 }> {
   const session = await requireAuth();
+  await ensureDatabaseSchema();
 
   try {
     const dbUsers = await prisma.user.findMany({
