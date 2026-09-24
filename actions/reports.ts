@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockLeadsStore,
   mockOpportunitiesStore,
@@ -48,13 +49,14 @@ export async function getReportsAnalyticsAction(
   dateRange: DateRangeOption = "30d"
 ): Promise<{ success: boolean; data?: ReportsAnalyticsData; error?: string }> {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
   const cutoff = getDateCutoff(dateRange);
 
   try {
     // 1. Fetch Opportunities
     const opportunities = await prisma.opportunity.findMany({
       where: {
-        organizationId: session.organizationId,
+        organizationId,
         createdAt: { gte: cutoff },
         deletedAt: null,
       },
@@ -67,7 +69,7 @@ export async function getReportsAnalyticsAction(
     // 2. Fetch Leads
     const leads = await prisma.lead.findMany({
       where: {
-        organizationId: session.organizationId,
+        organizationId,
         createdAt: { gte: cutoff },
         deletedAt: null,
       },
@@ -76,7 +78,7 @@ export async function getReportsAnalyticsAction(
     // 3. Fetch Activities
     const activities = await prisma.activity.findMany({
       where: {
-        organizationId: session.organizationId,
+        organizationId,
         activityAt: { gte: cutoff },
       },
       include: {

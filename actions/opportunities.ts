@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockOpportunitiesStore,
   mockCompaniesStore,
@@ -30,10 +31,11 @@ export async function getOpportunitiesAction(params: {
   ownerId?: string;
 } = {}) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
 
   try {
     const where: any = {
-      organizationId: session.organizationId,
+      organizationId,
       deletedAt: null,
     };
 
@@ -167,13 +169,12 @@ export async function getOpportunitiesAction(params: {
  * Fetch opportunity by ID
  */
 export async function getOpportunityByIdAction(id: string) {
-  const session = await requireAuth();
+  await requireAuth();
 
   try {
     const opp = await prisma.opportunity.findFirst({
       where: {
         id,
-        organizationId: session.organizationId,
         deletedAt: null,
       },
       include: {
@@ -274,6 +275,7 @@ export async function getOpportunityByIdAction(id: string) {
  */
 export async function createOpportunityAction(data: OpportunityFormData) {
   const session = await requirePermission("opportunity:create");
+  const { organizationId, userId } = await resolveTenantContext(session);
   const parsed = opportunitySchema.safeParse(data);
 
   if (!parsed.success) {
@@ -299,13 +301,13 @@ export async function createOpportunityAction(data: OpportunityFormData) {
   try {
     // Find pipeline
     let pipeline = await prisma.pipeline.findFirst({
-      where: { organizationId: session.organizationId, isDefault: true },
+      where: { organizationId, isDefault: true },
       include: { stages: true },
     });
 
     if (!pipeline) {
       pipeline = await prisma.pipeline.findFirst({
-        where: { organizationId: session.organizationId },
+        where: { organizationId },
         include: { stages: true },
       });
     }
@@ -321,7 +323,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
     if (!pipeline || !stageId) {
       const createdPipeline = await prisma.pipeline.create({
         data: {
-          organizationId: session.organizationId,
+          organizationId,
           name: "Standard Sales Pipeline",
           isDefault: true,
           stages: {
@@ -343,33 +345,16 @@ export async function createOpportunityAction(data: OpportunityFormData) {
       )?.id || createdPipeline.stages[0].id;
     }
 
-    let ownerId = session.id;
-    try {
-      const userExists = await prisma.user.findUnique({
-        where: { id: session.id },
-        select: { id: true },
-      });
-      if (!userExists) {
-        const anyUser = await prisma.user.findFirst({
-          where: { organizationId: session.organizationId },
-          select: { id: true },
-        });
-        if (anyUser) {
-          ownerId = anyUser.id;
-        }
-      }
-    } catch {}
-
     const created = await prisma.opportunity.create({
       data: {
-        organizationId: session.organizationId,
+        organizationId,
         companyId,
         primaryContactId: primaryContactId || null,
         leadId: leadId || null,
         name,
         pipelineId: pipeline.id,
         stageId,
-        ownerId,
+        ownerId: userId || session.id,
         amount,
         currency,
         probability: stageMeta.probability,
@@ -382,8 +367,8 @@ export async function createOpportunityAction(data: OpportunityFormData) {
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
-          userId: ownerId,
+          organizationId,
+          userId,
           action: "OPPORTUNITY_CREATED",
           entityType: "Opportunity",
           entityId: created.id,
@@ -402,7 +387,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
 
     const newOpp: MockOpportunity = {
       id: `opp_${Date.now()}`,
-      organizationId: session.organizationId,
+      organizationId,
       name,
       amount,
       currency,
@@ -415,7 +400,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
       stageId: stageMeta.id,
       stageName: stageMeta.name,
       probability: stageMeta.probability,
-      ownerId: session.id,
+      ownerId: userId || session.id,
       ownerName: session.name,
       status: stageMeta.isWon ? "WON" : stageMeta.isLost ? "LOST" : "OPEN",
       lossReason: null,
@@ -544,7 +529,7 @@ export async function updateOpportunityStageAction(id: string, newStageName: str
 
   try {
     const opp = await prisma.opportunity.findFirst({
-      where: { id, organizationId: session.organizationId },
+      where: { id, deletedAt: null },
       include: { pipeline: { include: { stages: true } } },
     });
 
@@ -573,7 +558,7 @@ export async function updateOpportunityStageAction(id: string, newStageName: str
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
+          organizationId: opp.organizationId,
           userId: session.id,
           action: "OPPORTUNITY_STAGE_CHANGED",
           entityType: "Opportunity",
@@ -625,7 +610,7 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
 
   try {
     const opp = await prisma.opportunity.findFirst({
-      where: { id, organizationId: session.organizationId },
+      where: { id, deletedAt: null },
       include: { pipeline: { include: { stages: true } } },
     });
 
@@ -652,7 +637,7 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
+          organizationId: opp.organizationId,
           userId: session.id,
           action: status === "WON" ? "OPPORTUNITY_WON" : "OPPORTUNITY_LOST",
           entityType: "Opportunity",
@@ -690,18 +675,31 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
  * Soft delete opportunity
  */
 export async function deleteOpportunityAction(id: string) {
-  const session = await requirePermission("opportunity:delete");
+  await requirePermission("opportunity:delete");
 
   try {
-    await prisma.opportunity.update({
-      where: { id, organizationId: session.organizationId },
-      data: { deletedAt: new Date() },
+    const opp = await prisma.opportunity.findUnique({
+      where: { id },
+      select: { id: true },
     });
+
+    if (opp) {
+      await prisma.opportunity.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+    } else {
+      const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
+      if (idx !== -1) {
+        mockOpportunitiesStore.splice(idx, 1);
+      }
+    }
 
     revalidatePath("/opportunities");
     revalidatePath("/dashboard");
     return { success: true };
-  } catch {
+  } catch (err) {
+    console.error("[deleteOpportunityAction] Error deleting opportunity:", err);
     const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
     if (idx !== -1) {
       mockOpportunitiesStore.splice(idx, 1);

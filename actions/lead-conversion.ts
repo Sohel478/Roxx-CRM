@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   conversionSchema,
   ConversionFormData,
@@ -28,6 +29,7 @@ export async function convertLeadAction(
   inputData: ConversionFormData
 ): Promise<{ success: boolean; data?: ConversionResult; error?: string }> {
   const session = await requirePermission("lead:update");
+  const { organizationId, userId } = await resolveTenantContext(session);
 
   const parsed = conversionSchema.safeParse(inputData);
   if (!parsed.success) {
@@ -45,7 +47,6 @@ export async function convertLeadAction(
       const lead = await tx.lead.findFirst({
         where: {
           id: leadId,
-          organizationId: session.organizationId,
           deletedAt: null,
         },
       });
@@ -66,9 +67,9 @@ export async function convertLeadAction(
       if (data.companyMode === "NEW") {
         const createdCompany = await tx.company.create({
           data: {
-            organizationId: session.organizationId,
+            organizationId,
             name: data.companyName!.trim(),
-            ownerId: session.id,
+            ownerId: userId,
             status: "Prospect",
             phone: data.contactPhone || null,
             email: data.contactEmail || null,
@@ -81,7 +82,6 @@ export async function convertLeadAction(
         const existingCompany = await tx.company.findFirst({
           where: {
             id: data.companyId,
-            organizationId: session.organizationId,
             deletedAt: null,
           },
         });
@@ -96,14 +96,14 @@ export async function convertLeadAction(
       // 3. Create Primary Contact
       const createdContact = await tx.contact.create({
         data: {
-          organizationId: session.organizationId,
+          organizationId,
           companyId: resolvedCompanyId,
           firstName: data.contactFirstName.trim(),
           lastName: data.contactLastName?.trim() || null,
           email: data.contactEmail?.trim() || null,
           phone: data.contactPhone?.trim() || null,
           jobTitle: data.contactJobTitle?.trim() || null,
-          ownerId: session.id,
+          ownerId: userId,
         },
       });
 
@@ -115,13 +115,13 @@ export async function convertLeadAction(
 
       if (data.createOpportunity) {
         let pipeline = await tx.pipeline.findFirst({
-          where: { organizationId: session.organizationId, isDefault: true },
+          where: { organizationId, isDefault: true },
           include: { stages: { orderBy: { order: "asc" } } },
         });
 
         if (!pipeline) {
           pipeline = await tx.pipeline.findFirst({
-            where: { organizationId: session.organizationId },
+            where: { organizationId },
             include: { stages: { orderBy: { order: "asc" } } },
           });
         }
@@ -138,7 +138,7 @@ export async function convertLeadAction(
           // Fallback bootstrap pipeline
           const createdPipeline = await tx.pipeline.create({
             data: {
-              organizationId: session.organizationId,
+              organizationId,
               name: "Standard Sales Pipeline",
               isDefault: true,
               stages: {
@@ -163,14 +163,14 @@ export async function convertLeadAction(
 
         const createdOpportunity = await tx.opportunity.create({
           data: {
-            organizationId: session.organizationId,
+            organizationId,
             companyId: resolvedCompanyId,
             primaryContactId: createdContact.id,
             leadId: lead.id,
             name: data.opportunityName!.trim(),
             pipelineId: pipeline.id,
             stageId: stageId,
-            ownerId: session.id,
+            ownerId: userId || session.id,
             amount: data.opportunityAmount,
             expectedCloseDate: data.expectedCloseDate ? new Date(data.expectedCloseDate) : null,
             status: "OPEN",
@@ -196,8 +196,8 @@ export async function convertLeadAction(
       try {
         await tx.auditLog.create({
           data: {
-            organizationId: session.organizationId,
-            userId: session.id,
+            organizationId,
+            userId,
             action: "LEAD_CONVERTED",
             entityType: "Lead",
             entityId: lead.id,

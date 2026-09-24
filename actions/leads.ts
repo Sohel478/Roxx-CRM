@@ -609,34 +609,45 @@ export async function assignLeadAction(id: string, ownerId: string) {
  */
 export async function deleteLeadAction(id: string) {
   const session = await requirePermission("lead:delete");
+  const { userId } = await resolveTenantContext(session);
 
   try {
-    await prisma.lead.update({
-      where: {
-        id,
-        organizationId: session.organizationId,
-      },
-      data: {
-        deletedAt: new Date(),
-      },
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { id: true, organizationId: true },
     });
 
-    try {
-      await prisma.auditLog.create({
+    if (lead) {
+      await prisma.lead.update({
+        where: { id },
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
-          action: "LEAD_DELETED",
-          entityType: "Lead",
-          entityId: id,
+          deletedAt: new Date(),
         },
       });
-    } catch {}
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: lead.organizationId,
+            userId,
+            action: "LEAD_DELETED",
+            entityType: "Lead",
+            entityId: id,
+          },
+        });
+      } catch {}
+    } else {
+      const idx = mockLeadsStore.findIndex((l) => l.id === id);
+      if (idx !== -1) {
+        mockLeadsStore.splice(idx, 1);
+      }
+    }
 
     revalidatePath("/leads");
     revalidatePath("/dashboard");
     return { success: true };
-  } catch {
+  } catch (err) {
+    console.error("[deleteLeadAction] Error deleting lead:", err);
     const idx = mockLeadsStore.findIndex((l) => l.id === id);
     if (idx !== -1) {
       mockLeadsStore.splice(idx, 1);

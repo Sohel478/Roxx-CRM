@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockActivitiesStore,
   mockCompaniesStore,
@@ -31,10 +32,11 @@ export async function getActivitiesAction(params: {
   limit?: number;
 } = {}) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
 
   try {
     const where: any = {
-      organizationId: session.organizationId,
+      organizationId,
     };
 
     if (params.type && params.type !== "ALL") {
@@ -186,9 +188,10 @@ export async function logActivityAction(raw: ActivityFormData) {
   }
 
   try {
+    const { organizationId, userId } = await resolveTenantContext(session);
     const activity = await prisma.activity.create({
       data: {
-        organizationId: session.organizationId,
+        organizationId,
         type: data.type,
         subject: data.subject,
         description: data.description || null,
@@ -196,7 +199,7 @@ export async function logActivityAction(raw: ActivityFormData) {
         companyId: data.companyId || null,
         contactId: data.contactId || null,
         opportunityId: data.opportunityId || null,
-        userId: session.id,
+        userId: userId || session.id,
         activityAt: activityDate,
         durationMinutes: data.durationMinutes || null,
         outcome: data.outcome || null,
@@ -278,12 +281,14 @@ export async function deleteActivityAction(id: string) {
     if (index !== -1) mockActivitiesStore.splice(index, 1);
 
     revalidatePath("/activities");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch {
     const index = mockActivitiesStore.findIndex((a) => a.id === id);
     if (index !== -1) {
       mockActivitiesStore.splice(index, 1);
       revalidatePath("/activities");
+      revalidatePath("/dashboard");
       return { success: true };
     }
     return { success: false, error: "Activity not found" };

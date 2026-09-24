@@ -8,6 +8,7 @@ import {
   MoreVertical,
   CheckCircle2,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { OpportunityItem } from "@/lib/validations/opportunities";
@@ -16,12 +17,14 @@ interface OpportunityTableProps {
   opportunities: OpportunityItem[];
   onEdit: (opp: OpportunityItem) => void;
   onCloseDeal: (opp: OpportunityItem, status: "WON" | "LOST") => void;
+  onDelete?: (id: string) => void;
 }
 
 export function OpportunityTable({
   opportunities,
   onEdit,
   onCloseDeal,
+  onDelete,
 }: OpportunityTableProps) {
   if (opportunities.length === 0) {
     return (
@@ -167,6 +170,20 @@ export function OpportunityTable({
                     >
                       Edit
                     </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete opportunity "${opp.name}"?`)) {
+                            onDelete(opp.id);
+                          }
+                        }}
+                        title="Delete Deal"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

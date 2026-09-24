@@ -14,6 +14,7 @@ import {
   Sparkles,
   AlertTriangle,
   Flame,
+  Trash2,
 } from "lucide-react";
 import { updateOpportunityStageAction } from "@/actions/opportunities";
 import {
@@ -27,6 +28,7 @@ interface KanbanBoardProps {
   onRefresh: () => void;
   onEdit: (opp: OpportunityItem) => void;
   onCloseDeal: (opp: OpportunityItem, status: "WON" | "LOST") => void;
+  onDelete?: (id: string) => void;
 }
 
 export function KanbanBoard({
@@ -34,6 +36,7 @@ export function KanbanBoard({
   onRefresh,
   onEdit,
   onCloseDeal,
+  onDelete,
 }: KanbanBoardProps) {
   const [isPending, startTransition] = useTransition();
   const [filterStaleOnly, setFilterStaleOnly] = useState(false);
@@ -264,6 +267,20 @@ export function KanbanBoard({
 
                         {/* Progression Controls */}
                         <div className="flex items-center gap-0.5">
+                          {onDelete && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete opportunity "${opp.name}"?`)) {
+                                  onDelete(opp.id);
+                                }
+                              }}
+                              title="Delete deal"
+                              className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors mr-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={isPending || stageIndex === 0}

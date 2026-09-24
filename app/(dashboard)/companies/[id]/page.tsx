@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,8 +12,9 @@ import {
   Kanban,
   Plus,
   MapPin,
+  Trash2,
 } from "lucide-react";
-import { getCompanyByIdAction } from "@/actions/companies";
+import { getCompanyByIdAction, deleteCompanyAction } from "@/actions/companies";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -81,6 +82,16 @@ export default function CompanyDetailPage() {
     );
   }
 
+  const [isPending, startTransition] = useTransition();
+
+  const handleDelete = () => {
+    if (!confirm(`Are you sure you want to delete company "${company.name}"?`)) return;
+    startTransition(async () => {
+      await deleteCompanyAction(id);
+      router.push("/companies");
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb / Back button */}
@@ -113,7 +124,7 @@ export default function CompanyDetailPage() {
           </div>
         </div>
 
-        {/* Header Contact Details */}
+        {/* Header Contact Details & Actions */}
         <div className="flex flex-wrap items-center gap-3 text-xs">
           {company.website && (
             <a
@@ -144,6 +155,18 @@ export default function CompanyDetailPage() {
               <span>{company.phone}</span>
             </a>
           )}
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={handleDelete}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 flex items-center gap-1.5 text-xs h-8"
+            title="Delete Company"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <span>Delete</span>
+          </Button>
         </div>
       </div>
 

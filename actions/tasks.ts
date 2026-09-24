@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockTasksStore,
   mockCompaniesStore,
@@ -37,11 +38,12 @@ export async function getTasksAction(params: {
   opportunityId?: string;
 } = {}) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
   const todayStr = getTodayString();
 
   try {
     const where: any = {
-      organizationId: session.organizationId,
+      organizationId,
     };
 
     if (params.leadId) where.leadId = params.leadId;
@@ -244,13 +246,14 @@ export async function createTaskAction(raw: TaskFormData) {
   }
 
   try {
+    const { organizationId, userId } = await resolveTenantContext(session);
     const task = await prisma.task.create({
       data: {
-        organizationId: session.organizationId,
+        organizationId,
         title: data.title,
         description: data.description || null,
-        assignedToId: data.assignedToId || session.id,
-        createdById: session.id,
+        assignedToId: data.assignedToId || userId || session.id,
+        createdById: userId || session.id,
         leadId: data.leadId || null,
         companyId: data.companyId || null,
         contactId: data.contactId || null,
@@ -429,12 +432,14 @@ export async function deleteTaskAction(id: string) {
     if (index !== -1) mockTasksStore.splice(index, 1);
 
     revalidatePath("/tasks");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch {
     const index = mockTasksStore.findIndex((t) => t.id === id);
     if (index !== -1) {
       mockTasksStore.splice(index, 1);
       revalidatePath("/tasks");
+      revalidatePath("/dashboard");
       return { success: true };
     }
     return { success: false, error: "Task not found" };

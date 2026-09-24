@@ -18,8 +18,9 @@ import {
   Sparkles,
   DollarSign,
   Tag,
+  Trash2,
 } from "lucide-react";
-import { getLeadByIdAction, updateLeadStatusAction } from "@/actions/leads";
+import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction } from "@/actions/leads";
 import { getActivitiesAction } from "@/actions/activities";
 import { getTasksAction } from "@/actions/tasks";
 import { Badge } from "@/components/ui/badge";
@@ -168,6 +169,14 @@ export default function LeadDetailPage() {
     return act.type === activityFilter;
   });
 
+  const handleDelete = () => {
+    if (!confirm(`Are you sure you want to delete lead "${lead?.fullName}"?`)) return;
+    startTransition(async () => {
+      await deleteLeadAction(id);
+      router.push("/leads");
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Back button */}
@@ -211,7 +220,7 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Action button */}
+        {/* Action buttons */}
         <div className="flex items-center gap-2">
           {isConverted ? (
             <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 shadow-2xs">
@@ -228,6 +237,18 @@ export default function LeadDetailPage() {
               <span>Convert Lead</span>
             </Button>
           )}
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={handleDelete}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 flex items-center gap-1.5"
+            title="Delete Lead"
+          >
+            <Trash2 className="w-4 h-4 text-red-500" />
+            <span>Delete</span>
+          </Button>
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockLeadsStore,
   mockOpportunitiesStore,
@@ -152,11 +153,14 @@ export async function globalSearchAction(
   }
 
   try {
+    const { organizationId } = await resolveTenantContext(session);
+
     // Add a 1.2s timeout race so if remote Postgres is slow or unreachable, it falls back instantly
     const searchPromise = Promise.all([
       prisma.opportunity.findMany({
         where: {
-          organizationId: session.organizationId,
+          organizationId,
+          deletedAt: null,
           OR: [
             { name: { contains: query, mode: "insensitive" } },
             { company: { name: { contains: query, mode: "insensitive" } } },
@@ -167,7 +171,8 @@ export async function globalSearchAction(
       }),
       prisma.lead.findMany({
         where: {
-          organizationId: session.organizationId,
+          organizationId,
+          deletedAt: null,
           OR: [
             { firstName: { contains: query, mode: "insensitive" } },
             { lastName: { contains: query, mode: "insensitive" } },
@@ -180,7 +185,8 @@ export async function globalSearchAction(
       }),
       prisma.company.findMany({
         where: {
-          organizationId: session.organizationId,
+          organizationId,
+          deletedAt: null,
           OR: [
             { name: { contains: query, mode: "insensitive" } },
             { industry: { contains: query, mode: "insensitive" } },
@@ -190,7 +196,8 @@ export async function globalSearchAction(
       }),
       prisma.contact.findMany({
         where: {
-          organizationId: session.organizationId,
+          organizationId,
+          deletedAt: null,
           OR: [
             { firstName: { contains: query, mode: "insensitive" } },
             { lastName: { contains: query, mode: "insensitive" } },

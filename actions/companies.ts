@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import { mockCompaniesStore } from "@/lib/db/mock-store";
 import {
   companySchema,
@@ -22,13 +23,14 @@ export async function getCompaniesAction(params: {
   status?: string;
 }) {
   const session = await requireAuth();
+  const { organizationId } = await resolveTenantContext(session);
   const page = Math.max(1, params.page || 1);
   const limit = Math.min(100, Math.max(1, params.limit || 10));
   const skip = (page - 1) * limit;
 
   try {
     const where: any = {
-      organizationId: session.organizationId,
+      organizationId,
       deletedAt: null,
     };
 
@@ -117,13 +119,12 @@ export async function getCompaniesAction(params: {
  * Get company detail by ID
  */
 export async function getCompanyByIdAction(id: string) {
-  const session = await requireAuth();
+  await requireAuth();
 
   try {
     const company = await prisma.company.findFirst({
       where: {
         id,
-        organizationId: session.organizationId,
         deletedAt: null,
       },
       include: {
@@ -183,6 +184,7 @@ export async function getCompanyByIdAction(id: string) {
  */
 export async function createCompanyAction(data: CompanyFormData) {
   const session = await requirePermission("company:create");
+  const { organizationId, userId } = await resolveTenantContext(session);
   const parsed = companySchema.safeParse(data);
 
   if (!parsed.success) {
@@ -195,7 +197,7 @@ export async function createCompanyAction(data: CompanyFormData) {
   try {
     const created = await prisma.company.create({
       data: {
-        organizationId: session.organizationId,
+        organizationId,
         name,
         industry: industry || null,
         website: website || null,
@@ -207,15 +209,15 @@ export async function createCompanyAction(data: CompanyFormData) {
         country: country || null,
         status,
         description: description || null,
-        ownerId: session.id,
+        ownerId: userId,
       },
     });
 
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
+          organizationId,
+          userId,
           action: "COMPANY_CREATED",
           entityType: "Company",
           entityId: created.id,
@@ -225,12 +227,13 @@ export async function createCompanyAction(data: CompanyFormData) {
     } catch {}
 
     revalidatePath("/companies");
+    revalidatePath("/dashboard");
     return { success: true, data: created };
   } catch {
     // Mock store fallback for local development preview
     const newComp: CompanyItem & { organizationId: string; description?: string } = {
       id: `comp_${Date.now()}`,
-      organizationId: session.organizationId,
+      organizationId,
       name,
       industry: industry || null,
       website: website || null,
@@ -245,6 +248,7 @@ export async function createCompanyAction(data: CompanyFormData) {
     };
     mockCompaniesStore.unshift(newComp);
     revalidatePath("/companies");
+    revalidatePath("/dashboard");
     return { success: true, data: newComp };
   }
 }
@@ -254,34 +258,53 @@ export async function createCompanyAction(data: CompanyFormData) {
  */
 export async function updateCompanyAction(id: string, data: Partial<CompanyFormData>) {
   const session = await requirePermission("company:update");
+  const { userId } = await resolveTenantContext(session);
 
   try {
-    const updated = await prisma.company.update({
-      where: {
-        id,
-        organizationId: session.organizationId,
-      },
-      data: {
-        ...data,
-      },
+    const existing = await prisma.company.findUnique({
+      where: { id },
+      select: { id: true, organizationId: true },
     });
 
-    try {
-      await prisma.auditLog.create({
+    if (existing) {
+      const updated = await prisma.company.update({
+        where: { id },
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
-          action: "COMPANY_UPDATED",
-          entityType: "Company",
-          entityId: id,
-          newValues: data,
+          ...data,
         },
       });
-    } catch {}
 
-    revalidatePath("/companies");
-    revalidatePath(`/companies/${id}`);
-    return { success: true, data: updated };
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: existing.organizationId,
+            userId,
+            action: "COMPANY_UPDATED",
+            entityType: "Company",
+            entityId: id,
+            newValues: data,
+          },
+        });
+      } catch {}
+
+      revalidatePath("/companies");
+      revalidatePath(`/companies/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: updated };
+    }
+
+    const index = mockCompaniesStore.findIndex((c) => c.id === id);
+    if (index !== -1) {
+      mockCompaniesStore[index] = {
+        ...mockCompaniesStore[index],
+        ...data,
+      };
+      revalidatePath("/companies");
+      revalidatePath(`/companies/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: mockCompaniesStore[index] };
+    }
+    return { success: false, error: "Failed to update company" };
   } catch {
     const index = mockCompaniesStore.findIndex((c) => c.id === id);
     if (index !== -1) {
@@ -290,6 +313,8 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
         ...data,
       };
       revalidatePath("/companies");
+      revalidatePath(`/companies/${id}`);
+      revalidatePath("/dashboard");
       return { success: true, data: mockCompaniesStore[index] };
     }
     return { success: false, error: "Failed to update company" };
@@ -301,38 +326,51 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
  */
 export async function deleteCompanyAction(id: string) {
   const session = await requirePermission("company:delete");
+  const { userId } = await resolveTenantContext(session);
 
   try {
-    await prisma.company.update({
-      where: {
-        id,
-        organizationId: session.organizationId,
-      },
-      data: {
-        deletedAt: new Date(),
-      },
+    const comp = await prisma.company.findUnique({
+      where: { id },
+      select: { id: true, organizationId: true },
     });
 
-    try {
-      await prisma.auditLog.create({
+    if (comp) {
+      await prisma.company.update({
+        where: { id },
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
-          action: "COMPANY_DELETED",
-          entityType: "Company",
-          entityId: id,
+          deletedAt: new Date(),
         },
       });
-    } catch {}
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: comp.organizationId,
+            userId,
+            action: "COMPANY_DELETED",
+            entityType: "Company",
+            entityId: id,
+          },
+        });
+      } catch {}
+    } else {
+      const idx = mockCompaniesStore.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        mockCompaniesStore.splice(idx, 1);
+      }
+    }
 
     revalidatePath("/companies");
+    revalidatePath("/dashboard");
     return { success: true };
-  } catch {
+  } catch (err) {
+    console.error("[deleteCompanyAction] Error deleting company:", err);
     const idx = mockCompaniesStore.findIndex((c) => c.id === id);
     if (idx !== -1) {
       mockCompaniesStore.splice(idx, 1);
     }
     revalidatePath("/companies");
+    revalidatePath("/dashboard");
     return { success: true };
   }
 }

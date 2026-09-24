@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useTransition } from "react";
 import {
   Kanban,
   Table as TableIcon,
@@ -10,7 +10,7 @@ import {
   TrendingUp,
   CheckCircle2,
 } from "lucide-react";
-import { getOpportunitiesAction } from "@/actions/opportunities";
+import { getOpportunitiesAction, deleteOpportunityAction } from "@/actions/opportunities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KanbanBoard } from "@/features/opportunities/components/kanban-board";
@@ -65,6 +65,8 @@ export default function OpportunitiesPage() {
     loadOpportunities();
   }, [loadOpportunities]);
 
+  const [isPending, startTransition] = useTransition();
+
   const handleOpenCloseDeal = (opp: OpportunityItem, status: "WON" | "LOST") => {
     setCloseDealTarget(opp);
     setCloseDealInitialStatus(status);
@@ -73,6 +75,13 @@ export default function OpportunitiesPage() {
   const handleEdit = (opp: OpportunityItem) => {
     setOpportunityToEdit(opp);
     setIsCreateModalOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    startTransition(async () => {
+      await deleteOpportunityAction(id);
+      loadOpportunities();
+    });
   };
 
   const avgDealSize =
@@ -276,12 +285,14 @@ export default function OpportunitiesPage() {
           onRefresh={loadOpportunities}
           onEdit={handleEdit}
           onCloseDeal={handleOpenCloseDeal}
+          onDelete={handleDelete}
         />
       ) : (
         <OpportunityTable
           opportunities={opportunities}
           onEdit={handleEdit}
           onCloseDeal={handleOpenCloseDeal}
+          onDelete={handleDelete}
         />
       )}
 
