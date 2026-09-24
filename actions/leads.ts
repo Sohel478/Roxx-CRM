@@ -316,7 +316,8 @@ export async function getLeadByIdAction(id: string) {
         fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
       },
     };
-  } catch {
+  } catch (err) {
+    console.error("[getLeadByIdAction] Database error:", err);
     const mock = mockLeadsStore.find((l) => l.id === id);
     if (mock) {
       let convertedInfo = null;
@@ -419,7 +420,8 @@ export async function createLeadAction(data: LeadFormData) {
     revalidatePath("/leads");
     revalidatePath("/dashboard");
     return { success: true, data: created };
-  } catch {
+  } catch (err) {
+    console.error("[createLeadAction] Database error:", err);
     const fullName = `${firstName} ${lastName || ""}`.trim();
     const newLead: LeadItem & { organizationId: string; description?: string } = {
       id: `lead_${Date.now()}`,
