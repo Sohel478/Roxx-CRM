@@ -10,7 +10,7 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
       const sub = await SubscriptionService.getCurrentSubscription("demo-org-123");
       expect(sub).toBeDefined();
       expect(sub.status).toBe("TRIAL");
-      expect(sub.planName).toBe("Professional");
+      expect(sub.planName).toBe("Starter");
       expect(sub.features.users_limit).toBeGreaterThan(0);
       expect(sub.features.leads_limit).toBeGreaterThan(0);
     });
@@ -28,9 +28,9 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
       expect(hasExport).toBe(true);
 
       const hasReports = await SubscriptionService.hasFeature("demo-org-123", "advanced_reports");
-      expect(hasReports).toBe(true);
+      expect(hasReports).toBe(false);
 
-      // AI is exclusive to Business and Enterprise tiers (false for Professional)
+      // AI is exclusive to Growth and Enterprise tiers (false for Starter)
       const hasAi = await SubscriptionService.hasFeature("demo-org-123", "ai_features");
       expect(hasAi).toBe(false);
     });
@@ -44,7 +44,7 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
     it("calculates tenant usage statistics", async () => {
       const usage = await SubscriptionService.getUsage("demo-org-123");
       expect(usage.subscription.organizationId).toBe("demo-org-123");
-      expect(usage.subscription.planName).toBe("Professional");
+      expect(usage.subscription.planName).toBe("Starter");
       expect(usage.usage.users).toBeDefined();
       expect(usage.usage.leads).toBeDefined();
       expect(usage.usage.opportunities).toBeDefined();
@@ -58,10 +58,10 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
         organizationId: "org_test_123",
         organizationName: "Acme Corp",
         customerEmail: "admin@acme.com",
-        planId: "plan_professional",
-        planName: "Professional",
-        amount: 79,
-        currency: "USD",
+        planId: "plan_starter",
+        planName: "Starter",
+        amount: 250,
+        currency: "INR",
         billingInterval: "MONTHLY",
         successUrl: "http://localhost:3000/dashboard",
         cancelUrl: "http://localhost:3000/pricing",
@@ -81,8 +81,8 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
           object: {
             id: "cs_test_123",
             client_reference_id: "org_test_123",
-            amount_total: 7900,
-            currency: "usd",
+            amount_total: 25000,
+            currency: "inr",
           },
         },
       });
@@ -106,11 +106,10 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
       expect(demoOrg?.isDemo).toBe(true);
     });
 
-    it("validates that all 4 master plans are configured in mock/seed data", () => {
+    it("validates that all 3 master plans are configured in mock/seed data", () => {
       const planSlugs = mockPlansStore.map((p) => p.slug);
       expect(planSlugs).toContain("starter");
-      expect(planSlugs).toContain("professional");
-      expect(planSlugs).toContain("business");
+      expect(planSlugs).toContain("growth");
       expect(planSlugs).toContain("enterprise");
     });
   });
@@ -123,8 +122,8 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
       expect(orgAdmin?.isSuperAdmin).toBe(false);
     });
 
-    it("ensures dedicated platform super admin superadmin@roxx-crm.local IS marked as super admin", () => {
-      const platformAdmin = mockUsersStore.find((u) => u.email === "superadmin@roxx-crm.local");
+    it("ensures dedicated platform super admin sohel@techflux.in IS marked as super admin", () => {
+      const platformAdmin = mockUsersStore.find((u) => u.email === "sohel@techflux.in");
       expect(platformAdmin).toBeDefined();
       expect(platformAdmin?.isSuperAdmin).toBe(true);
     });
@@ -149,7 +148,7 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
     });
 
     it("creates Platform Super Admin session with super admin privileges", async () => {
-      const superAdmin = mockUsersStore.find((u) => u.email === "superadmin@roxx-crm.local")!;
+      const superAdmin = mockUsersStore.find((u) => u.email === "sohel@techflux.in")!;
       const token = await createSessionToken({
         id: superAdmin.id,
         organizationId: superAdmin.organizationId,
@@ -163,7 +162,7 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
 
       const session = await verifySessionToken(token);
       expect(session).not.toBeNull();
-      expect(session?.email).toBe("superadmin@roxx-crm.local");
+      expect(session?.email).toBe("sohel@techflux.in");
       expect(session?.isSuperAdmin).toBe(true);
     });
   });
@@ -178,8 +177,8 @@ describe("SaaS Subscription Engine & Super Admin Tests", () => {
         slug: testPlanSlug,
         description: "High capacity agency tier with white labeling and AI.",
         price: 149,
-        currency: "USD",
-        billingInterval: "MONTHLY",
+        currency: "INR",
+        billingInterval: "MONTHLY" as const,
         isActive: true,
         isPublic: true,
         features: {

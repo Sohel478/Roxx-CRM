@@ -188,6 +188,12 @@ export async function ensureDatabaseSchema(): Promise<void> {
       console.warn("[ensureDatabaseSchema] SaaS platform tables create warning:", err);
     });
 
+    // 5. Strictly enforce SaaS Owner isolation on live DB:
+    // Strip is_super_admin from any organization user (Admin, Manager, Sales).
+    await prisma.$executeRawUnsafe(`
+      UPDATE "users" SET "is_super_admin" = false WHERE LOWER("email") != 'sohel@techflux.in';
+    `).catch(() => {});
+
     isMigrationDone = true;
     console.log("✅ [ensureDatabaseSchema] Live PostgreSQL schema synchronized successfully.");
   } catch (err) {

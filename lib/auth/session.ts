@@ -132,6 +132,12 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
       return null; // Session expired
     }
 
+    // STRICT SaaS OWNER ENFORCEMENT:
+    // Super Admin is NOT for organization users (Admin, Manager, Sales).
+    // It is strictly reserved for the SaaS Owner: sohel@techflux.in.
+    const isOwner = payload.email?.toLowerCase() === "sohel@techflux.in";
+    payload.isSuperAdmin = isOwner;
+
     return payload;
   } catch {
     return null;
@@ -221,8 +227,8 @@ export async function requirePermission(permissionKey: string): Promise<SessionU
  */
 export async function requireSuperAdmin(): Promise<SessionUser> {
   const session = await requireAuth();
-  if (!session.isSuperAdmin) {
-    throw new Error("Unauthorized: Super Administrator privileges required");
+  if (!session.isSuperAdmin || session.email?.toLowerCase() !== "sohel@techflux.in") {
+    throw new Error("Unauthorized: Platform SaaS Owner privileges required");
   }
   return session;
 }

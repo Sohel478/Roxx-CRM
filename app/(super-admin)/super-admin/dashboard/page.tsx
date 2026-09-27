@@ -89,9 +89,9 @@ export default async function SuperAdminDashboardPage() {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-extrabold tracking-tight text-slate-900">
-              ${mrr.toLocaleString()}
+              ₹{mrr.toLocaleString()}
             </span>
-            <span className="text-xs text-emerald-600 font-semibold">USD / mo</span>
+            <span className="text-xs text-emerald-600 font-semibold">INR / mo</span>
           </div>
           <p className="text-xs text-slate-500 mt-2">
             Derived from {activeOrganizations} active paid tenants

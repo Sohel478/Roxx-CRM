@@ -33,19 +33,19 @@ const DEFAULT_CREATE_FORM: CreatePlanInput = {
   name: "",
   slug: "",
   description: "",
-  price: 49,
-  currency: "USD",
+  price: 250,
+  currency: "INR",
   billingInterval: "MONTHLY",
   isActive: true,
   isPublic: true,
   features: {
-    users_limit: 5,
-    leads_limit: 5000,
-    companies_limit: 2500,
-    contacts_limit: 5000,
-    opportunities_limit: 2500,
+    users_limit: 20,
+    leads_limit: 10000,
+    companies_limit: 5000,
+    contacts_limit: 10000,
+    opportunities_limit: 5000,
     pipelines_limit: 3,
-    advanced_reports: true,
+    advanced_reports: false,
     export: true,
     api_access: false,
     ai_features: false,
@@ -259,11 +259,15 @@ export function PlansManager({ initialPlans }: PlansManagerProps) {
 
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className="text-3xl font-extrabold text-slate-900">
-                    ${plan.price}
+                    {plan.price === 0
+                      ? "Custom"
+                      : `${plan.currency === "INR" ? "₹" : "$"}${plan.price}`}
                   </span>
-                  <span className="text-xs text-slate-500 font-medium">
-                    /{plan.billingInterval.toLowerCase()}
-                  </span>
+                  {plan.price > 0 && (
+                    <span className="text-xs text-slate-500 font-medium">
+                      /{plan.billingInterval.toLowerCase()}
+                    </span>
+                  )}
                 </div>
 
                 <div className="mt-3 text-xs text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
@@ -464,7 +468,7 @@ export function PlansManager({ initialPlans }: PlansManagerProps) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Price (USD) <span className="text-red-500">*</span>
+                    Price (INR / ₹) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -749,7 +753,7 @@ export function PlansManager({ initialPlans }: PlansManagerProps) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Price (USD) <span className="text-red-500">*</span>
+                    Price (INR / ₹) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"

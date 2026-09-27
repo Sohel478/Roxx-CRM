@@ -215,13 +215,14 @@ export async function getSuperAdminDashboardMetricsAction(): Promise<{
     // Calculate MRR based on plans
     const planPrices: Record<string, number> = {
       FREE_TRIAL: 0,
-      starter: 29,
-      STARTER_20: 29,
-      professional: 79,
-      GROWTH_50: 79,
-      business: 199,
-      ENTERPRISE: 499,
-      enterprise: 499,
+      starter: 250,
+      STARTER_20: 250,
+      growth: 450,
+      GROWTH_50: 450,
+      professional: 450,
+      business: 450,
+      ENTERPRISE: 0,
+      enterprise: 0,
     };
 
     let mrr = 0;
@@ -231,7 +232,7 @@ export async function getSuperAdminDashboardMetricsAction(): Promise<{
       const planKey = (t.subscriptionPlan || "FREE_TRIAL").toLowerCase();
       planCountMap[t.subscriptionPlan] = (planCountMap[t.subscriptionPlan] || 0) + 1;
       if (t.subscriptionStatus === "ACTIVE") {
-        mrr += planPrices[planKey] || planPrices[t.subscriptionPlan] || 29;
+        mrr += planPrices[planKey] ?? planPrices[t.subscriptionPlan] ?? 250;
       }
     });
 
@@ -845,7 +846,7 @@ export async function createSuperAdminPlanAction(input: CreatePlanInput): Promis
         slug,
         description: input.description?.trim() || "",
         price: Number(input.price) || 0,
-        currency: input.currency || "USD",
+        currency: input.currency || "INR",
         billingInterval: input.billingInterval || "MONTHLY",
         isActive: input.isActive ?? true,
         isPublic: input.isPublic ?? true,
@@ -923,7 +924,7 @@ export async function createSuperAdminPlanAction(input: CreatePlanInput): Promis
         slug,
         description: input.description?.trim() || "",
         price: Number(input.price) || 0,
-        currency: input.currency || "USD",
+        currency: input.currency || "INR",
         billingInterval: input.billingInterval || "MONTHLY",
         isActive: input.isActive ?? true,
         isPublic: input.isPublic ?? true,
@@ -1522,7 +1523,7 @@ export async function getPlatformSettingsAction(): Promise<{
     const defaults: SuperAdminPlatformSettings = {
       platformName: "Roxx CRM",
       supportEmail: "support@roxx-crm.com",
-      currency: "USD",
+      currency: "INR",
       defaultTrialDays: 30,
       allowPublicSignup: true,
       paymentProvider: process.env.STRIPE_SECRET_KEY ? "stripe" : "mock",

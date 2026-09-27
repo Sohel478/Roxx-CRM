@@ -11,7 +11,7 @@ export default async function SuperAdminSettingsPage() {
   const settings = res.data || {
     platformName: "Roxx CRM",
     supportEmail: "support@roxx-crm.com",
-    currency: "USD",
+    currency: "INR",
     defaultTrialDays: 30,
     allowPublicSignup: true,
     paymentProvider: "mock",

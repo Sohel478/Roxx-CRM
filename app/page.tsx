@@ -318,62 +318,25 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {/* Starter Plan */}
-            <div className="rounded-xl border border-border bg-card p-6 flex flex-col justify-between shadow-sm hover:border-indigo-300 transition">
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 flex flex-col justify-between shadow-sm hover:border-indigo-300 transition relative">
+              <div className="mb-3">
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                  30-Day Free Trial Included
+                </span>
+              </div>
               <div>
-                <h3 className="text-lg font-bold text-foreground">Starter</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Best for small sales squads</p>
+                <h3 className="text-xl font-bold text-foreground">Starter</h3>
+                <p className="mt-1 text-xs text-muted-foreground">For small sales squads building momentum</p>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold text-foreground">$29</span>
+                  <span className="text-3xl font-extrabold text-foreground">₹250</span>
                   <span className="text-xs text-muted-foreground">/ month</span>
                 </div>
                 <ul className="mt-6 space-y-2.5 text-xs text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Up to <strong>3 Team Members</strong></span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>1,000</strong> Leads</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>500</strong> Opportunities</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>1 Pipeline</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>CSV Import / Export</span>
-                  </li>
-                </ul>
-              </div>
-              <div className="mt-8">
-                <Link href="/signup?plan=starter">
-                  <Button variant="outline" className="w-full">Start Free Trial</Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Professional Plan (Popular) */}
-            <div className="rounded-xl border-2 border-indigo-600 bg-card p-6 flex flex-col justify-between shadow-lg shadow-indigo-600/10 relative">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
-                Most Popular
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-foreground">Professional</h3>
-                <p className="mt-1 text-xs text-muted-foreground">For scaling sales engines</p>
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold text-foreground">$79</span>
-                  <span className="text-xs text-muted-foreground">/ month</span>
-                </div>
-                <ul className="mt-6 space-y-2.5 text-xs text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Up to <strong>10 Team Members</strong></span>
+                    <span>Up to <strong>20 Team Seats</strong></span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
@@ -385,38 +348,37 @@ export default async function LandingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>5</strong> Custom Pipelines</span>
+                    <span><strong>3</strong> Pipelines</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Advanced Reports & Leaderboards</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <span>API Access</span>
+                    <span>CSV Import / Export</span>
                   </li>
                 </ul>
               </div>
               <div className="mt-8">
-                <Link href="/signup?plan=professional">
-                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700">Start Free Trial</Button>
+                <Link href="/signup?plan=starter">
+                  <Button variant="outline" className="w-full">Start 30-Day Free Trial</Button>
                 </Link>
               </div>
             </div>
 
-            {/* Business Plan */}
-            <div className="rounded-xl border border-border bg-card p-6 flex flex-col justify-between shadow-sm hover:border-indigo-300 transition">
+            {/* Growth Plan (Popular) */}
+            <div className="rounded-xl border-2 border-indigo-600 bg-card p-6 sm:p-8 flex flex-col justify-between shadow-lg shadow-indigo-600/10 relative">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                Best Value
+              </div>
               <div>
-                <h3 className="text-lg font-bold text-foreground">Business</h3>
-                <p className="mt-1 text-xs text-muted-foreground">For multi-team organizations</p>
+                <h3 className="text-xl font-bold text-foreground">Growth</h3>
+                <p className="mt-1 text-xs text-muted-foreground">For scaling revenue engines</p>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold text-foreground">$199</span>
+                  <span className="text-3xl font-extrabold text-foreground">₹450</span>
                   <span className="text-xs text-muted-foreground">/ month</span>
                 </div>
                 <ul className="mt-6 space-y-2.5 text-xs text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Up to <strong>25 Team Members</strong></span>
+                    <span><strong>21 to 50</strong> Team Seats</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
@@ -428,42 +390,42 @@ export default async function LandingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>20</strong> Custom Pipelines</span>
+                    <span><strong>10</strong> Custom Pipelines</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Full Audit Logs & Security</span>
+                    <span>Advanced Reports & Leaderboards</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>AI Lead Scoring & Assist</span>
+                    <span>API Access & AI Insights</span>
                   </li>
                 </ul>
               </div>
               <div className="mt-8">
-                <Link href="/signup?plan=business">
-                  <Button variant="outline" className="w-full">Start Free Trial</Button>
+                <Link href="/signup?plan=growth">
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700">Start 30-Day Free Trial</Button>
                 </Link>
               </div>
             </div>
 
             {/* Enterprise Plan */}
-            <div className="rounded-xl border border-border bg-card p-6 flex flex-col justify-between shadow-sm hover:border-indigo-300 transition">
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 flex flex-col justify-between shadow-sm hover:border-indigo-300 transition">
               <div>
-                <h3 className="text-lg font-bold text-foreground">Enterprise</h3>
+                <h3 className="text-xl font-bold text-foreground">Enterprise</h3>
                 <p className="mt-1 text-xs text-muted-foreground">Custom scale & compliance</p>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold text-foreground">$499</span>
-                  <span className="text-xs text-muted-foreground">/ month</span>
+                  <span className="text-3xl font-extrabold text-foreground">Custom</span>
+                  <span className="text-xs text-muted-foreground">pricing</span>
                 </div>
                 <ul className="mt-6 space-y-2.5 text-xs text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>100+</strong> Team Members</span>
+                    <span><strong>50+</strong> Team Seats</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span><strong>250,000+</strong> Leads</span>
+                    <span><strong>Unlimited</strong> Leads & Records</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
@@ -475,13 +437,13 @@ export default async function LandingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-emerald-500" />
-                    <span>Custom SLAs & Neon Postgres Pool</span>
+                    <span>Custom SLAs & Dedicated Pool</span>
                   </li>
                 </ul>
               </div>
               <div className="mt-8">
                 <Link href="/contact">
-                  <Button variant="outline" className="w-full">Contact Sales</Button>
+                  <Button variant="outline" className="w-full">Contact Us</Button>
                 </Link>
               </div>
             </div>

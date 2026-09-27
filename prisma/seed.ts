@@ -173,31 +173,36 @@ export async function main() {
   console.log("✓ Roles and permissions associated");
 
   // 4. Create Seed Users
-  const passwordHash = await bcrypt.hash("password123", 10);
+  const orgPasswordHash = await bcrypt.hash("password123", 10);
+  const ownerPasswordHash = await bcrypt.hash("Momo$143", 10);
 
   const usersData = [
     {
-      email: "superadmin@roxx-crm.local",
-      name: "Platform Super Admin",
+      email: "sohel@techflux.in",
+      name: "Sohel Jatu",
       roleName: "ADMIN",
+      passwordHash: ownerPasswordHash,
       isSuperAdmin: true,
     },
     {
       email: "admin@roxx-crm.local",
       name: "Admin User",
       roleName: "ADMIN",
+      passwordHash: orgPasswordHash,
       isSuperAdmin: false,
     },
     {
       email: "manager@roxx-crm.local",
       name: "Sarah Manager",
       roleName: "MANAGER",
+      passwordHash: orgPasswordHash,
       isSuperAdmin: false,
     },
     {
       email: "sales@roxx-crm.local",
       name: "Alex Sales",
       roleName: "SALES_USER",
+      passwordHash: orgPasswordHash,
       isSuperAdmin: false,
     },
   ];
@@ -207,7 +212,7 @@ export async function main() {
       where: { email: u.email },
       update: {
         name: u.name,
-        passwordHash,
+        passwordHash: u.passwordHash,
         roleId: roles[u.roleName],
         isActive: true,
         isSuperAdmin: u.isSuperAdmin,
@@ -216,7 +221,7 @@ export async function main() {
         organizationId: org.id,
         email: u.email,
         name: u.name,
-        passwordHash,
+        passwordHash: u.passwordHash,
         roleId: roles[u.roleName],
         isActive: true,
         isSuperAdmin: u.isSuperAdmin,
@@ -331,22 +336,22 @@ export async function main() {
   }
   console.log("✓ Lead statuses configured");
  
-  // 6. Seed SaaS Plans & Features
+  // 6. Seed SaaS Plans & Features (INR Tiers)
   const plansData = [
     {
       name: "Starter",
       slug: "starter",
-      description: "Ideal for small sales teams getting started with structured CRM processes.",
-      price: 29,
-      currency: "USD",
+      description: "Up to 20 team seats. Essential CRM pipeline, lead tracking, and contact management.",
+      price: 250,
+      currency: "INR",
       billingInterval: "MONTHLY",
       features: {
-        users_limit: "3",
-        leads_limit: "1000",
-        companies_limit: "500",
-        contacts_limit: "1000",
-        opportunities_limit: "500",
-        pipelines_limit: "1",
+        users_limit: "20",
+        leads_limit: "10000",
+        companies_limit: "5000",
+        contacts_limit: "10000",
+        opportunities_limit: "5000",
+        pipelines_limit: "3",
         advanced_reports: "false",
         export: "true",
         api_access: "false",
@@ -354,39 +359,19 @@ export async function main() {
       },
     },
     {
-      name: "Professional",
-      slug: "professional",
-      description: "For fast-growing revenue teams needing multiple pipelines and deep reporting.",
-      price: 79,
-      currency: "USD",
+      name: "Growth",
+      slug: "growth",
+      description: "21 to 50 team seats. Advanced analytics, workflow pipelines, and API integrations.",
+      price: 450,
+      currency: "INR",
       billingInterval: "MONTHLY",
       features: {
-        users_limit: "10",
-        leads_limit: "10000",
-        companies_limit: "5000",
-        contacts_limit: "10000",
-        opportunities_limit: "5000",
-        pipelines_limit: "5",
-        advanced_reports: "true",
-        export: "true",
-        api_access: "true",
-        ai_features: "false",
-      },
-    },
-    {
-      name: "Business",
-      slug: "business",
-      description: "Maximum scale, unlimited pipelines, enterprise audit controls, and AI features.",
-      price: 199,
-      currency: "USD",
-      billingInterval: "MONTHLY",
-      features: {
-        users_limit: "25",
+        users_limit: "50",
         leads_limit: "50000",
         companies_limit: "25000",
         contacts_limit: "50000",
         opportunities_limit: "25000",
-        pipelines_limit: "20",
+        pipelines_limit: "10",
         advanced_reports: "true",
         export: "true",
         api_access: "true",
@@ -396,17 +381,17 @@ export async function main() {
     {
       name: "Enterprise",
       slug: "enterprise",
-      description: "Custom volume and dedicated support for large organizations.",
-      price: 499,
-      currency: "USD",
+      description: "50+ team seats. Custom pricing, unlimited scale, dedicated support, and bespoke integrations.",
+      price: 0,
+      currency: "INR",
       billingInterval: "MONTHLY",
       features: {
-        users_limit: "100",
-        leads_limit: "250000",
-        companies_limit: "100000",
-        contacts_limit: "250000",
-        opportunities_limit: "100000",
-        pipelines_limit: "100",
+        users_limit: "99999",
+        leads_limit: "999999",
+        companies_limit: "999999",
+        contacts_limit: "999999",
+        opportunities_limit: "999999",
+        pipelines_limit: "99",
         advanced_reports: "true",
         export: "true",
         api_access: "true",
@@ -415,7 +400,7 @@ export async function main() {
     },
   ];
 
-  let professionalPlanId: string | null = null;
+  let starterPlanId: string | null = null;
   for (const p of plansData) {
     const plan = await prisma.plan.upsert({
       where: { slug: p.slug },
@@ -436,8 +421,8 @@ export async function main() {
       },
     });
 
-    if (p.slug === "professional") {
-      professionalPlanId = plan.id;
+    if (p.slug === "starter") {
+      starterPlanId = plan.id;
     }
 
     for (const [key, val] of Object.entries(p.features)) {
@@ -457,38 +442,42 @@ export async function main() {
       });
     }
   }
-  console.log(`✓ 4 SaaS Subscription Plans configured with feature limits`);
+  console.log(`✓ 3 SaaS Subscription Plans (INR) configured with feature limits`);
 
-  // 7. Seed Platform User (Super Admin)
+  // 7. Seed Platform User (SaaS Owner Super Admin)
   await prisma.platformUser.upsert({
-    where: { email: "admin@roxx-crm.local" },
+    where: { email: "sohel@techflux.in" },
     update: {
-      name: "Platform Super Admin",
-      passwordHash,
+      name: "Sohel Jatu",
+      passwordHash: ownerPasswordHash,
       status: "ACTIVE",
     },
     create: {
-      name: "Platform Super Admin",
-      email: "admin@roxx-crm.local",
-      passwordHash,
+      name: "Sohel Jatu",
+      email: "sohel@techflux.in",
+      passwordHash: ownerPasswordHash,
       status: "ACTIVE",
     },
   });
-  console.log("✓ Platform Super Admin user ready (admin@roxx-crm.local)");
+  // Clean up any legacy admin from platformUser
+  await prisma.platformUser.deleteMany({
+    where: { email: { not: "sohel@techflux.in" } },
+  }).catch(() => {});
+  console.log("✓ Platform Super Admin user ready (sohel@techflux.in)");
 
   // 8. Seed Demo Organization Subscription & Event
-  if (professionalPlanId) {
+  if (starterPlanId) {
     const sub = await prisma.subscription.upsert({
       where: { id: "sub_demo_company" },
       update: {
-        planId: professionalPlanId,
+        planId: starterPlanId,
         status: "TRIAL",
         trialEndDate: trialEnd,
       },
       create: {
         id: "sub_demo_company",
         organizationId: org.id,
-        planId: professionalPlanId,
+        planId: starterPlanId,
         status: "TRIAL",
         startDate: new Date(),
         trialStartDate: new Date(),
@@ -503,7 +492,7 @@ export async function main() {
         subscriptionId: sub.id,
         organizationId: org.id,
         eventType: "CREATED",
-        newPlanId: professionalPlanId,
+        newPlanId: starterPlanId,
         notes: "Initial 30-day Free Trial started automatically",
         createdBy: "SYSTEM",
       },

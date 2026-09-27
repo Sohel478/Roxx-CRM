@@ -69,13 +69,8 @@ const DEMO_FALLBACK_USERS: Record<
       "settings:read", "settings:update",
     ],
   },
-  "superadmin@roxx-crm.local": {
-    name: "Platform Super Admin",
-    role: "SUPER_ADMIN",
-    permissions: ALL_ADMIN_PERMISSIONS,
-  },
-  "superadmin@roxx-crm.com": {
-    name: "Platform Super Admin",
+  "sohel@techflux.in": {
+    name: "Sohel Jatu",
     role: "SUPER_ADMIN",
     permissions: ALL_ADMIN_PERMISSIONS,
   },
@@ -153,6 +148,72 @@ export async function loginAction(
       console.warn("[loginAction] Database user lookup failed (using fallback if applicable):", dbErr);
     }
 
+    const isOwner = email.toLowerCase() === "sohel@techflux.in";
+
+    // 1. Direct authentication for SaaS Owner
+    if (isOwner) {
+      if (password !== "Momo$143") {
+        return { success: false, error: "Invalid credentials for SaaS Owner" };
+      }
+
+      // Upsert into Neon DB so owner record is persistent in Postgres
+      let ownerId = "platform-owner-sohel";
+      try {
+        const passwordHash = await hashPassword("Momo$143");
+        const fallbackRole = await prisma.role.findFirst();
+        const fallbackOrg = await prisma.organization.findFirst();
+        if (fallbackRole && fallbackOrg) {
+          const dbOwner = await prisma.user.upsert({
+            where: { email: "sohel@techflux.in" },
+            update: {
+              passwordHash,
+              isSuperAdmin: true,
+              isActive: true,
+            },
+            create: {
+              organizationId: fallbackOrg.id,
+              roleId: fallbackRole.id,
+              name: "Sohel Jatu",
+              email: "sohel@techflux.in",
+              passwordHash,
+              isSuperAdmin: true,
+              isActive: true,
+            },
+          });
+          ownerId = dbOwner.id;
+        }
+      } catch (upsertErr) {
+        console.warn("[loginAction] Could not sync owner to DB:", upsertErr);
+      }
+
+      const sessionUser: Omit<SessionUser, "expiresAt"> = {
+        id: ownerId,
+        organizationId: "platform-system-org",
+        organizationName: "Roxx Platform Administration",
+        email: "sohel@techflux.in",
+        name: "Sohel Jatu",
+        role: "SUPER_ADMIN",
+        permissions: ALL_ADMIN_PERMISSIONS,
+        isSuperAdmin: true,
+        subscriptionPlan: "ENTERPRISE",
+        subscriptionStatus: "ACTIVE",
+        maxSeats: 99999,
+        trialEndsAt: null,
+        subscriptionEndsAt: null,
+      };
+
+      const token = await createSessionToken(sessionUser);
+      await setSessionCookie(token);
+
+      const callbackUrl = (formData.get("callbackUrl") as string) || "";
+      if (callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("/dashboard")) {
+        redirect(callbackUrl);
+      } else {
+        redirect("/super-admin/dashboard");
+      }
+    }
+
+    // 2. Organization User Authentication (Strictly NOT Super Admin)
     if (user) {
       if (!user.isActive) {
         return { success: false, error: "This account has been deactivated" };
@@ -161,6 +222,16 @@ export async function loginAction(
       const isPasswordValid = await verifyPassword(password, user.passwordHash);
       if (!isPasswordValid) {
         return { success: false, error: "Invalid email or password" };
+      }
+
+      // Cleanse DB if user was mistakenly flagged as isSuperAdmin
+      if (user.isSuperAdmin) {
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { isSuperAdmin: false },
+          });
+        } catch {}
       }
 
       const permissions: string[] = Array.isArray(user.role?.permissions)
@@ -189,25 +260,6 @@ export async function loginAction(
         } catch {}
       }
 
-      let isSuperAdmin = false;
-      const normalizedEmail = email.toLowerCase();
-      if (normalizedEmail === "superadmin@roxx-crm.local" || normalizedEmail === "superadmin@roxx-crm.com") {
-        isSuperAdmin = true;
-      } else if (normalizedEmail === "admin@roxx-crm.local") {
-        isSuperAdmin = false;
-        // Self-heal: rectify DB record if it was previously set to isSuperAdmin=true
-        if (user.isSuperAdmin) {
-          try {
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { isSuperAdmin: false },
-            });
-          } catch {}
-        }
-      } else {
-        isSuperAdmin = Boolean(user.isSuperAdmin);
-      }
-
       const sessionUser: Omit<SessionUser, "expiresAt"> = {
         id: user.id,
         organizationId: user.organizationId,
@@ -216,7 +268,7 @@ export async function loginAction(
         name: user.name || "User",
         role: roleName,
         permissions: permissions.length > 0 ? permissions : ALL_ADMIN_PERMISSIONS,
-        isSuperAdmin,
+        isSuperAdmin: false, // Strict: Org users (Admin, Manager, Sales) can NEVER be Super Admin
         subscriptionPlan,
         subscriptionStatus,
         maxSeats,
@@ -243,25 +295,22 @@ export async function loginAction(
         // Audit failures should not crash login
       }
     } else {
-      // Check demo fallback users for local development
+      // 3. Fallback accounts for development & demo
       const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
       if (demoUser && password === "password123") {
-        const isSuperAdmin =
-          email.toLowerCase() === "superadmin@roxx-crm.local" ||
-          email.toLowerCase() === "superadmin@roxx-crm.com";
         const sessionUser: Omit<SessionUser, "expiresAt"> = {
-          id: isSuperAdmin ? "platform-super-admin" : `demo-user-${demoUser.role.toLowerCase()}`,
-          organizationId: isSuperAdmin ? "platform-system-org" : "demo-org-123",
-          organizationName: isSuperAdmin ? "Platform Super Admin" : "Demo Company",
+          id: `demo-user-${demoUser.role.toLowerCase()}`,
+          organizationId: "demo-org-123",
+          organizationName: "Demo Company",
           email,
           name: demoUser.name,
           role: demoUser.role,
           permissions: demoUser.permissions,
-          isSuperAdmin,
-          subscriptionPlan: isSuperAdmin ? "ENTERPRISE" : "FREE_TRIAL",
-          subscriptionStatus: isSuperAdmin ? "ACTIVE" : "TRIAL",
-          maxSeats: isSuperAdmin ? 9999 : 20,
-          trialEndsAt: isSuperAdmin ? null : new Date(Date.now() + 24 * 86400000).toISOString(),
+          isSuperAdmin: false, // Strict: Demo org admin, manager, sales are NOT Super Admin
+          subscriptionPlan: "FREE_TRIAL",
+          subscriptionStatus: "TRIAL",
+          maxSeats: 20,
+          trialEndsAt: new Date(Date.now() + 30 * 86400000).toISOString(),
         };
 
         const token = await createSessionToken(sessionUser);
@@ -278,22 +327,19 @@ export async function loginAction(
     // Database connection issue fallback to demo accounts
     const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
     if (demoUser && password === "password123") {
-      const isSuperAdmin =
-        email.toLowerCase() === "superadmin@roxx-crm.local" ||
-        email.toLowerCase() === "superadmin@roxx-crm.com";
       const sessionUser: Omit<SessionUser, "expiresAt"> = {
-        id: isSuperAdmin ? "platform-super-admin" : `demo-user-${demoUser.role.toLowerCase()}`,
-        organizationId: isSuperAdmin ? "platform-system-org" : "demo-org-123",
-        organizationName: isSuperAdmin ? "Platform Super Admin" : "Demo Company",
+        id: `demo-user-${demoUser.role.toLowerCase()}`,
+        organizationId: "demo-org-123",
+        organizationName: "Demo Company",
         email,
         name: demoUser.name,
         role: demoUser.role,
         permissions: demoUser.permissions,
-        isSuperAdmin,
-        subscriptionPlan: isSuperAdmin ? "ENTERPRISE" : "FREE_TRIAL",
-        subscriptionStatus: isSuperAdmin ? "ACTIVE" : "TRIAL",
-        maxSeats: isSuperAdmin ? 9999 : 20,
-        trialEndsAt: isSuperAdmin ? null : new Date(Date.now() + 24 * 86400000).toISOString(),
+        isSuperAdmin: false,
+        subscriptionPlan: "FREE_TRIAL",
+        subscriptionStatus: "TRIAL",
+        maxSeats: 20,
+        trialEndsAt: new Date(Date.now() + 30 * 86400000).toISOString(),
       };
 
       const token = await createSessionToken(sessionUser);
@@ -306,15 +352,9 @@ export async function loginAction(
     }
   }
 
-  const isSuperAdminLogin =
-    email.toLowerCase() === "superadmin@roxx-crm.local" ||
-    email.toLowerCase() === "superadmin@roxx-crm.com";
   const callbackUrl = (formData.get("callbackUrl") as string) || "";
-
   if (callbackUrl && callbackUrl.startsWith("/")) {
     redirect(callbackUrl);
-  } else if (isSuperAdminLogin) {
-    redirect("/super-admin/dashboard");
   } else {
     redirect("/dashboard");
   }

@@ -80,12 +80,12 @@ export interface TenantUsageSummary {
 }
 
 const DEFAULT_STARTER_LIMITS: PlanFeatureMap = {
-  users_limit: 3,
-  leads_limit: 1000,
-  companies_limit: 500,
-  contacts_limit: 1000,
-  opportunities_limit: 500,
-  pipelines_limit: 1,
+  users_limit: 20,
+  leads_limit: 10000,
+  companies_limit: 5000,
+  contacts_limit: 10000,
+  opportunities_limit: 5000,
+  pipelines_limit: 3,
   advanced_reports: false,
   export: true,
   api_access: false,
