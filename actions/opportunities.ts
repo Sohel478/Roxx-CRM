@@ -18,6 +18,7 @@ import {
   CloseOpportunityFormData,
   OpportunityItem,
 } from "@/lib/validations/opportunities";
+import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
 /**
  * Fetch all opportunities with stage metrics and totals
@@ -275,6 +276,12 @@ export async function createOpportunityAction(data: OpportunityFormData) {
   try {
     const session = await requirePermission("opportunity:create");
     const { organizationId, userId } = await resolveTenantContext(session);
+
+    const limitCheck = await SubscriptionService.checkLimit(organizationId, "opportunities");
+    if (!limitCheck.allowed) {
+      return { success: false, error: limitCheck.message || "Opportunity limit reached. Please upgrade your subscription plan." };
+    }
+
     const parsed = opportunitySchema.safeParse(data);
 
     if (!parsed.success) {

@@ -13,10 +13,19 @@ export async function middleware(request: NextRequest) {
 
   // Public paths that do not require authentication
   const isPublicPath =
+    pathname === "/" ||
+    pathname.startsWith("/features") ||
+    pathname.startsWith("/pricing") ||
+    pathname.startsWith("/demo") ||
+    pathname.startsWith("/contact") ||
+    pathname.startsWith("/terms") ||
+    pathname.startsWith("/privacy") ||
+    pathname.startsWith("/signup") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/api/v1/health") ||
+    pathname.startsWith("/api/v1/billing/webhook") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 
@@ -30,13 +39,13 @@ export async function middleware(request: NextRequest) {
     session = null;
   }
 
-  // If already authenticated and trying to access /login, redirect to /dashboard
+  // If already authenticated and trying to access /login or /signup, redirect to /dashboard
   // UNLESS explicitly resetting or logging out (prevents infinite error recovery loops)
   const isReset =
     request.nextUrl.searchParams.has("reset") ||
     request.nextUrl.searchParams.has("logout");
 
-  if (session && pathname.startsWith("/login") && !isReset) {
+  if (session && (pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/register")) && !isReset) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

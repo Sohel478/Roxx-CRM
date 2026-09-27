@@ -25,6 +25,8 @@ enum SubscriptionPlan {
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
+  PAST_DUE
+  CANCELLED
   EXPIRED
   SUSPENDED
 }
@@ -41,24 +43,32 @@ model Organization {
   billingEmail        String?            @map("billing_email")
   billingPhone        String?            @map("billing_phone")
   subscriptionNotes   String?            @map("subscription_notes")
+  isDemo              Boolean            @default(false) @map("is_demo")
+  logoUrl             String?            @map("logo_url")
+  website             String?
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
+  deletedAt           DateTime?          @map("deleted_at")
 
-  users          User[]
-  roles          Role[]
-  pipelines      Pipeline[]
-  leadSources    LeadSource[]
-  leadStatuses   LeadStatus[]
-  leads          Lead[]
-  companies      Company[]
-  contacts       Contact[]
-  opportunities  Opportunity[]
-  activities     Activity[]
-  tasks          Task[]
-  notes          Note[]
-  notifications  Notification[]
-  auditLogs      AuditLog[]
-  systemSettings SystemSetting[]
+  users              User[]
+  roles              Role[]
+  pipelines          Pipeline[]
+  leadSources        LeadSource[]
+  leadStatuses       LeadStatus[]
+  leads              Lead[]
+  companies          Company[]
+  contacts           Contact[]
+  opportunities      Opportunity[]
+  activities         Activity[]
+  tasks              Task[]
+  notes              Note[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  systemSettings     SystemSetting[]
+  subscriptions      Subscription[]
+  subscriptionEvents SubscriptionEvent[]
+  payments           Payment[]
+  usageSnapshots     UsageSnapshot[]
 
   @@map("organizations")
 }
@@ -532,4 +542,144 @@ model SystemSetting {
   @@unique([organizationId, key])
   @@index([organizationId])
   @@map("system_settings")
+}
+
+// ----------------------------------------------------
+// 7. SaaS Platform Models
+// ----------------------------------------------------
+
+model PlatformUser {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  status       String   @default("ACTIVE") // ACTIVE, SUSPENDED
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_users")
+}
+
+model Plan {
+  id              String        @id @default(cuid())
+  name            String        // Starter, Professional, Business, Enterprise
+  slug            String        @unique // starter, professional, business, enterprise
+  description     String?       @db.Text
+  price           Decimal       @default(0) @db.Decimal(10, 2)
+  currency        String        @default("USD")
+  billingInterval String        @default("MONTHLY") @map("billing_interval") // MONTHLY, YEARLY
+  isActive        Boolean       @default(true) @map("is_active")
+  isPublic        Boolean       @default(true) @map("is_public")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  features        PlanFeature[]
+  subscriptions   Subscription[]
+
+  @@map("plans")
+}
+
+model PlanFeature {
+  id           String   @id @default(cuid())
+  planId       String   @map("plan_id")
+  featureKey   String   @map("feature_key") // e.g. "users_limit", "leads_limit", "advanced_reports"
+  featureValue String   @map("feature_value") // e.g. "10", "10000", "true"
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@index([planId])
+  @@map("plan_features")
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  organizationId         String             @map("organization_id")
+  planId                 String             @map("plan_id")
+  status                 SubscriptionStatus @default(TRIAL)
+  startDate              DateTime           @default(now()) @map("start_date")
+  endDate                DateTime?          @map("end_date")
+  trialStartDate         DateTime?          @map("trial_start_date")
+  trialEndDate           DateTime?          @map("trial_end_date")
+  renewalDate            DateTime?          @map("renewal_date")
+  cancelledAt            DateTime?          @map("cancelled_at")
+  billingInterval        String             @default("MONTHLY") @map("billing_interval")
+  externalSubscriptionId String?            @map("external_subscription_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  organization           Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                   Plan               @relation(fields: [planId], references: [id])
+  events                 SubscriptionEvent[]
+  payments               Payment[]
+
+  @@index([organizationId])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+model SubscriptionEvent {
+  id             String       @id @default(cuid())
+  subscriptionId String       @map("subscription_id")
+  organizationId String       @map("organization_id")
+  eventType      String       @map("event_type") // CREATED, RENEWED, PLAN_CHANGED, TRIAL_EXTENDED, SUSPENDED, ACTIVATED, CANCELLED
+  oldPlanId      String?      @map("old_plan_id")
+  newPlanId      String?      @map("new_plan_id")
+  notes          String?      @db.Text
+  createdBy      String?      @map("created_by") // Admin user ID or 'SYSTEM'
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([subscriptionId])
+  @@map("subscription_events")
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  organizationId    String        @map("organization_id")
+  subscriptionId    String?       @map("subscription_id")
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("USD")
+  status            String        @default("COMPLETED") // PENDING, COMPLETED, FAILED, REFUNDED
+  provider          String        @default("STRIPE") // STRIPE, RAZORPAY, MANUAL
+  externalPaymentId String?       @map("external_payment_id")
+  createdAt         DateTime      @default(now()) @map("created_at")
+
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("payments")
+}
+
+model PlatformSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+model UsageSnapshot {
+  id                 String       @id @default(cuid())
+  organizationId     String       @map("organization_id")
+  usersCount         Int          @default(0) @map("users_count")
+  leadsCount         Int          @default(0) @map("leads_count")
+  companiesCount     Int          @default(0) @map("companies_count")
+  contactsCount      Int          @default(0) @map("contacts_count")
+  opportunitiesCount Int          @default(0) @map("opportunities_count")
+  storageBytes       BigInt       @default(0) @map("storage_bytes")
+  capturedAt         DateTime     @default(now()) @map("captured_at")
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, capturedAt])
+  @@map("usage_snapshots")
 }

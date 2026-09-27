@@ -19,6 +19,7 @@ export interface SessionUser {
   maxSeats?: number;
   trialEndsAt?: string | null;
   subscriptionEndsAt?: string | null;
+  isDemo?: boolean;
 }
 
 const DEFAULT_SECRET = "roxx-crm-default-development-secret-key-at-least-32-chars";

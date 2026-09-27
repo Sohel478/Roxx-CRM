@@ -94,19 +94,19 @@ export function Sidebar({ session }: SidebarProps = {}) {
         {session?.isSuperAdmin && (
           <div className="pt-3 mt-3 border-t border-slate-100">
             <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-purple-600 mb-1">
-              Super Admin
+              Platform Administration
             </p>
             <Link
-              href="/admin/tenants"
+              href="/super-admin/dashboard"
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                pathname?.startsWith("/admin")
+                pathname?.startsWith("/super-admin")
                   ? "bg-purple-50 text-purple-700 font-semibold"
                   : "text-slate-600 hover:bg-purple-50/50 hover:text-purple-900"
               )}
             >
-              <Crown className={cn("w-5 h-5", pathname?.startsWith("/admin") ? "text-purple-600" : "text-purple-400")} />
-              <span>Tenants &amp; SaaS</span>
+              <Crown className={cn("w-5 h-5", pathname?.startsWith("/super-admin") ? "text-purple-600" : "text-purple-400")} />
+              <span>Super Admin Portal</span>
             </Link>
           </div>
         )}

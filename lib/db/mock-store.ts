@@ -828,13 +828,17 @@ export interface MockOrganization {
   name: string;
   slug: string;
   subscriptionPlan: "FREE_TRIAL" | "STARTER_20" | "GROWTH_50" | "ENTERPRISE";
-  subscriptionStatus: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED";
+  subscriptionStatus: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED" | "PAST_DUE" | "CANCELLED";
   maxSeats: number;
   trialEndsAt: string | null;
   subscriptionEndsAt: string | null;
   billingEmail: string | null;
   billingPhone: string | null;
   subscriptionNotes: string | null;
+  isDemo?: boolean;
+  logoUrl?: string | null;
+  website?: string | null;
+  deletedAt?: string | null;
   createdAt: string;
 }
 
@@ -851,7 +855,225 @@ export const mockOrganizationsStore: MockOrganization[] = [
     billingEmail: "admin@roxx-crm.local",
     billingPhone: "+91 98765 43210",
     subscriptionNotes: "Registered via standard 30-day Free Trial (20 seats)",
+    isDemo: true,
+    website: "https://demo.roxx-crm.local",
     createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];
+
+export interface MockPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  price: number;
+  currency: string;
+  billingInterval: "MONTHLY" | "YEARLY";
+  isActive: boolean;
+  isPublic: boolean;
+  features: Record<string, string>;
+  createdAt: string;
+}
+
+export const mockPlansStore: MockPlan[] = [
+  {
+    id: "plan_starter",
+    name: "Starter",
+    slug: "starter",
+    description: "Ideal for small sales teams getting started with structured CRM processes.",
+    price: 29,
+    currency: "USD",
+    billingInterval: "MONTHLY",
+    isActive: true,
+    isPublic: true,
+    features: {
+      users_limit: "3",
+      leads_limit: "1000",
+      companies_limit: "500",
+      contacts_limit: "1000",
+      opportunities_limit: "500",
+      pipelines_limit: "1",
+      advanced_reports: "false",
+      export: "true",
+      api_access: "false",
+      ai_features: "false",
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "plan_professional",
+    name: "Professional",
+    slug: "professional",
+    description: "For fast-growing revenue teams needing multiple pipelines and deep reporting.",
+    price: 79,
+    currency: "USD",
+    billingInterval: "MONTHLY",
+    isActive: true,
+    isPublic: true,
+    features: {
+      users_limit: "10",
+      leads_limit: "10000",
+      companies_limit: "5000",
+      contacts_limit: "10000",
+      opportunities_limit: "5000",
+      pipelines_limit: "5",
+      advanced_reports: "true",
+      export: "true",
+      api_access: "true",
+      ai_features: "false",
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "plan_business",
+    name: "Business",
+    slug: "business",
+    description: "Maximum scale, unlimited pipelines, enterprise audit controls, and AI features.",
+    price: 199,
+    currency: "USD",
+    billingInterval: "MONTHLY",
+    isActive: true,
+    isPublic: true,
+    features: {
+      users_limit: "25",
+      leads_limit: "50000",
+      companies_limit: "25000",
+      contacts_limit: "50000",
+      opportunities_limit: "25000",
+      pipelines_limit: "20",
+      advanced_reports: "true",
+      export: "true",
+      api_access: "true",
+      ai_features: "true",
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "plan_enterprise",
+    name: "Enterprise",
+    slug: "enterprise",
+    description: "Custom volume and dedicated support for large organizations.",
+    price: 499,
+    currency: "USD",
+    billingInterval: "MONTHLY",
+    isActive: true,
+    isPublic: true,
+    features: {
+      users_limit: "100",
+      leads_limit: "250000",
+      companies_limit: "100000",
+      contacts_limit: "250000",
+      opportunities_limit: "100000",
+      pipelines_limit: "100",
+      advanced_reports: "true",
+      export: "true",
+      api_access: "true",
+      ai_features: "true",
+    },
+    createdAt: new Date().toISOString(),
+  },
+];
+
+export interface MockSubscription {
+  id: string;
+  organizationId: string;
+  planId: string;
+  status: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED" | "PAST_DUE" | "CANCELLED";
+  startDate: string;
+  endDate: string | null;
+  trialStartDate: string | null;
+  trialEndDate: string | null;
+  renewalDate: string | null;
+  cancelledAt: string | null;
+  billingInterval: string;
+  externalSubscriptionId?: string | null;
+  createdAt: string;
+}
+
+export const mockSubscriptionsStore: MockSubscription[] = [
+  {
+    id: "sub_demo_1",
+    organizationId: "demo-org-123",
+    planId: "plan_professional",
+    status: "TRIAL",
+    startDate: new Date(Date.now() - 6 * 86400000).toISOString(),
+    endDate: null,
+    trialStartDate: new Date(Date.now() - 6 * 86400000).toISOString(),
+    trialEndDate: new Date(Date.now() + 24 * 86400000).toISOString(),
+    renewalDate: new Date(Date.now() + 24 * 86400000).toISOString(),
+    cancelledAt: null,
+    billingInterval: "MONTHLY",
+    createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];
+
+export interface MockSubscriptionEvent {
+  id: string;
+  subscriptionId: string;
+  organizationId: string;
+  eventType: string;
+  oldPlanId: string | null;
+  newPlanId: string | null;
+  notes: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+export const mockSubscriptionEventsStore: MockSubscriptionEvent[] = [
+  {
+    id: "sub_evt_1",
+    subscriptionId: "sub_demo_1",
+    organizationId: "demo-org-123",
+    eventType: "CREATED",
+    oldPlanId: null,
+    newPlanId: "plan_professional",
+    notes: "Initial 30-day Free Trial started automatically",
+    createdBy: "SYSTEM",
+    createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];
+
+export interface MockPayment {
+  id: string;
+  organizationId: string;
+  subscriptionId: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  provider: string;
+  externalPaymentId: string | null;
+  createdAt: string;
+}
+
+export const mockPaymentsStore: MockPayment[] = [
+  {
+    id: "pay_1",
+    organizationId: "demo-org-123",
+    subscriptionId: "sub_demo_1",
+    amount: 0,
+    currency: "USD",
+    status: "COMPLETED",
+    provider: "STRIPE",
+    externalPaymentId: "ch_trial_free",
+    createdAt: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];
+
+export interface MockPlatformUser {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  createdAt: string;
+}
+
+export const mockPlatformUsersStore: MockPlatformUser[] = [
+  {
+    id: "platform_super_admin",
+    name: "Platform Super Admin",
+    email: "admin@roxx-crm.local",
+    status: "ACTIVE",
+    createdAt: new Date().toISOString(),
   },
 ];
 

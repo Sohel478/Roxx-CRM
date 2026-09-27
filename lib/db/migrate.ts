@@ -53,7 +53,11 @@ export async function ensureDatabaseSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS "subscription_ends_at" TIMESTAMP(3),
           ADD COLUMN IF NOT EXISTS "billing_email" TEXT,
           ADD COLUMN IF NOT EXISTS "billing_phone" TEXT,
-          ADD COLUMN IF NOT EXISTS "subscription_notes" TEXT;
+          ADD COLUMN IF NOT EXISTS "subscription_notes" TEXT,
+          ADD COLUMN IF NOT EXISTS "is_demo" BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS "logo_url" TEXT,
+          ADD COLUMN IF NOT EXISTS "website" TEXT,
+          ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMP(3);
       `);
     } catch {
       // Fallback: If enum type was not created, use standard TEXT/VARCHAR columns
@@ -66,7 +70,11 @@ export async function ensureDatabaseSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS "subscription_ends_at" TIMESTAMP(3),
           ADD COLUMN IF NOT EXISTS "billing_email" TEXT,
           ADD COLUMN IF NOT EXISTS "billing_phone" TEXT,
-          ADD COLUMN IF NOT EXISTS "subscription_notes" TEXT;
+          ADD COLUMN IF NOT EXISTS "subscription_notes" TEXT,
+          ADD COLUMN IF NOT EXISTS "is_demo" BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS "logo_url" TEXT,
+          ADD COLUMN IF NOT EXISTS "website" TEXT,
+          ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMP(3);
       `).catch((err) => {
         console.warn("[ensureDatabaseSchema] Fallback organizations alter warning:", err);
       });
@@ -78,6 +86,106 @@ export async function ensureDatabaseSchema(): Promise<void> {
         ADD COLUMN IF NOT EXISTS "is_super_admin" BOOLEAN DEFAULT false;
     `).catch((err) => {
       console.warn("[ensureDatabaseSchema] users alter warning:", err);
+    });
+
+    // 4. Ensure SaaS Platform Tables exist
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "platform_users" (
+        "id" TEXT PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "email" TEXT UNIQUE NOT NULL,
+        "password_hash" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "plans" (
+        "id" TEXT PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "slug" TEXT UNIQUE NOT NULL,
+        "description" TEXT,
+        "price" DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        "currency" TEXT NOT NULL DEFAULT 'USD',
+        "billing_interval" TEXT NOT NULL DEFAULT 'MONTHLY',
+        "is_active" BOOLEAN NOT NULL DEFAULT true,
+        "is_public" BOOLEAN NOT NULL DEFAULT true,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "plan_features" (
+        "id" TEXT PRIMARY KEY,
+        "plan_id" TEXT NOT NULL REFERENCES "plans"("id") ON DELETE CASCADE,
+        "feature_key" TEXT NOT NULL,
+        "feature_value" TEXT NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "plan_features_plan_id_feature_key_key" UNIQUE ("plan_id", "feature_key")
+      );
+
+      CREATE TABLE IF NOT EXISTS "subscriptions" (
+        "id" TEXT PRIMARY KEY,
+        "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+        "plan_id" TEXT NOT NULL REFERENCES "plans"("id"),
+        "status" TEXT NOT NULL DEFAULT 'TRIAL',
+        "start_date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "end_date" TIMESTAMP(3),
+        "trial_start_date" TIMESTAMP(3),
+        "trial_end_date" TIMESTAMP(3),
+        "renewal_date" TIMESTAMP(3),
+        "cancelled_at" TIMESTAMP(3),
+        "billing_interval" TEXT NOT NULL DEFAULT 'MONTHLY',
+        "external_subscription_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "subscription_events" (
+        "id" TEXT PRIMARY KEY,
+        "subscription_id" TEXT NOT NULL REFERENCES "subscriptions"("id") ON DELETE CASCADE,
+        "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+        "event_type" TEXT NOT NULL,
+        "old_plan_id" TEXT,
+        "new_plan_id" TEXT,
+        "notes" TEXT,
+        "created_by" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "payments" (
+        "id" TEXT PRIMARY KEY,
+        "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+        "subscription_id" TEXT REFERENCES "subscriptions"("id") ON DELETE SET NULL,
+        "amount" DECIMAL(10, 2) NOT NULL,
+        "currency" TEXT NOT NULL DEFAULT 'USD',
+        "status" TEXT NOT NULL DEFAULT 'COMPLETED',
+        "provider" TEXT NOT NULL DEFAULT 'STRIPE',
+        "external_payment_id" TEXT,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "platform_settings" (
+        "id" TEXT PRIMARY KEY,
+        "key" TEXT UNIQUE NOT NULL,
+        "value" TEXT NOT NULL,
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS "usage_snapshots" (
+        "id" TEXT PRIMARY KEY,
+        "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+        "users_count" INTEGER NOT NULL DEFAULT 0,
+        "leads_count" INTEGER NOT NULL DEFAULT 0,
+        "companies_count" INTEGER NOT NULL DEFAULT 0,
+        "contacts_count" INTEGER NOT NULL DEFAULT 0,
+        "opportunities_count" INTEGER NOT NULL DEFAULT 0,
+        "storage_bytes" BIGINT NOT NULL DEFAULT 0,
+        "captured_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `).catch((err) => {
+      console.warn("[ensureDatabaseSchema] SaaS platform tables create warning:", err);
     });
 
     isMigrationDone = true;

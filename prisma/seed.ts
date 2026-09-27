@@ -12,7 +12,10 @@ export async function main() {
 
   const org = await prisma.organization.upsert({
     where: { slug: "demo-company" },
-    update: {},
+    update: {
+      isDemo: true,
+      website: "https://demo.roxx-crm.local",
+    },
     create: {
       name: "Demo Company",
       slug: "demo-company",
@@ -22,9 +25,11 @@ export async function main() {
       trialEndsAt: trialEnd,
       billingEmail: "admin@roxx-crm.local",
       subscriptionNotes: "Default 30-day Free Trial (20 seats)",
+      isDemo: true,
+      website: "https://demo.roxx-crm.local",
     },
   });
-  console.log(`✓ Organization ready: ${org.name} (${org.id})`);
+  console.log(`✓ Organization ready: ${org.name} (${org.id}) [isDemo: ${org.isDemo}]`);
 
   // 2. Define System Permissions
   const permissionsData = [
@@ -319,6 +324,186 @@ export async function main() {
     });
   }
   console.log("✓ Lead statuses configured");
+ 
+  // 6. Seed SaaS Plans & Features
+  const plansData = [
+    {
+      name: "Starter",
+      slug: "starter",
+      description: "Ideal for small sales teams getting started with structured CRM processes.",
+      price: 29,
+      currency: "USD",
+      billingInterval: "MONTHLY",
+      features: {
+        users_limit: "3",
+        leads_limit: "1000",
+        companies_limit: "500",
+        contacts_limit: "1000",
+        opportunities_limit: "500",
+        pipelines_limit: "1",
+        advanced_reports: "false",
+        export: "true",
+        api_access: "false",
+        ai_features: "false",
+      },
+    },
+    {
+      name: "Professional",
+      slug: "professional",
+      description: "For fast-growing revenue teams needing multiple pipelines and deep reporting.",
+      price: 79,
+      currency: "USD",
+      billingInterval: "MONTHLY",
+      features: {
+        users_limit: "10",
+        leads_limit: "10000",
+        companies_limit: "5000",
+        contacts_limit: "10000",
+        opportunities_limit: "5000",
+        pipelines_limit: "5",
+        advanced_reports: "true",
+        export: "true",
+        api_access: "true",
+        ai_features: "false",
+      },
+    },
+    {
+      name: "Business",
+      slug: "business",
+      description: "Maximum scale, unlimited pipelines, enterprise audit controls, and AI features.",
+      price: 199,
+      currency: "USD",
+      billingInterval: "MONTHLY",
+      features: {
+        users_limit: "25",
+        leads_limit: "50000",
+        companies_limit: "25000",
+        contacts_limit: "50000",
+        opportunities_limit: "25000",
+        pipelines_limit: "20",
+        advanced_reports: "true",
+        export: "true",
+        api_access: "true",
+        ai_features: "true",
+      },
+    },
+    {
+      name: "Enterprise",
+      slug: "enterprise",
+      description: "Custom volume and dedicated support for large organizations.",
+      price: 499,
+      currency: "USD",
+      billingInterval: "MONTHLY",
+      features: {
+        users_limit: "100",
+        leads_limit: "250000",
+        companies_limit: "100000",
+        contacts_limit: "250000",
+        opportunities_limit: "100000",
+        pipelines_limit: "100",
+        advanced_reports: "true",
+        export: "true",
+        api_access: "true",
+        ai_features: "true",
+      },
+    },
+  ];
+
+  let professionalPlanId: string | null = null;
+  for (const p of plansData) {
+    const plan = await prisma.plan.upsert({
+      where: { slug: p.slug },
+      update: {
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        currency: p.currency,
+        billingInterval: p.billingInterval,
+      },
+      create: {
+        name: p.name,
+        slug: p.slug,
+        description: p.description,
+        price: p.price,
+        currency: p.currency,
+        billingInterval: p.billingInterval,
+      },
+    });
+
+    if (p.slug === "professional") {
+      professionalPlanId = plan.id;
+    }
+
+    for (const [key, val] of Object.entries(p.features)) {
+      await prisma.planFeature.upsert({
+        where: {
+          planId_featureKey: {
+            planId: plan.id,
+            featureKey: key,
+          },
+        },
+        update: { featureValue: val },
+        create: {
+          planId: plan.id,
+          featureKey: key,
+          featureValue: val,
+        },
+      });
+    }
+  }
+  console.log(`✓ 4 SaaS Subscription Plans configured with feature limits`);
+
+  // 7. Seed Platform User (Super Admin)
+  await prisma.platformUser.upsert({
+    where: { email: "admin@roxx-crm.local" },
+    update: {
+      name: "Platform Super Admin",
+      passwordHash,
+      status: "ACTIVE",
+    },
+    create: {
+      name: "Platform Super Admin",
+      email: "admin@roxx-crm.local",
+      passwordHash,
+      status: "ACTIVE",
+    },
+  });
+  console.log("✓ Platform Super Admin user ready (admin@roxx-crm.local)");
+
+  // 8. Seed Demo Organization Subscription & Event
+  if (professionalPlanId) {
+    const sub = await prisma.subscription.upsert({
+      where: { id: "sub_demo_company" },
+      update: {
+        planId: professionalPlanId,
+        status: "TRIAL",
+        trialEndDate: trialEnd,
+      },
+      create: {
+        id: "sub_demo_company",
+        organizationId: org.id,
+        planId: professionalPlanId,
+        status: "TRIAL",
+        startDate: new Date(),
+        trialStartDate: new Date(),
+        trialEndDate: trialEnd,
+        renewalDate: trialEnd,
+        billingInterval: "MONTHLY",
+      },
+    });
+
+    await prisma.subscriptionEvent.create({
+      data: {
+        subscriptionId: sub.id,
+        organizationId: org.id,
+        eventType: "CREATED",
+        newPlanId: professionalPlanId,
+        notes: "Initial 30-day Free Trial started automatically",
+        createdBy: "SYSTEM",
+      },
+    }).catch(() => {});
+    console.log("✓ Demo Organization Subscription initialized");
+  }
 
   console.log("🎉 Database seed completed successfully!");
 }

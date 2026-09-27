@@ -15,6 +15,7 @@ import {
   UserRole,
   TenantSeatUsage,
 } from "@/lib/validations/settings";
+import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
 
 /**
@@ -150,21 +151,12 @@ export async function createUserAction(
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    // 1. Enforce SaaS Seat Quota
-    const org = await prisma.organization.findUnique({
-      where: { id: session.organizationId },
-      select: { maxSeats: true },
-    });
-    const maxSeats = org?.maxSeats || 20;
-
-    const currentCount = await prisma.user.count({
-      where: { organizationId: session.organizationId, isActive: true },
-    });
-
-    if (currentCount >= maxSeats) {
+    // 1. Enforce SaaS Seat Quota via SubscriptionService
+    const limitCheck = await SubscriptionService.checkLimit(session.organizationId, "users");
+    if (!limitCheck.allowed) {
       return {
         success: false,
-        error: `Seat limit reached (${currentCount}/${maxSeats} seats used). Please upgrade your subscription plan to add more team members.`,
+        error: limitCheck.message || "User seat limit reached. Please upgrade your subscription plan.",
       };
     }
 

@@ -10,6 +10,7 @@ import {
   ContactFormData,
   ContactItem,
 } from "@/lib/validations/contacts";
+import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
 /**
  * Fetch paginated contacts
@@ -191,6 +192,12 @@ export async function createContactAction(data: ContactFormData) {
   try {
     const session = await requirePermission("contact:create");
     const { organizationId, userId } = await resolveTenantContext(session);
+
+    const limitCheck = await SubscriptionService.checkLimit(organizationId, "contacts");
+    if (!limitCheck.allowed) {
+      return { success: false, error: limitCheck.message || "Contact limit reached. Please upgrade your subscription plan." };
+    }
+
     const parsed = contactSchema.safeParse(data);
 
     if (!parsed.success) {

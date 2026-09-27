@@ -15,6 +15,7 @@ import {
   LeadFormData,
   LeadItem,
 } from "@/lib/validations/leads";
+import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
 /**
  * Check if a lead with matching email or normalized phone already exists
@@ -360,6 +361,12 @@ export async function getLeadByIdAction(id: string) {
 export async function createLeadAction(data: LeadFormData) {
   const session = await requirePermission("lead:create");
   const { organizationId, userId } = await resolveTenantContext(session);
+
+  const limitCheck = await SubscriptionService.checkLimit(organizationId, "leads");
+  if (!limitCheck.allowed) {
+    return { success: false, error: limitCheck.message || "Lead limit reached. Please upgrade your subscription plan." };
+  }
+
   const parsed = leadSchema.safeParse(data);
 
   if (!parsed.success) {

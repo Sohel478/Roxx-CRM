@@ -10,6 +10,7 @@ import {
   CompanyFormData,
   CompanyItem,
 } from "@/lib/validations/companies";
+import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
 /**
  * Fetch paginated companies for the authenticated organization
@@ -185,6 +186,12 @@ export async function createCompanyAction(data: CompanyFormData) {
   try {
     const session = await requirePermission("company:create");
     const { organizationId, userId } = await resolveTenantContext(session);
+
+    const limitCheck = await SubscriptionService.checkLimit(organizationId, "companies");
+    if (!limitCheck.allowed) {
+      return { success: false, error: limitCheck.message || "Company limit reached. Please upgrade your subscription plan." };
+    }
+
     const parsed = companySchema.safeParse(data);
 
     if (!parsed.success) {

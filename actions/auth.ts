@@ -424,6 +424,35 @@ export async function registerOrganizationAction(
     await setSessionCookie(token);
 
     try {
+      const defaultPlan = await prisma.plan.findFirst({
+        where: { slug: "starter" },
+      });
+      if (defaultPlan) {
+        const sub = await prisma.subscription.create({
+          data: {
+            organizationId: org.id,
+            planId: defaultPlan.id,
+            status: "TRIAL",
+            trialStartDate: now,
+            trialEndDate: trialEndsAt,
+            renewalDate: trialEndsAt,
+            billingInterval: "MONTHLY",
+          },
+        });
+        await prisma.subscriptionEvent.create({
+          data: {
+            subscriptionId: sub.id,
+            organizationId: org.id,
+            eventType: "CREATED",
+            newPlanId: defaultPlan.id,
+            notes: "Automatic 30-day Free Trial created upon signup",
+            createdBy: user.id,
+          },
+        }).catch(() => {});
+      }
+    } catch {}
+
+    try {
       await prisma.auditLog.create({
         data: {
           organizationId: org.id,
