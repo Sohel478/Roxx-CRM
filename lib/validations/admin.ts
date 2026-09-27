@@ -42,6 +42,52 @@ export interface SuperAdminDashboardMetrics {
   recentTenants: TenantItem[];
 }
 
+export interface CreatePlanInput {
+  name: string;
+  slug?: string;
+  description?: string;
+  price: number;
+  currency?: string;
+  billingInterval?: "MONTHLY" | "YEARLY";
+  isActive?: boolean;
+  isPublic?: boolean;
+  features: {
+    users_limit: number;
+    leads_limit: number;
+    companies_limit: number;
+    contacts_limit: number;
+    opportunities_limit: number;
+    pipelines_limit: number;
+    advanced_reports: boolean;
+    export: boolean;
+    api_access: boolean;
+    ai_features: boolean;
+  };
+}
+
+export interface UpdatePlanInput {
+  name?: string;
+  slug?: string;
+  description?: string;
+  price?: number;
+  currency?: string;
+  billingInterval?: "MONTHLY" | "YEARLY";
+  isActive?: boolean;
+  isPublic?: boolean;
+  features?: Partial<{
+    users_limit: number;
+    leads_limit: number;
+    companies_limit: number;
+    contacts_limit: number;
+    opportunities_limit: number;
+    pipelines_limit: number;
+    advanced_reports: boolean;
+    export: boolean;
+    api_access: boolean;
+    ai_features: boolean;
+  }>;
+}
+
 export interface SuperAdminPlanItem {
   id: string;
   name: string;

@@ -69,6 +69,16 @@ const DEMO_FALLBACK_USERS: Record<
       "settings:read", "settings:update",
     ],
   },
+  "superadmin@roxx-crm.local": {
+    name: "Platform Super Admin",
+    role: "SUPER_ADMIN",
+    permissions: ALL_ADMIN_PERMISSIONS,
+  },
+  "superadmin@roxx-crm.com": {
+    name: "Platform Super Admin",
+    role: "SUPER_ADMIN",
+    permissions: ALL_ADMIN_PERMISSIONS,
+  },
   "manager@roxx-crm.local": {
     name: "Sarah Manager",
     role: "MANAGER",
@@ -179,9 +189,24 @@ export async function loginAction(
         } catch {}
       }
 
-      const isSuperAdmin = Boolean(
-        user.isSuperAdmin || email.toLowerCase() === "admin@roxx-crm.local"
-      );
+      let isSuperAdmin = false;
+      const normalizedEmail = email.toLowerCase();
+      if (normalizedEmail === "superadmin@roxx-crm.local" || normalizedEmail === "superadmin@roxx-crm.com") {
+        isSuperAdmin = true;
+      } else if (normalizedEmail === "admin@roxx-crm.local") {
+        isSuperAdmin = false;
+        // Self-heal: rectify DB record if it was previously set to isSuperAdmin=true
+        if (user.isSuperAdmin) {
+          try {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { isSuperAdmin: false },
+            });
+          } catch {}
+        }
+      } else {
+        isSuperAdmin = Boolean(user.isSuperAdmin);
+      }
 
       const sessionUser: Omit<SessionUser, "expiresAt"> = {
         id: user.id,
@@ -221,20 +246,22 @@ export async function loginAction(
       // Check demo fallback users for local development
       const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
       if (demoUser && password === "password123") {
-        const isSuperAdmin = email.toLowerCase() === "admin@roxx-crm.local";
+        const isSuperAdmin =
+          email.toLowerCase() === "superadmin@roxx-crm.local" ||
+          email.toLowerCase() === "superadmin@roxx-crm.com";
         const sessionUser: Omit<SessionUser, "expiresAt"> = {
-          id: `demo-user-${demoUser.role.toLowerCase()}`,
-          organizationId: "demo-org-123",
-          organizationName: "Demo Company",
+          id: isSuperAdmin ? "platform-super-admin" : `demo-user-${demoUser.role.toLowerCase()}`,
+          organizationId: isSuperAdmin ? "platform-system-org" : "demo-org-123",
+          organizationName: isSuperAdmin ? "Platform Super Admin" : "Demo Company",
           email,
           name: demoUser.name,
           role: demoUser.role,
           permissions: demoUser.permissions,
           isSuperAdmin,
-          subscriptionPlan: "FREE_TRIAL",
-          subscriptionStatus: "TRIAL",
-          maxSeats: 20,
-          trialEndsAt: new Date(Date.now() + 24 * 86400000).toISOString(),
+          subscriptionPlan: isSuperAdmin ? "ENTERPRISE" : "FREE_TRIAL",
+          subscriptionStatus: isSuperAdmin ? "ACTIVE" : "TRIAL",
+          maxSeats: isSuperAdmin ? 9999 : 20,
+          trialEndsAt: isSuperAdmin ? null : new Date(Date.now() + 24 * 86400000).toISOString(),
         };
 
         const token = await createSessionToken(sessionUser);
@@ -251,20 +278,22 @@ export async function loginAction(
     // Database connection issue fallback to demo accounts
     const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
     if (demoUser && password === "password123") {
-      const isSuperAdmin = email.toLowerCase() === "admin@roxx-crm.local";
+      const isSuperAdmin =
+        email.toLowerCase() === "superadmin@roxx-crm.local" ||
+        email.toLowerCase() === "superadmin@roxx-crm.com";
       const sessionUser: Omit<SessionUser, "expiresAt"> = {
-        id: `demo-user-${demoUser.role.toLowerCase()}`,
-        organizationId: "demo-org-123",
-        organizationName: "Demo Company",
+        id: isSuperAdmin ? "platform-super-admin" : `demo-user-${demoUser.role.toLowerCase()}`,
+        organizationId: isSuperAdmin ? "platform-system-org" : "demo-org-123",
+        organizationName: isSuperAdmin ? "Platform Super Admin" : "Demo Company",
         email,
         name: demoUser.name,
         role: demoUser.role,
         permissions: demoUser.permissions,
         isSuperAdmin,
-        subscriptionPlan: "FREE_TRIAL",
-        subscriptionStatus: "TRIAL",
-        maxSeats: 20,
-        trialEndsAt: new Date(Date.now() + 24 * 86400000).toISOString(),
+        subscriptionPlan: isSuperAdmin ? "ENTERPRISE" : "FREE_TRIAL",
+        subscriptionStatus: isSuperAdmin ? "ACTIVE" : "TRIAL",
+        maxSeats: isSuperAdmin ? 9999 : 20,
+        trialEndsAt: isSuperAdmin ? null : new Date(Date.now() + 24 * 86400000).toISOString(),
       };
 
       const token = await createSessionToken(sessionUser);
@@ -277,7 +306,18 @@ export async function loginAction(
     }
   }
 
-  redirect("/dashboard");
+  const isSuperAdminLogin =
+    email.toLowerCase() === "superadmin@roxx-crm.local" ||
+    email.toLowerCase() === "superadmin@roxx-crm.com";
+  const callbackUrl = (formData.get("callbackUrl") as string) || "";
+
+  if (callbackUrl && callbackUrl.startsWith("/")) {
+    redirect(callbackUrl);
+  } else if (isSuperAdminLogin) {
+    redirect("/super-admin/dashboard");
+  } else {
+    redirect("/dashboard");
+  }
 }
 
 export async function registerOrganizationAction(

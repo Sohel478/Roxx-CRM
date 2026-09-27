@@ -739,13 +739,25 @@ export interface MockUser {
 
 export const mockUsersStore: MockUser[] = [
   {
+    id: "usr_superadmin",
+    organizationId: "platform-system-org",
+    name: "Platform Super Admin",
+    email: "superadmin@roxx-crm.local",
+    role: "ADMIN",
+    isActive: true,
+    isSuperAdmin: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  },
+  {
     id: "usr_admin",
     organizationId: "demo-org-123",
     name: "Admin User",
     email: "admin@roxx-crm.local",
     role: "ADMIN",
     isActive: true,
-    isSuperAdmin: true,
+    isSuperAdmin: false,
     avatarUrl: null,
     createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
     lastLoginAt: new Date(Date.now() - 1800000).toISOString(),

@@ -95,9 +95,9 @@ export function Navbar({ session: initialSession }: NavbarProps = {}) {
         {/* SaaS Subscription / Plan Status Badge */}
         {session?.isSuperAdmin ? (
           <Link
-            href="/admin/tenants"
+            href="/super-admin/dashboard"
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/80 rounded-full text-[11px] font-bold transition-colors cursor-pointer"
-            title="Super Admin - Manage Tenants"
+            title="Super Admin Console"
           >
             <Sparkles className="w-3 h-3 text-purple-600" />
             <span>Super Admin</span>

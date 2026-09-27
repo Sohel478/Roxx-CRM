@@ -23,6 +23,8 @@ import type {
   UpdateTenantSubscriptionInput,
   SuperAdminDashboardMetrics,
   SuperAdminPlanItem,
+  CreatePlanInput,
+  UpdatePlanInput,
   SuperAdminSubscriptionItem,
   SuperAdminPaymentItem,
   TenantDetailData,
@@ -806,6 +808,398 @@ export async function getSuperAdminPlansAction(): Promise<{
     return { success: true, data: mapped };
   } catch (err: any) {
     return { success: false, error: err.message || "Failed to load plans" };
+  }
+}
+
+/**
+ * Create a new SaaS plan tier
+ */
+export async function createSuperAdminPlanAction(input: CreatePlanInput): Promise<{
+  success: boolean;
+  data?: SuperAdminPlanItem;
+  error?: string;
+}> {
+  try {
+    await requireSuperAdmin();
+    await ensureDatabaseSchema();
+
+    if (!input.name?.trim()) {
+      return { success: false, error: "Plan name is required" };
+    }
+
+    const slug = (
+      input.slug?.trim() ||
+      input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+    );
+
+    if (isMockMode()) {
+      const exists = mockPlansStore.some((p) => p.slug.toLowerCase() === slug.toLowerCase());
+      if (exists) {
+        return { success: false, error: `Plan slug '${slug}' already exists` };
+      }
+
+      const newId = `plan_${Date.now()}`;
+      const mockPlan = {
+        id: newId,
+        name: input.name.trim(),
+        slug,
+        description: input.description?.trim() || "",
+        price: Number(input.price) || 0,
+        currency: input.currency || "USD",
+        billingInterval: input.billingInterval || "MONTHLY",
+        isActive: input.isActive ?? true,
+        isPublic: input.isPublic ?? true,
+        features: {
+          users_limit: String(input.features.users_limit ?? 3),
+          leads_limit: String(input.features.leads_limit ?? 1000),
+          companies_limit: String(input.features.companies_limit ?? 500),
+          contacts_limit: String(input.features.contacts_limit ?? 1000),
+          opportunities_limit: String(input.features.opportunities_limit ?? 500),
+          pipelines_limit: String(input.features.pipelines_limit ?? 1),
+          advanced_reports: String(Boolean(input.features.advanced_reports)),
+          export: String(Boolean(input.features.export)),
+          api_access: String(Boolean(input.features.api_access)),
+          ai_features: String(Boolean(input.features.ai_features)),
+        },
+        createdAt: new Date().toISOString(),
+      };
+
+      mockPlansStore.push(mockPlan);
+
+      revalidatePath("/super-admin/plans");
+      revalidatePath("/pricing");
+
+      return {
+        success: true,
+        data: {
+          id: newId,
+          name: mockPlan.name,
+          slug: mockPlan.slug,
+          description: mockPlan.description,
+          price: mockPlan.price,
+          currency: mockPlan.currency,
+          billingInterval: mockPlan.billingInterval,
+          isActive: mockPlan.isActive,
+          isPublic: mockPlan.isPublic,
+          features: {
+            users_limit: Number(mockPlan.features.users_limit),
+            leads_limit: Number(mockPlan.features.leads_limit),
+            companies_limit: Number(mockPlan.features.companies_limit),
+            contacts_limit: Number(mockPlan.features.contacts_limit),
+            opportunities_limit: Number(mockPlan.features.opportunities_limit),
+            pipelines_limit: Number(mockPlan.features.pipelines_limit),
+            advanced_reports: mockPlan.features.advanced_reports === "true",
+            export: mockPlan.features.export === "true",
+            api_access: mockPlan.features.api_access === "true",
+            ai_features: mockPlan.features.ai_features === "true",
+          },
+          activeSubscriptionsCount: 0,
+        },
+      };
+    }
+
+    // Prisma Mode
+    const existing = await prisma.plan.findUnique({ where: { slug } });
+    if (existing) {
+      return { success: false, error: `Plan slug '${slug}' already exists` };
+    }
+
+    const featureEntries = [
+      { featureKey: "users_limit", featureValue: String(input.features.users_limit ?? 3) },
+      { featureKey: "leads_limit", featureValue: String(input.features.leads_limit ?? 1000) },
+      { featureKey: "companies_limit", featureValue: String(input.features.companies_limit ?? 500) },
+      { featureKey: "contacts_limit", featureValue: String(input.features.contacts_limit ?? 1000) },
+      { featureKey: "opportunities_limit", featureValue: String(input.features.opportunities_limit ?? 500) },
+      { featureKey: "pipelines_limit", featureValue: String(input.features.pipelines_limit ?? 1) },
+      { featureKey: "advanced_reports", featureValue: String(Boolean(input.features.advanced_reports)) },
+      { featureKey: "export", featureValue: String(Boolean(input.features.export)) },
+      { featureKey: "api_access", featureValue: String(Boolean(input.features.api_access)) },
+      { featureKey: "ai_features", featureValue: String(Boolean(input.features.ai_features)) },
+    ];
+
+    const plan = await prisma.plan.create({
+      data: {
+        name: input.name.trim(),
+        slug,
+        description: input.description?.trim() || "",
+        price: Number(input.price) || 0,
+        currency: input.currency || "USD",
+        billingInterval: input.billingInterval || "MONTHLY",
+        isActive: input.isActive ?? true,
+        isPublic: input.isPublic ?? true,
+        features: {
+          create: featureEntries,
+        },
+      },
+      include: {
+        features: true,
+      },
+    });
+
+    revalidatePath("/super-admin/plans");
+    revalidatePath("/pricing");
+
+    return {
+      success: true,
+      data: {
+        id: plan.id,
+        name: plan.name,
+        slug: plan.slug,
+        description: plan.description || "",
+        price: Number(plan.price),
+        currency: plan.currency,
+        billingInterval: plan.billingInterval,
+        isActive: plan.isActive,
+        isPublic: plan.isPublic,
+        features: {
+          users_limit: input.features.users_limit ?? 3,
+          leads_limit: input.features.leads_limit ?? 1000,
+          companies_limit: input.features.companies_limit ?? 500,
+          contacts_limit: input.features.contacts_limit ?? 1000,
+          opportunities_limit: input.features.opportunities_limit ?? 500,
+          pipelines_limit: input.features.pipelines_limit ?? 1,
+          advanced_reports: Boolean(input.features.advanced_reports),
+          export: Boolean(input.features.export),
+          api_access: Boolean(input.features.api_access),
+          ai_features: Boolean(input.features.ai_features),
+        },
+        activeSubscriptionsCount: 0,
+      },
+    };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") throw err;
+    return { success: false, error: err.message || "Failed to create plan" };
+  }
+}
+
+/**
+ * Update an existing SaaS plan tier
+ */
+export async function updateSuperAdminPlanAction(
+  planId: string,
+  input: UpdatePlanInput
+): Promise<{
+  success: boolean;
+  data?: SuperAdminPlanItem;
+  error?: string;
+}> {
+  try {
+    await requireSuperAdmin();
+    await ensureDatabaseSchema();
+
+    if (isMockMode()) {
+      const idx = mockPlansStore.findIndex((p) => p.id === planId || p.slug === planId);
+      if (idx === -1) {
+        return { success: false, error: "Plan not found" };
+      }
+
+      const p = mockPlansStore[idx];
+      if (input.name) p.name = input.name.trim();
+      if (input.slug) p.slug = input.slug.trim();
+      if (input.description !== undefined) p.description = input.description.trim();
+      if (input.price !== undefined) p.price = Number(input.price);
+      if (input.currency) p.currency = input.currency;
+      if (input.billingInterval) p.billingInterval = input.billingInterval;
+      if (input.isActive !== undefined) p.isActive = input.isActive;
+      if (input.isPublic !== undefined) p.isPublic = input.isPublic;
+
+      if (input.features) {
+        Object.entries(input.features).forEach(([k, v]) => {
+          if (v !== undefined) {
+            (p.features as Record<string, string>)[k] = String(v);
+          }
+        });
+      }
+
+      revalidatePath("/super-admin/plans");
+      revalidatePath("/pricing");
+
+      return {
+        success: true,
+        data: {
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          description: p.description,
+          price: p.price,
+          currency: p.currency,
+          billingInterval: p.billingInterval,
+          isActive: p.isActive,
+          isPublic: p.isPublic,
+          features: {
+            users_limit: parseInt(p.features.users_limit || "3", 10),
+            leads_limit: parseInt(p.features.leads_limit || "1000", 10),
+            companies_limit: parseInt(p.features.companies_limit || "500", 10),
+            contacts_limit: parseInt(p.features.contacts_limit || "1000", 10),
+            opportunities_limit: parseInt(p.features.opportunities_limit || "500", 10),
+            pipelines_limit: parseInt(p.features.pipelines_limit || "1", 10),
+            advanced_reports: p.features.advanced_reports === "true",
+            export: p.features.export === "true",
+            api_access: p.features.api_access === "true",
+            ai_features: p.features.ai_features === "true",
+          },
+          activeSubscriptionsCount: 1,
+        },
+      };
+    }
+
+    // Prisma Mode
+    const existing = await prisma.plan.findUnique({
+      where: { id: planId },
+      include: { features: true, _count: { select: { subscriptions: true } } },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Plan not found" };
+    }
+
+    const updatedPlan = await prisma.plan.update({
+      where: { id: planId },
+      data: {
+        ...(input.name && { name: input.name.trim() }),
+        ...(input.slug && { slug: input.slug.trim() }),
+        ...(input.description !== undefined && { description: input.description.trim() }),
+        ...(input.price !== undefined && { price: Number(input.price) }),
+        ...(input.currency && { currency: input.currency }),
+        ...(input.billingInterval && { billingInterval: input.billingInterval }),
+        ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.isPublic !== undefined && { isPublic: input.isPublic }),
+      },
+    });
+
+    if (input.features) {
+      for (const [key, val] of Object.entries(input.features)) {
+        if (val !== undefined) {
+          await prisma.planFeature.upsert({
+            where: {
+              planId_featureKey: {
+                planId,
+                featureKey: key,
+              },
+            },
+            update: { featureValue: String(val) },
+            create: {
+              planId,
+              featureKey: key,
+              featureValue: String(val),
+            },
+          });
+        }
+      }
+    }
+
+    revalidatePath("/super-admin/plans");
+    revalidatePath("/pricing");
+
+    const refreshed = await prisma.plan.findUnique({
+      where: { id: planId },
+      include: { features: true, _count: { select: { subscriptions: true } } },
+    });
+
+    const featMap: Record<string, any> = {};
+    refreshed?.features.forEach((f) => {
+      if (f.featureValue === "true") featMap[f.featureKey] = true;
+      else if (f.featureValue === "false") featMap[f.featureKey] = false;
+      else featMap[f.featureKey] = Number(f.featureValue) || 0;
+    });
+
+    return {
+      success: true,
+      data: {
+        id: updatedPlan.id,
+        name: updatedPlan.name,
+        slug: updatedPlan.slug,
+        description: updatedPlan.description || "",
+        price: Number(updatedPlan.price),
+        currency: updatedPlan.currency,
+        billingInterval: updatedPlan.billingInterval,
+        isActive: updatedPlan.isActive,
+        isPublic: updatedPlan.isPublic,
+        features: {
+          users_limit: featMap.users_limit || 3,
+          leads_limit: featMap.leads_limit || 1000,
+          companies_limit: featMap.companies_limit || 500,
+          contacts_limit: featMap.contacts_limit || 1000,
+          opportunities_limit: featMap.opportunities_limit || 500,
+          pipelines_limit: featMap.pipelines_limit || 1,
+          advanced_reports: Boolean(featMap.advanced_reports),
+          export: Boolean(featMap.export),
+          api_access: Boolean(featMap.api_access),
+          ai_features: Boolean(featMap.ai_features),
+        },
+        activeSubscriptionsCount: refreshed?._count?.subscriptions || 0,
+      },
+    };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") throw err;
+    return { success: false, error: err.message || "Failed to update plan" };
+  }
+}
+
+/**
+ * Delete a SaaS plan tier
+ */
+export async function deleteSuperAdminPlanAction(planId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    await requireSuperAdmin();
+    await ensureDatabaseSchema();
+
+    if (isMockMode()) {
+      const idx = mockPlansStore.findIndex((p) => p.id === planId || p.slug === planId);
+      if (idx === -1) {
+        return { success: false, error: "Plan not found" };
+      }
+
+      const targetPlan = mockPlansStore[idx];
+      const hasActiveSubs = mockSubscriptionsStore.some(
+        (s) => s.planId === targetPlan.id || s.planId === targetPlan.slug
+      );
+      if (hasActiveSubs) {
+        return {
+          success: false,
+          error: "Cannot delete plan with active subscriptions. You can mark it inactive instead.",
+        };
+      }
+
+      mockPlansStore.splice(idx, 1);
+
+      revalidatePath("/super-admin/plans");
+      revalidatePath("/pricing");
+      return { success: true };
+    }
+
+    // Prisma Mode
+    const plan = await prisma.plan.findUnique({
+      where: { id: planId },
+      include: {
+        _count: { select: { subscriptions: true } },
+      },
+    });
+
+    if (!plan) {
+      return { success: false, error: "Plan not found" };
+    }
+
+    if (plan._count.subscriptions > 0) {
+      return {
+        success: false,
+        error: `Cannot delete plan '${plan.name}' because ${plan._count.subscriptions} active subscription(s) are currently attached. You can set it to inactive instead.`,
+      };
+    }
+
+    await prisma.plan.delete({
+      where: { id: planId },
+    });
+
+    revalidatePath("/super-admin/plans");
+    revalidatePath("/pricing");
+    return { success: true };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") throw err;
+    return { success: false, error: err.message || "Failed to delete plan" };
   }
 }
 

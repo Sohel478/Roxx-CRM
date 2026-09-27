@@ -177,10 +177,16 @@ export async function main() {
 
   const usersData = [
     {
+      email: "superadmin@roxx-crm.local",
+      name: "Platform Super Admin",
+      roleName: "ADMIN",
+      isSuperAdmin: true,
+    },
+    {
       email: "admin@roxx-crm.local",
       name: "Admin User",
       roleName: "ADMIN",
-      isSuperAdmin: true,
+      isSuperAdmin: false,
     },
     {
       email: "manager@roxx-crm.local",
