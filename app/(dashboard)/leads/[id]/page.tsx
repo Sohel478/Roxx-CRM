@@ -21,6 +21,8 @@ import {
   Trash2,
   Edit2,
   Play,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
 import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction, pickLeadAction } from "@/actions/leads";
 import { getCurrentUserAction } from "@/actions/auth";
@@ -182,6 +184,16 @@ export default function LeadDetailPage() {
   const daysInactive = lead.createdAt
     ? Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
+
+  // Extract scraped social links & website from description if present
+  const websiteMatch = lead.description?.match(/Website:\s*([^\s\n\r]+)/i);
+  const websiteUrl = websiteMatch ? websiteMatch[1] : null;
+
+  const companyLinkedinMatch = lead.description?.match(/Company LinkedIn:\s*([^\s\n\r]+)/i);
+  const companyLinkedinUrl = companyLinkedinMatch ? companyLinkedinMatch[1] : null;
+
+  const personalLinkedinMatch = lead.description?.match(/LinkedIn Profile:\s*([^\s\n\r]+)/i);
+  const personalLinkedinUrl = personalLinkedinMatch ? personalLinkedinMatch[1] : null;
 
   const filteredActivities = activities.filter((act) => {
     if (activityFilter === "ALL") return true;
@@ -450,6 +462,33 @@ export default function LeadDetailPage() {
                 value: lead.phone || "Not provided",
                 icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
               },
+              ...(websiteUrl
+                ? [
+                    {
+                      label: "Company Website",
+                      value: websiteUrl,
+                      icon: <Globe className="w-3.5 h-3.5 text-blue-500" />,
+                    },
+                  ]
+                : []),
+              ...(companyLinkedinUrl
+                ? [
+                    {
+                      label: "Company LinkedIn",
+                      value: companyLinkedinUrl,
+                      icon: <ExternalLink className="w-3.5 h-3.5 text-blue-600" />,
+                    },
+                  ]
+                : []),
+              ...(personalLinkedinUrl
+                ? [
+                    {
+                      label: "LinkedIn Profile",
+                      value: personalLinkedinUrl,
+                      icon: <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />,
+                    },
+                  ]
+                : []),
               {
                 label: "Created Date",
                 value: new Date(lead.createdAt).toLocaleDateString(),
@@ -463,9 +502,36 @@ export default function LeadDetailPage() {
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Discovery Notes &amp; Context
             </h3>
-            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap">
-              {lead.description || "No discovery notes recorded yet for this lead."}
-            </p>
+            <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap space-y-1">
+              {lead.description ? (
+                lead.description.split("\n").map((line, lIdx) => {
+                  const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+                  if (urlMatch) {
+                    const prefix = line.substring(0, urlMatch.index);
+                    const url = urlMatch[0];
+                    const suffix = line.substring((urlMatch.index || 0) + url.length);
+                    return (
+                      <div key={lIdx} className="break-all">
+                        {prefix}
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          {url}
+                          <ExternalLink className="w-2.5 h-2.5 inline" />
+                        </a>
+                        {suffix}
+                      </div>
+                    );
+                  }
+                  return <div key={lIdx}>{line || "\u00A0"}</div>;
+                })
+              ) : (
+                <span className="text-slate-400">No discovery notes recorded yet for this lead.</span>
+              )}
+            </div>
           </div>
         </div>
 

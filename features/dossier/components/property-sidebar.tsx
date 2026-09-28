@@ -108,11 +108,23 @@ export function PropertySidebar({
               </span>
               <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                 {prop.icon}
-                <span className="truncate">
-                  {prop.value !== null && prop.value !== undefined
-                    ? prop.value.toString()
-                    : "—"}
-                </span>
+                {prop.value && typeof prop.value === "string" && prop.value.startsWith("http") ? (
+                  <a
+                    href={prop.value}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-blue-600 hover:underline inline-flex items-center gap-1 max-w-[200px]"
+                    title={prop.value}
+                  >
+                    <span className="truncate">{prop.value.replace(/^https?:\/\/(www\.)?/i, "")}</span>
+                  </a>
+                ) : (
+                  <span className="truncate">
+                    {prop.value !== null && prop.value !== undefined
+                      ? prop.value.toString()
+                      : "—"}
+                  </span>
+                )}
               </div>
             </div>
           ))}

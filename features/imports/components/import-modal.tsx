@@ -136,11 +136,37 @@ export function ImportModal({
           ))}
         </div>
 
+        {/* Expected Format Banner for Leads */}
+        {entityType === "leads" && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-900">Scraped Leads Format:</span>
+              <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200">
+                Routed to &quot;Scraped&quot; stage
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1 font-mono text-[11px] text-slate-700">
+              {["Name", "Website", "linkedin", "company", "linkediprofile", "Email", "Contact"].map((col) => (
+                <span key={col} className="bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-semibold">
+                  {col}
+                </span>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              <strong>Name</strong> auto-splits into First and Last name. <strong>Website</strong> and <strong>LinkedIn Profiles</strong> are attached to discovery notes. Standard CRM headers are also accepted.
+            </p>
+          </div>
+        )}
+
         {/* Template Download Banner */}
         <div className="flex items-center justify-between p-3 bg-blue-50/70 border border-blue-100 rounded-lg text-xs">
           <div className="flex items-center gap-2 text-blue-900">
             <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>Need sample format? Download our official CSV template.</span>
+            <span>
+              {entityType === "leads"
+                ? "Download Scraped Leads template (Name, Website, linkedin, company...)"
+                : "Need sample format? Download our official CSV template."}
+            </span>
           </div>
           <button
             type="button"
@@ -237,7 +263,13 @@ export function ImportModal({
                 setCsvContent(e.target.value);
                 setFileName("Manual Input.csv");
               }}
-              placeholder="firstName,lastName,email,phone,companyName..."
+              placeholder={
+                entityType === "leads"
+                  ? "Name,Website,linkedin,company,linkediprofile,Email,Contact\nJane Doe,https://techflux.in,https://linkedin.com/company/techflux,Techflux Solutions,https://linkedin.com/in/janedoe,jane.doe@techflux.in,+91 9876543210"
+                  : entityType === "companies"
+                  ? "name,industry,website,email,phone,city,country,status,description..."
+                  : "firstName,lastName,email,phone,jobTitle,department,companyName..."
+              }
               className="w-full font-mono text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>

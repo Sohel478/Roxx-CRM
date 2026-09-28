@@ -28,6 +28,9 @@ export async function importCsvAction(
   csvText: string
 ): Promise<{ success: boolean; data?: ImportResult; error?: string }> {
   const session = await requireAuth();
+  const isTechflux =
+    (session.organizationName || "").toLowerCase().includes("techflux") ||
+    (session.organizationId || "").toLowerCase().includes("techflux");
 
   // Permission check per entity
   if (entityType === "leads") await requirePermission("lead:create");
@@ -58,18 +61,120 @@ export async function importCsvAction(
       });
 
       if (entityType === "leads") {
+        // 1. Resolve firstName and lastName (supporting both 'Name'/'Full Name' and 'firstName'/'lastName')
+        let firstName = (
+          rowObj["firstname"] ||
+          rowObj["first_name"] ||
+          rowObj["first name"] ||
+          ""
+        ).trim();
+        let lastName = (
+          rowObj["lastname"] ||
+          rowObj["last_name"] ||
+          rowObj["last name"] ||
+          ""
+        ).trim() || null;
+
+        const fullName = (
+          rowObj["name"] ||
+          rowObj["fullname"] ||
+          rowObj["full name"] ||
+          rowObj["lead name"] ||
+          ""
+        ).trim();
+
+        if (!firstName && fullName) {
+          const parts = fullName.split(/\s+/);
+          firstName = parts[0] || "";
+          lastName = parts.length > 1 ? parts.slice(1).join(" ") : null;
+        }
+
+        // 2. Resolve phone / contact
+        const phone = (
+          rowObj["contact"] ||
+          rowObj["phone"] ||
+          rowObj["contact number"] ||
+          rowObj["mobile"] ||
+          rowObj["phone number"] ||
+          ""
+        ).trim() || null;
+
+        // 3. Resolve company name
+        const companyName = (
+          rowObj["company"] ||
+          rowObj["companyname"] ||
+          rowObj["company_name"] ||
+          rowObj["organization"] ||
+          ""
+        ).trim() || null;
+
+        // 4. Sanitize email
+        let email = (rowObj["email"] || "").trim() || null;
+        if (email && (!email.includes("@") || email.toLowerCase() === "n/a" || email === "-")) {
+          email = null;
+        }
+
+        // 5. Extract Scraped metadata: Website, Company LinkedIn, Personal LinkedIn Profile
+        const website = (
+          rowObj["website"] ||
+          rowObj["company website"] ||
+          rowObj["url"] ||
+          ""
+        ).trim() || null;
+
+        const companyLinkedin = (
+          rowObj["linkedin"] ||
+          rowObj["company linkedin"] ||
+          rowObj["company_linkedin"] ||
+          ""
+        ).trim() || null;
+
+        const personalLinkedin = (
+          rowObj["linkediprofile"] ||
+          rowObj["linkedinprofile"] ||
+          rowObj["linkedin_profile"] ||
+          rowObj["personal linkedin"] ||
+          rowObj["profile"] ||
+          ""
+        ).trim() || null;
+
+        // Detect if row came from scraped format
+        const isScrapedRow = Boolean(
+          rowObj["name"] ||
+          rowObj["website"] ||
+          rowObj["linkedin"] ||
+          rowObj["linkediprofile"] ||
+          rowObj["contact"]
+        );
+
+        // 6. Build rich structured discovery notes
+        const notesList: string[] = [];
+        if (website) notesList.push(`Website: ${website}`);
+        if (companyLinkedin) notesList.push(`Company LinkedIn: ${companyLinkedin}`);
+        if (personalLinkedin) notesList.push(`LinkedIn Profile: ${personalLinkedin}`);
+
+        let description = (rowObj["description"] || "").trim() || null;
+        if (notesList.length > 0) {
+          const notesText = notesList.join("\n");
+          description = description ? `${description}\n\n${notesText}` : notesText;
+        }
+
+        const defaultStatus = isScrapedRow || isTechflux ? "Scraped" : "New";
+        const status = (rowObj["status"] || "").trim() || defaultStatus;
+        const source = (rowObj["source"] || "").trim() || (isScrapedRow ? "Scraped Data" : "Website");
+
         const parsed = leadImportRowSchema.safeParse({
-          firstName: rowObj["firstname"] || rowObj["first_name"] || rowObj["first name"] || "",
-          lastName: rowObj["lastname"] || rowObj["last_name"] || rowObj["last name"] || null,
-          email: rowObj["email"] || null,
-          phone: rowObj["phone"] || null,
-          companyName: rowObj["companyname"] || rowObj["company_name"] || rowObj["company"] || null,
-          jobTitle: rowObj["jobtitle"] || rowObj["job_title"] || rowObj["title"] || null,
-          source: rowObj["source"] || "Website",
+          firstName,
+          lastName,
+          email,
+          phone,
+          companyName,
+          jobTitle: (rowObj["jobtitle"] || rowObj["job_title"] || rowObj["title"] || "").trim() || null,
+          source,
           estimatedValue: rowObj["estimatedvalue"] || rowObj["estimated_value"] || rowObj["value"] || 0,
           rating: rowObj["rating"] || "Warm",
-          status: rowObj["status"] || null,
-          description: rowObj["description"] || null,
+          status,
+          description,
         });
 
         if (parsed.success) {
@@ -129,8 +234,6 @@ export async function importCsvAction(
     // Insert valid records
     let importedCount = 0;
     const now = new Date().toISOString();
-    const isTechflux = (session.organizationName || "").toLowerCase().includes("techflux") ||
-      (session.organizationId || "").toLowerCase().includes("techflux");
 
     for (const rec of validRecords) {
       if (entityType === "leads") {

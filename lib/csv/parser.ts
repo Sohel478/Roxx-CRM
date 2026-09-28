@@ -71,10 +71,10 @@ export function getSampleCsvTemplate(entityType: "leads" | "companies" | "contac
   switch (entityType) {
     case "leads":
       return {
-        filename: "leads_import_template.csv",
-        csv: `firstName,lastName,email,phone,companyName,jobTitle,source,estimatedValue,rating,description
-Jane,Doe,jane.doe@enterprise.com,+1 555-0192,Enterprise Solutions,CTO,Website,50000,Hot,Interested in cloud migration and SOC2
-Robert,Smith,robert@acmecorp.com,+1 555-0144,Acme Corp,Procurement Director,Referral,35000,Warm,Follow up next quarter`,
+        filename: "scraped_leads_template.csv",
+        csv: `Name,Website,linkedin,company,linkediprofile,Email,Contact
+Jane Doe,https://techflux.in,https://linkedin.com/company/techflux,Techflux Solutions,https://linkedin.com/in/janedoe,jane.doe@techflux.in,+91 9876543210
+Robert Smith,https://acmecorp.com,https://linkedin.com/company/acmecorp,Acme Corporation,https://linkedin.com/in/robertsmith,robert@acmecorp.com,+1 555-0144`,
       };
     case "companies":
       return {
