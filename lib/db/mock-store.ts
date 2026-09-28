@@ -1192,3 +1192,17 @@ export const mockSalesTargetsStore: Record<string, MockMonthTarget> = {
   },
 };
 
+export interface MockSmtpConfig {
+  organizationId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  encryptedPassword?: string;
+  fromName: string;
+  fromEmail: string;
+  updatedAt: string;
+}
+
+export const mockSmtpStore: Record<string, MockSmtpConfig> = {};
+

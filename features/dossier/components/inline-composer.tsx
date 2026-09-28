@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { logActivityAction } from "@/actions/activities";
 import { createTaskAction } from "@/actions/tasks";
+import { getSmtpConfigAction, sendLeadEmailAction } from "@/actions/email";
 import {
   SALES_EMAIL_TEMPLATES,
   applyMergeTags,
@@ -58,6 +59,22 @@ export function InlineComposer({
     }
   }, [mergeContext.email]);
 
+  // Email Template Selection
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
+  // SMTP Status
+  const [isSmtpConfigured, setIsSmtpConfigured] = useState(false);
+  const [smtpHost, setSmtpHost] = useState("");
+
+  useEffect(() => {
+    getSmtpConfigAction().then((res) => {
+      if (res.success && res.data) {
+        setIsSmtpConfigured(res.data.isConfigured);
+        setSmtpHost(res.data.host);
+      }
+    });
+  }, []);
+
   // Call / Meeting fields
   const [callOutcome, setCallOutcome] = useState("Connected");
   const [duration, setDuration] = useState<number>(15);
@@ -67,9 +84,6 @@ export function InlineComposer({
   const [taskDueDate, setTaskDueDate] = useState(
     new Date(Date.now() + 86400000).toISOString().split("T")[0]
   );
-
-  // Email Template Selection
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const handleSelectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -161,6 +175,43 @@ export function InlineComposer({
 
     // Automatically record this touchpoint into the CRM activity timeline
     handleSaveActivity("EMAIL", emailSubject);
+  };
+
+  const handleSendViaSmtp = () => {
+    if (!toEmail.trim()) {
+      setErrorBanner("Please specify a recipient email address.");
+      return;
+    }
+    if (!subject.trim()) {
+      setErrorBanner("Please enter an email subject line.");
+      return;
+    }
+    if (!description.trim()) {
+      setErrorBanner("Please write an email message body.");
+      return;
+    }
+
+    setErrorBanner(null);
+    setSuccessBanner(null);
+
+    startTransition(async () => {
+      const res = await sendLeadEmailAction({
+        to: toEmail.trim(),
+        subject: subject.trim(),
+        body: description.trim(),
+        entityType,
+        entityId,
+      });
+
+      if (res.success) {
+        setSuccessBanner(res.message || "Email delivered and touchpoint logged to timeline!");
+        resetForm();
+        onActivityCreated();
+        setTimeout(() => setSuccessBanner(null), 5000);
+      } else {
+        setErrorBanner(res.error || "Failed to send email via SMTP.");
+      }
+    });
   };
 
   const handleCreateTask = () => {
@@ -295,6 +346,23 @@ export function InlineComposer({
         {/* EMAIL TAB: Template Selector, Recipient & Subject */}
         {activeTab === "EMAIL" && (
           <div className="space-y-2.5">
+            {!isSmtpConfigured && (
+              <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl text-amber-900 text-xs">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Direct CRM email delivery requires SMTP. Connect Google Workspace or SMTP in <strong>Settings &gt; Email &amp; SMTP</strong>.
+                  </span>
+                </div>
+                <a
+                  href="/settings?tab=email"
+                  className="font-bold text-blue-600 hover:text-blue-800 hover:underline shrink-0 text-xs ml-2"
+                >
+                  Configure SMTP &rarr;
+                </a>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
@@ -475,7 +543,11 @@ export function InlineComposer({
             {activeTab === "EMAIL" && (
               <span className="inline-flex items-center gap-1.5 text-purple-700 font-medium">
                 <Mail className="w-3.5 h-3.5" />
-                <span>Opens in your mail client &amp; auto-logs to CRM timeline</span>
+                <span>
+                  {isSmtpConfigured
+                    ? `Connected to ${smtpHost || "Workspace SMTP"} • Ready for direct delivery`
+                    : "No SMTP configured • Open in Mail App or configure in Settings"}
+                </span>
               </span>
             )}
             {activeTab === "NOTE" && "Visible immediately to all team members"}
@@ -484,7 +556,7 @@ export function InlineComposer({
             {activeTab === "TASK" && `Due: ${taskDueDate} • Priority: ${taskPriority}`}
           </div>
 
-          <div className="flex items-center gap-2 justify-end">
+          <div className="flex items-center gap-2 justify-end flex-wrap">
             {(description || subject) && (
               <Button
                 type="button"
@@ -513,7 +585,7 @@ export function InlineComposer({
                 <span>Create Task</span>
               </Button>
             ) : activeTab === "EMAIL" ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <Button
                   type="button"
                   variant="outline"
@@ -521,26 +593,47 @@ export function InlineComposer({
                   onClick={() => handleSaveActivity("EMAIL")}
                   disabled={isPending || (!description.trim() && !subject.trim())}
                   className="text-xs h-8 text-slate-700 border-slate-300 hover:bg-slate-50 gap-1.5"
-                  title="Log email touchpoint directly to the record without opening mail app"
+                  title="Log email touchpoint directly to the record without sending"
                 >
                   <FileText className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Log Email Only</span>
+                  <span>Log Touchpoint Only</span>
                 </Button>
 
                 <Button
                   type="button"
+                  variant="outline"
                   size="sm"
                   onClick={handleSendViaMailClient}
                   disabled={isPending || !toEmail.trim()}
-                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 gap-1.5 font-semibold shadow-xs"
+                  className="text-purple-700 border-purple-200 hover:bg-purple-50 text-xs h-8 gap-1.5 font-semibold shadow-2xs"
                   title="Open draft in Gmail / Outlook / Apple Mail and log to CRM timeline"
                 >
                   {isPending ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <ExternalLink className="w-3.5 h-3.5 text-purple-600" />
                   )}
-                  <span>Open in Mail App &amp; Log</span>
+                  <span>Open in Mail App</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSendViaSmtp}
+                  disabled={isPending || !toEmail.trim() || !isSmtpConfigured}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 gap-1.5 font-bold shadow-xs disabled:opacity-50"
+                  title={
+                    isSmtpConfigured
+                      ? `Dispatch email immediately via ${smtpHost}`
+                      : "SMTP not configured. Configure in Settings > Email & SMTP"
+                  }
+                >
+                  {isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>Send via SMTP</span>
                 </Button>
               </div>
             ) : (

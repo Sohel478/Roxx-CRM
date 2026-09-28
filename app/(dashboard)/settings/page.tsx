@@ -10,6 +10,7 @@ import {
   CreditCard,
   KeyRound,
   Target,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeamMembersTab } from "@/features/settings/components/team-members-tab";
@@ -19,6 +20,7 @@ import { PipelineStagesTab } from "@/features/settings/components/pipeline-stage
 import { BillingTab } from "@/features/settings/components/billing-tab";
 import { ChangePasswordTab } from "@/features/settings/components/change-password-tab";
 import { SalesTargetsTab } from "@/features/settings/components/sales-targets-tab";
+import { EmailSettingsTab } from "@/features/settings/components/email-settings-tab";
 import { getUsersAction, getTenantSeatUsageAction } from "@/actions/users";
 import type { UserItem, TenantSeatUsage } from "@/lib/validations/settings";
 import { getAuditLogsAction } from "@/actions/audit";
@@ -32,7 +34,7 @@ import type {
   PipelineStageItem,
 } from "@/lib/validations/settings";
 
-type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets";
+type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("team");
@@ -85,7 +87,7 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as TabType;
-      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets"].includes(tab)) {
+      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets", "email"].includes(tab)) {
         setActiveTab(tab);
       }
     }
@@ -213,6 +215,19 @@ export default function SettingsPage() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("email")}
+          className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+            activeTab === "email"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          <span>Email &amp; SMTP</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("security")}
           className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === "security"
@@ -237,6 +252,10 @@ export default function SettingsPage() {
 
         {activeTab === "targets" && (
           <SalesTargetsTab />
+        )}
+
+        {activeTab === "email" && (
+          <EmailSettingsTab />
         )}
 
         {activeTab === "audit" && (
