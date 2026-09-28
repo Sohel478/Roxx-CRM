@@ -353,7 +353,7 @@ export async function loginAction(
   }
 
   const callbackUrl = (formData.get("callbackUrl") as string) || "";
-  if (callbackUrl && callbackUrl.startsWith("/")) {
+  if (callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("/super-admin")) {
     redirect(callbackUrl);
   } else {
     redirect("/dashboard");

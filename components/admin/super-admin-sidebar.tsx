@@ -11,7 +11,6 @@ import {
   BarChart3,
   ShieldAlert,
   Settings,
-  ArrowUpRight,
   ShieldCheck,
   LogOut,
 } from "lucide-react";
@@ -117,20 +116,6 @@ export function SuperAdminSidebar({ user }: SuperAdminSidebarProps) {
             </Link>
           );
         })}
-
-        <div className="pt-4 px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          Cross-Navigation
-        </div>
-        <Link
-          href="/dashboard"
-          className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Building2 className="w-4 h-4 text-emerald-400" />
-            <span>Tenant CRM Portal</span>
-          </div>
-          <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-        </Link>
       </div>
 
       {/* Super Admin User Footer */}

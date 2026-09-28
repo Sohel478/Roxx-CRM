@@ -15,6 +15,11 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Super Admin is for platform administration only - strictly isolated from tenant CRM
+  if (session.isSuperAdmin) {
+    redirect("/super-admin/dashboard");
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar navigation */}

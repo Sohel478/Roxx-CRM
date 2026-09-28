@@ -46,7 +46,35 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.searchParams.has("logout");
 
   if (session && (pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/register")) && !isReset) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const dest = session.isSuperAdmin ? "/super-admin/dashboard" : "/dashboard";
+    return NextResponse.redirect(new URL(dest, request.url));
+  }
+
+  // Super Admin is strictly isolated from tenant CRM routes
+  if (session?.isSuperAdmin) {
+    const isTenantCrmRoute =
+      pathname === "/dashboard" ||
+      pathname.startsWith("/dashboard/") ||
+      pathname === "/leads" ||
+      pathname.startsWith("/leads/") ||
+      pathname === "/contacts" ||
+      pathname.startsWith("/contacts/") ||
+      pathname === "/companies" ||
+      pathname.startsWith("/companies/") ||
+      pathname === "/opportunities" ||
+      pathname.startsWith("/opportunities/") ||
+      pathname === "/tasks" ||
+      pathname.startsWith("/tasks/") ||
+      pathname === "/activities" ||
+      pathname.startsWith("/activities/") ||
+      pathname === "/reports" ||
+      pathname.startsWith("/reports/") ||
+      pathname === "/settings" ||
+      pathname.startsWith("/settings/");
+
+    if (isTenantCrmRoute) {
+      return NextResponse.redirect(new URL("/super-admin/dashboard", request.url));
+    }
   }
 
   // If not authenticated and trying to access protected CRM routes, redirect to /login

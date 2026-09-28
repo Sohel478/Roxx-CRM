@@ -671,10 +671,29 @@ export async function updateTenantSubscriptionAction(
       newExpiryDate = base;
     }
 
+    let normalizedPlan = subscriptionPlan;
+    let planSlug = "starter";
+    if (subscriptionPlan) {
+      const lower = subscriptionPlan.toLowerCase();
+      if (lower.includes("trial") || lower === "free_trial") {
+        normalizedPlan = "FREE_TRIAL";
+        planSlug = "free_trial";
+      } else if (lower.includes("starter") || lower === "starter_20") {
+        normalizedPlan = "STARTER_20";
+        planSlug = "starter";
+      } else if (lower.includes("growth") || lower === "growth_50") {
+        normalizedPlan = "GROWTH_50";
+        planSlug = "growth";
+      } else if (lower.includes("enterprise")) {
+        normalizedPlan = "ENTERPRISE";
+        planSlug = "enterprise";
+      }
+    }
+
     if (isMockMode()) {
       const mockOrg = mockOrganizationsStore.find((o) => o.id === organizationId);
       if (mockOrg) {
-        if (subscriptionPlan) mockOrg.subscriptionPlan = subscriptionPlan as any;
+        if (subscriptionPlan) mockOrg.subscriptionPlan = normalizedPlan as any;
         if (subscriptionStatus) mockOrg.subscriptionStatus = subscriptionStatus;
         if (typeof maxSeats === "number") mockOrg.maxSeats = maxSeats;
         if (subscriptionNotes !== undefined) mockOrg.subscriptionNotes = subscriptionNotes;
@@ -686,11 +705,17 @@ export async function updateTenantSubscriptionAction(
           }
         }
       }
+      const mockSub = mockSubscriptionsStore.find((s) => s.organizationId === organizationId);
+      if (mockSub) {
+        const foundPlan = mockPlansStore.find((p) => p.slug === planSlug);
+        if (foundPlan) mockSub.planId = foundPlan.id;
+        if (subscriptionStatus) mockSub.status = subscriptionStatus;
+      }
       return { success: true };
     }
 
     const updateData: any = {};
-    if (subscriptionPlan) updateData.subscriptionPlan = subscriptionPlan;
+    if (subscriptionPlan) updateData.subscriptionPlan = normalizedPlan;
     if (subscriptionStatus) updateData.subscriptionStatus = subscriptionStatus;
     if (typeof maxSeats === "number") updateData.maxSeats = maxSeats;
     if (subscriptionNotes !== undefined) updateData.subscriptionNotes = subscriptionNotes;
@@ -707,6 +732,19 @@ export async function updateTenantSubscriptionAction(
       where: { id: organizationId },
       data: updateData,
     });
+
+    try {
+      const dbPlan = await prisma.plan.findFirst({ where: { slug: planSlug } });
+      if (dbPlan) {
+        await prisma.subscription.updateMany({
+          where: { organizationId },
+          data: {
+            planId: dbPlan.id,
+            status: subscriptionStatus || "ACTIVE",
+          },
+        });
+      }
+    } catch {}
 
     revalidatePath("/super-admin/organizations");
     revalidatePath(`/super-admin/organizations/${organizationId}`);

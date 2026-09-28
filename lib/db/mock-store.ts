@@ -894,6 +894,30 @@ export interface MockPlan {
 
 export const mockPlansStore: MockPlan[] = [
   {
+    id: "plan_free_trial",
+    name: "Free Trial",
+    slug: "free_trial",
+    description: "30-day Free Trial with full feature access and up to 20 seats.",
+    price: 0,
+    currency: "INR",
+    billingInterval: "MONTHLY",
+    isActive: true,
+    isPublic: true,
+    features: {
+      users_limit: "20",
+      leads_limit: "10000",
+      companies_limit: "5000",
+      contacts_limit: "10000",
+      opportunities_limit: "5000",
+      pipelines_limit: "3",
+      advanced_reports: "false",
+      export: "true",
+      api_access: "false",
+      ai_features: "false",
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: "plan_starter",
     name: "Starter",
     slug: "starter",

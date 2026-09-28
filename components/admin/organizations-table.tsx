@@ -315,8 +315,15 @@ export function OrganizationsTable({ initialTenants }: OrganizationsTableProps) 
                           {/* Edit / Change Plan */}
                           <button
                             onClick={() => {
+                              const p = (org.subscriptionPlan || "").toLowerCase();
+                              let norm = "free_trial";
+                              if (p.includes("trial") || p === "free_trial") norm = "free_trial";
+                              else if (p.includes("starter") || p === "starter_20") norm = "starter";
+                              else if (p.includes("growth") || p === "growth_50") norm = "growth";
+                              else if (p.includes("enterprise")) norm = "enterprise";
+
                               setEditModalTenant(org);
-                              setEditPlan(org.subscriptionPlan.toLowerCase());
+                              setEditPlan(norm);
                               setEditSeats(org.maxSeats);
                               setEditStatus(org.subscriptionStatus);
                               setEditNotes(org.subscriptionNotes || "");
@@ -453,13 +460,29 @@ export function OrganizationsTable({ initialTenants }: OrganizationsTableProps) 
                 </label>
                 <select
                   value={editPlan}
-                  onChange={(e) => setEditPlan(e.target.value)}
+                  onChange={(e) => {
+                    const plan = e.target.value;
+                    setEditPlan(plan);
+                    if (plan === "free_trial") {
+                      setEditSeats(20);
+                      setEditStatus("TRIAL");
+                    } else if (plan === "starter") {
+                      setEditSeats(20);
+                      setEditStatus("ACTIVE");
+                    } else if (plan === "growth") {
+                      setEditSeats(50);
+                      setEditStatus("ACTIVE");
+                    } else if (plan === "enterprise") {
+                      setEditSeats(100);
+                      setEditStatus("ACTIVE");
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="starter">Starter ($29/mo - 3 seats, 1,000 leads)</option>
-                  <option value="professional">Professional ($79/mo - 10 seats, 10,000 leads)</option>
-                  <option value="business">Business ($199/mo - 25 seats, 50,000 leads)</option>
-                  <option value="enterprise">Enterprise ($499/mo - Unlimited)</option>
+                  <option value="free_trial">Free Trial: 30 days, up to 20 seats (₹0)</option>
+                  <option value="starter">Tier 1 (Starter): Up to 20 seats at ₹250 / month</option>
+                  <option value="growth">Tier 2 (Growth): 21 to 50 seats at ₹450 / month</option>
+                  <option value="enterprise">Tier 3 (Enterprise): 50+ seats — Custom pricing (&quot;Contact Us&quot;)</option>
                 </select>
               </div>
 

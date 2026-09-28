@@ -218,6 +218,37 @@ export async function ensureDatabaseSchema(): Promise<void> {
       UPDATE "users" SET "is_super_admin" = false WHERE LOWER("email") != 'sohel@techflux.in';
     `).catch(() => {});
 
+    // 6. Ensure current 3-Tier INR Subscription Plans exist on live DB and retire obsolete USD tiers
+    await prisma.$executeRawUnsafe(`
+      DELETE FROM "plan_features" WHERE "plan_id" IN (SELECT "id" FROM "plans" WHERE "slug" IN ('professional', 'business') OR "currency" = 'USD');
+      DELETE FROM "plans" WHERE "slug" IN ('professional', 'business') OR "currency" = 'USD';
+
+      INSERT INTO "plans" ("id", "name", "slug", "description", "price", "currency", "billing_interval", "is_active", "is_public")
+      VALUES 
+        ('plan_free_trial', 'Free Trial', 'free_trial', '30-day Free Trial with up to 20 seats.', 0, 'INR', 'MONTHLY', true, true),
+        ('plan_starter', 'Tier 1 (Starter)', 'starter', 'Up to 20 seats at ₹250 / month.', 250, 'INR', 'MONTHLY', true, true),
+        ('plan_growth', 'Tier 2 (Growth)', 'growth', '21 to 50 seats at ₹450 / month.', 450, 'INR', 'MONTHLY', true, true),
+        ('plan_enterprise', 'Tier 3 (Enterprise)', 'enterprise', '50+ seats — Custom pricing ("Contact Us").', 0, 'INR', 'MONTHLY', true, true)
+      ON CONFLICT ("slug") DO UPDATE SET 
+        "name" = EXCLUDED."name",
+        "description" = EXCLUDED."description",
+        "price" = EXCLUDED."price",
+        "currency" = EXCLUDED."currency",
+        "billing_interval" = EXCLUDED."billing_interval",
+        "is_active" = true,
+        "is_public" = true;
+
+      INSERT INTO "plan_features" ("id", "plan_id", "feature_key", "feature_value")
+      VALUES
+        ('feat_trial_users', 'plan_free_trial', 'users_limit', '20'),
+        ('feat_starter_users', 'plan_starter', 'users_limit', '20'),
+        ('feat_growth_users', 'plan_growth', 'users_limit', '50'),
+        ('feat_ent_users', 'plan_enterprise', 'users_limit', '99999')
+      ON CONFLICT ("plan_id", "feature_key") DO UPDATE SET "feature_value" = EXCLUDED."feature_value";
+    `).catch((err) => {
+      console.warn("[ensureDatabaseSchema] Plans sync warning:", err);
+    });
+
     isMigrationDone = true;
     console.log("✅ [ensureDatabaseSchema] Live PostgreSQL schema synchronized successfully.");
   } catch (err) {
