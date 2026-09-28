@@ -26,9 +26,9 @@ type DetectedPersona = "ADMIN" | "MANAGER" | "SALES";
 function detectPersona(emailStr: string): DetectedPersona | null {
   const lower = emailStr.toLowerCase().trim();
   if (!lower) return null;
-  if (lower === "admin@roxx-crm.local" || lower.includes("admin")) return "ADMIN";
-  if (lower === "manager@roxx-crm.local" || lower.includes("manager")) return "MANAGER";
-  if (lower === "sales@roxx-crm.local" || lower.includes("sales") || lower.includes("rep")) return "SALES";
+  if (lower.includes("admin")) return "ADMIN";
+  if (lower.includes("manager") || lower.includes("mgr") || lower.includes("lead")) return "MANAGER";
+  if (lower.includes("sales") || lower.includes("rep") || lower.includes("agent") || lower.includes("exec")) return "SALES";
   return null;
 }
 
@@ -37,14 +37,17 @@ function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "";
 
   const [state, formAction, isPending] = useActionState(loginAction, initialState);
-  const [email, setEmail] = useState("admin@roxx-crm.local");
-  const [password, setPassword] = useState("password123");
+  const [selectedRole, setSelectedRole] = useState<DetectedPersona>("ADMIN");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const detectedRole = useMemo(() => detectPersona(email), [email]);
+  const activeRole = detectedRole || selectedRole;
 
-  const fillAccount = (accEmail: string, accPass = "password123") => {
-    setEmail(accEmail);
-    setPassword(accPass);
+  const handleSelectRole = (role: DetectedPersona) => {
+    setSelectedRole(role);
+    setEmail("");
+    setPassword("");
   };
 
   return (
@@ -62,25 +65,25 @@ function LoginForm() {
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        {/* Quick Persona Select Buttons on top */}
+        {/* Role Select Buttons on top - Login & Password kept empty */}
         <div className="mb-4 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Quick Role Switch:
+              Select Role:
             </p>
             {detectedRole && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                 <Sparkles className="w-3 h-3 text-blue-500" />
-                Detected: {detectedRole === "ADMIN" ? "Admin" : detectedRole === "MANAGER" ? "Manager" : "Sales"}
+                Auto-detected: {detectedRole === "ADMIN" ? "Admin" : detectedRole === "MANAGER" ? "Manager" : "Sales"}
               </span>
             )}
           </div>
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
-              onClick={() => fillAccount("admin@roxx-crm.local")}
+              onClick={() => handleSelectRole("ADMIN")}
               className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                detectedRole === "ADMIN" || email === "admin@roxx-crm.local"
+                activeRole === "ADMIN"
                   ? "bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-500/20 shadow-xs"
                   : "bg-slate-50 hover:bg-blue-50/50 border-slate-200 text-slate-700"
               }`}
@@ -90,9 +93,9 @@ function LoginForm() {
             </button>
             <button
               type="button"
-              onClick={() => fillAccount("manager@roxx-crm.local")}
+              onClick={() => handleSelectRole("MANAGER")}
               className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                detectedRole === "MANAGER" || email === "manager@roxx-crm.local"
+                activeRole === "MANAGER"
                   ? "bg-purple-50 border-purple-400 text-purple-700 ring-2 ring-purple-500/20 shadow-xs"
                   : "bg-slate-50 hover:bg-purple-50/50 border-slate-200 text-slate-700"
               }`}
@@ -102,9 +105,9 @@ function LoginForm() {
             </button>
             <button
               type="button"
-              onClick={() => fillAccount("sales@roxx-crm.local")}
+              onClick={() => handleSelectRole("SALES")}
               className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                detectedRole === "SALES" || email === "sales@roxx-crm.local"
+                activeRole === "SALES"
                   ? "bg-emerald-50 border-emerald-400 text-emerald-700 ring-2 ring-emerald-500/20 shadow-xs"
                   : "bg-slate-50 hover:bg-emerald-50/50 border-slate-200 text-slate-700"
               }`}
@@ -146,7 +149,13 @@ function LoginForm() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  placeholder={
+                    activeRole === "ADMIN"
+                      ? "admin@yourcompany.com"
+                      : activeRole === "MANAGER"
+                      ? "manager@yourcompany.com"
+                      : "sales@yourcompany.com"
+                  }
                   className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
@@ -173,6 +182,7 @@ function LoginForm() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
                   className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                 />
               </div>
