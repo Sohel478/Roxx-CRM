@@ -11,6 +11,7 @@ import {
   ContactItem,
 } from "@/lib/validations/contacts";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
+import { createNotificationHelper } from "@/actions/notifications";
 
 /**
  * Fetch paginated contacts
@@ -329,6 +330,16 @@ export async function createContactAction(data: ContactFormData) {
         });
       } catch {}
 
+      await createNotificationHelper({
+        organizationId,
+        userId,
+        type: "CONTACT_CREATED",
+        title: "New Contact Created",
+        message: `${created.firstName} ${created.lastName || ""}`.trim() + (finalCompanyName ? ` at ${finalCompanyName}` : "") + " was added.",
+        entityType: "contact",
+        entityId: created.id,
+      });
+
       revalidatePath("/contacts");
       if (finalCompanyId) revalidatePath(`/companies/${finalCompanyId}`);
       revalidatePath("/companies");
@@ -354,6 +365,17 @@ export async function createContactAction(data: ContactFormData) {
         createdAt: new Date().toISOString(),
       };
       mockContactsStore.unshift(newContact);
+
+      createNotificationHelper({
+        organizationId,
+        userId,
+        type: "CONTACT_CREATED",
+        title: "New Contact Created",
+        message: `${fullName}` + (finalCompanyName ? ` at ${finalCompanyName}` : "") + " was added.",
+        entityType: "contact",
+        entityId: newContact.id,
+      });
+
       revalidatePath("/contacts");
       if (finalCompanyId) revalidatePath(`/companies/${finalCompanyId}`);
       revalidatePath("/companies");

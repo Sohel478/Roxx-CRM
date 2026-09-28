@@ -19,6 +19,7 @@ import {
   OpportunityItem,
 } from "@/lib/validations/opportunities";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
+import { createNotificationHelper } from "@/actions/notifications";
 
 /**
  * Fetch all opportunities with stage metrics and totals
@@ -653,6 +654,18 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
         });
       } catch {}
 
+      if (status === "WON") {
+        await createNotificationHelper({
+          organizationId: opp.organizationId,
+          userId: session.id,
+          type: "OPPORTUNITY_WON",
+          title: "Deal Closed - Won! 🎉",
+          message: `${opp.name} closed won for ${opp.currency} ${Number(opp.amount).toLocaleString()}.`,
+          entityType: "opportunity",
+          entityId: id,
+        });
+      }
+
       revalidatePath("/opportunities");
       revalidatePath(`/opportunities/${id}`);
       revalidatePath("/dashboard");
@@ -668,6 +681,19 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
           closedAt: closedAt.toISOString(),
           lossReason: status === "LOST" ? lossReason || null : null,
         };
+
+        if (status === "WON") {
+          createNotificationHelper({
+            organizationId: mockOpportunitiesStore[idx].organizationId,
+            userId: session.id,
+            type: "OPPORTUNITY_WON",
+            title: "Deal Closed - Won! 🎉",
+            message: `${mockOpportunitiesStore[idx].name} closed won for ${mockOpportunitiesStore[idx].currency} ${Number(mockOpportunitiesStore[idx].amount).toLocaleString()}.`,
+            entityType: "opportunity",
+            entityId: id,
+          });
+        }
+
         revalidatePath("/opportunities");
         revalidatePath(`/opportunities/${id}`);
         revalidatePath("/dashboard");

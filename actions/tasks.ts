@@ -18,6 +18,7 @@ import {
   TaskPriority,
   TaskStatus,
 } from "@/lib/validations/tasks";
+import { createNotificationHelper } from "@/actions/notifications";
 
 function getTodayString(): string {
   return new Date().toISOString().split("T")[0];
@@ -288,6 +289,16 @@ export async function createTaskAction(raw: TaskFormData) {
         createdAt: now,
       });
 
+      await createNotificationHelper({
+        organizationId,
+        userId: data.assignedToId || userId || session.id,
+        type: "TASK_CREATED",
+        title: "New Task Created",
+        message: `Task "${data.title}" is due on ${data.dueAt.split("T")[0]}.`,
+        entityType: "task",
+        entityId: task.id,
+      });
+
       revalidatePath("/tasks");
       revalidatePath("/activities");
       revalidatePath("/dashboard");
@@ -316,6 +327,16 @@ export async function createTaskAction(raw: TaskFormData) {
         status: data.status,
         completedAt: null,
         createdAt: now,
+      });
+
+      createNotificationHelper({
+        organizationId: session.organizationId,
+        userId: data.assignedToId || session.id,
+        type: "TASK_CREATED",
+        title: "New Task Created",
+        message: `Task "${data.title}" is due on ${data.dueAt.split("T")[0]}.`,
+        entityType: "task",
+        entityId: taskId,
       });
 
       revalidatePath("/tasks");

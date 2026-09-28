@@ -1070,3 +1070,85 @@ export const mockPlatformUsersStore: MockPlatformUser[] = [
   },
 ];
 
+export interface MockNotification {
+  id: string;
+  organizationId: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export const mockNotificationsStore: MockNotification[] = [
+  {
+    id: "notif_1",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    type: "LEAD_ASSIGNED",
+    title: "New High-Value Lead Assigned",
+    message: "Rajesh Sharma from Apex Technologies (₹750,000) has been assigned to you.",
+    entityType: "lead",
+    entityId: "lead_1",
+    isRead: false,
+    readAt: null,
+    createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
+  },
+  {
+    id: "notif_2",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    type: "TASK_DUE",
+    title: "Urgent Task Due Today",
+    message: "Follow up with Alpha Corp regarding custom quotation is due today.",
+    entityType: "task",
+    entityId: "task_1",
+    isRead: false,
+    readAt: null,
+    createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
+  },
+  {
+    id: "notif_3",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    type: "OPPORTUNITY_WON",
+    title: "Deal Closed - Won! 🎉",
+    message: "Acme Cloud Migration closed won for ₹450,000.",
+    entityType: "opportunity",
+    entityId: "opp_1",
+    isRead: false,
+    readAt: null,
+    createdAt: new Date(Date.now() - 5 * 3600000).toISOString(),
+  },
+  {
+    id: "notif_4",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    type: "CONTACT_CREATED",
+    title: "New Contact Created",
+    message: "Priya Patel was added under TechCorp.",
+    entityType: "contact",
+    entityId: "contact_1",
+    isRead: true,
+    readAt: new Date(Date.now() - 12 * 3600000).toISOString(),
+    createdAt: new Date(Date.now() - 24 * 3600000).toISOString(),
+  },
+  {
+    id: "notif_5",
+    organizationId: "demo-org-123",
+    userId: "usr_admin",
+    type: "SUBSCRIPTION_UPDATE",
+    title: "Free Trial Active",
+    message: "Your 30-day Free Trial is active with up to 20 seats available.",
+    entityType: "subscription",
+    entityId: "sub_demo_1",
+    isRead: true,
+    readAt: new Date(Date.now() - 48 * 3600000).toISOString(),
+    createdAt: new Date(Date.now() - 72 * 3600000).toISOString(),
+  },
+];
+

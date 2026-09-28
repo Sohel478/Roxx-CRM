@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Bell, Plus, LogOut, Sparkles, ShieldCheck } from "lucide-react";
+import { Search, Plus, LogOut, Sparkles, ShieldCheck } from "lucide-react";
 import { logoutAction, getCurrentUserAction } from "@/actions/auth";
 import { CommandPalette } from "@/components/search/command-palette";
 import { LeadModal } from "@/features/leads/components/lead-modal";
+import { NotificationDropdown } from "@/components/layout/notification-dropdown";
 import type { SessionUser } from "@/lib/auth/session";
 
 function formatRoleName(role?: string): string {
@@ -141,15 +142,8 @@ export function Navbar({ session: initialSession }: NavbarProps = {}) {
           <span>New Lead</span>
         </button>
 
-        {/* Notifications Icon */}
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white" />
-        </button>
+        {/* Notifications Dropdown */}
+        <NotificationDropdown />
 
         {/* Profile Avatar & Logout */}
         <div className="flex items-center gap-3 pl-3 border-l border-slate-200">

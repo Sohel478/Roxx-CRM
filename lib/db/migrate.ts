@@ -192,6 +192,22 @@ export async function ensureDatabaseSchema(): Promise<void> {
         "storage_bytes" BIGINT NOT NULL DEFAULT 0,
         "captured_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS "notifications" (
+        "id" TEXT PRIMARY KEY,
+        "organization_id" TEXT NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+        "user_id" TEXT NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+        "type" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "entity_type" TEXT,
+        "entity_id" TEXT,
+        "is_read" BOOLEAN NOT NULL DEFAULT false,
+        "read_at" TIMESTAMP(3),
+        "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS "notifications_organization_id_user_id_is_read_idx" ON "notifications"("organization_id", "user_id", "is_read");
     `).catch((err) => {
       console.warn("[ensureDatabaseSchema] SaaS platform tables create warning:", err);
     });

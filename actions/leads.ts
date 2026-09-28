@@ -16,6 +16,7 @@ import {
   LeadItem,
 } from "@/lib/validations/leads";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
+import { createNotificationHelper } from "@/actions/notifications";
 
 /**
  * Check if a lead with matching email or normalized phone already exists
@@ -427,6 +428,16 @@ export async function createLeadAction(data: LeadFormData) {
       });
     } catch {}
 
+    await createNotificationHelper({
+      organizationId,
+      userId,
+      type: "LEAD_CREATED",
+      title: "New Lead Created",
+      message: `${firstName} ${lastName || ""}`.trim() + ` (${currency} ${Number(estimatedValue).toLocaleString()}) was created.`,
+      entityType: "lead",
+      entityId: created.id,
+    });
+
     revalidatePath("/leads");
     revalidatePath("/dashboard");
     return { success: true, data: created };
@@ -454,6 +465,17 @@ export async function createLeadAction(data: LeadFormData) {
       description,
     };
     mockLeadsStore.unshift(newLead);
+
+    createNotificationHelper({
+      organizationId,
+      userId,
+      type: "LEAD_CREATED",
+      title: "New Lead Created",
+      message: `${fullName} (${currency} ${Number(estimatedValue).toLocaleString()}) was created.`,
+      entityType: "lead",
+      entityId: newLead.id,
+    });
+
     revalidatePath("/leads");
     revalidatePath("/dashboard");
     return { success: true, data: newLead };
