@@ -188,20 +188,52 @@ export function LeadTable({
                   <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
                     {/* Lead Name & Number */}
                     <td className="py-3.5 px-4">
-                      <Link
-                        href={`/leads/${lead.id}`}
-                        className="group flex flex-col font-semibold text-slate-900 hover:text-blue-600"
-                      >
-                        <span className="group-hover:underline">{lead.fullName}</span>
-                        <span className="text-[11px] text-slate-400 font-mono font-normal">
-                          {lead.leadNumber} &bull; {lead.source}
-                        </span>
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/leads/${lead.id}`}
+                          className="group flex flex-col font-semibold text-slate-900 hover:text-blue-600 min-w-0"
+                        >
+                          <span className="group-hover:underline truncate">{lead.fullName}</span>
+                          <span className="text-[11px] text-slate-400 font-mono font-normal">
+                            {lead.leadNumber} &bull; {lead.source}
+                          </span>
+                        </Link>
+                        {lead.customerLinkedin && (
+                          <a
+                            href={lead.customerLinkedin}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                            title={`Customer LinkedIn: ${lead.customerLinkedin}`}
+                          >
+                            <span className="sr-only">Customer LinkedIn</span>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v7.6H9.2v-7.6H6.46M7.83 6.25c-.9 0-1.63.73-1.63 1.63s.73 1.63 1.63 1.63 1.63-.73 1.63-1.63-.73-1.63-1.63-1.63" />
+                            </svg>
+                          </a>
+                        )}
+                      </div>
                     </td>
 
                     {/* Company & Title */}
                     <td className="py-3.5 px-4 text-xs text-slate-600">
-                      <p className="font-medium text-slate-800">{lead.companyName || "Independent"}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-slate-800 truncate">{lead.companyName || "Independent"}</p>
+                        {lead.companyLinkedin && (
+                          <a
+                            href={lead.companyLinkedin}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                            title={`Company LinkedIn: ${lead.companyLinkedin}`}
+                          >
+                            <span className="sr-only">Company LinkedIn</span>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v7.6H9.2v-7.6H6.46M7.83 6.25c-.9 0-1.63.73-1.63 1.63s.73 1.63 1.63 1.63 1.63-.73 1.63-1.63-.73-1.63-1.63-1.63" />
+                            </svg>
+                          </a>
+                        )}
+                      </div>
                       {lead.jobTitle && <p className="text-[11px] text-slate-400">{lead.jobTitle}</p>}
                     </td>
 

@@ -89,4 +89,32 @@ describe("Lead Validation & Duplicate Rules", () => {
     expect(otherOrgTabs).not.toContain("Scraped");
     expect(otherOrgTabs[1]).toBe("New");
   });
+
+  it("validates companyLinkedin and customerLinkedin fields correctly", () => {
+    const leadWithLinkedin = {
+      firstName: "John",
+      lastName: "Doe",
+      companyName: "Acme Inc",
+      companyLinkedin: "https://linkedin.com/company/acme",
+      customerLinkedin: "https://linkedin.com/in/johndoe",
+      source: "Scraped Data",
+      status: "Scraped",
+    };
+
+    const res = leadSchema.safeParse(leadWithLinkedin);
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.companyLinkedin).toBe("https://linkedin.com/company/acme");
+      expect(res.data.customerLinkedin).toBe("https://linkedin.com/in/johndoe");
+    }
+
+    // Nullable/optional behavior
+    const leadWithoutLinkedin = {
+      firstName: "Jane",
+      companyLinkedin: null,
+      customerLinkedin: null,
+    };
+    const res2 = leadSchema.safeParse(leadWithoutLinkedin);
+    expect(res2.success).toBe(true);
+  });
 });

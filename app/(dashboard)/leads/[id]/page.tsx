@@ -50,6 +50,8 @@ interface LeadDetailData {
   phone?: string | null;
   companyName?: string | null;
   jobTitle?: string | null;
+  companyLinkedin?: string | null;
+  customerLinkedin?: string | null;
   source: string;
   status: string;
   rating: string;
@@ -185,15 +187,19 @@ export default function LeadDetailPage() {
     ? Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
 
-  // Extract scraped social links & website from description if present
+  // Extract scraped social links & website (prefers explicit lead properties with notes fallback)
   const websiteMatch = lead.description?.match(/Website:\s*([^\s\n\r]+)/i);
   const websiteUrl = websiteMatch ? websiteMatch[1] : null;
 
-  const companyLinkedinMatch = lead.description?.match(/Company LinkedIn:\s*([^\s\n\r]+)/i);
-  const companyLinkedinUrl = companyLinkedinMatch ? companyLinkedinMatch[1] : null;
+  const companyLinkedinUrl =
+    lead.companyLinkedin ||
+    lead.description?.match(/Company LinkedIn:\s*([^\s\n\r]+)/i)?.[1] ||
+    null;
 
-  const personalLinkedinMatch = lead.description?.match(/LinkedIn Profile:\s*([^\s\n\r]+)/i);
-  const personalLinkedinUrl = personalLinkedinMatch ? personalLinkedinMatch[1] : null;
+  const customerLinkedinUrl =
+    lead.customerLinkedin ||
+    lead.description?.match(/LinkedIn Profile:\s*([^\s\n\r]+)/i)?.[1] ||
+    null;
 
   const filteredActivities = activities.filter((act) => {
     if (activityFilter === "ALL") return true;
@@ -480,11 +486,11 @@ export default function LeadDetailPage() {
                     },
                   ]
                 : []),
-              ...(personalLinkedinUrl
+              ...(customerLinkedinUrl
                 ? [
                     {
-                      label: "LinkedIn Profile",
-                      value: personalLinkedinUrl,
+                      label: "Customer LinkedIn",
+                      value: customerLinkedinUrl,
                       icon: <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />,
                     },
                   ]
@@ -690,6 +696,8 @@ export default function LeadDetailPage() {
                 phone: lead.phone || "",
                 companyName: lead.companyName || "",
                 jobTitle: lead.jobTitle || "",
+                companyLinkedin: lead.companyLinkedin || companyLinkedinUrl || "",
+                customerLinkedin: lead.customerLinkedin || customerLinkedinUrl || "",
                 source: lead.source,
                 status: (lead.status as "Scraped" | "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
                 rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",

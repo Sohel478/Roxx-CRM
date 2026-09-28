@@ -28,6 +28,8 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     phone: leadToEdit?.phone || "",
     companyName: leadToEdit?.companyName || "",
     jobTitle: leadToEdit?.jobTitle || "",
+    companyLinkedin: leadToEdit?.companyLinkedin || "",
+    customerLinkedin: leadToEdit?.customerLinkedin || "",
     source: leadToEdit?.source || "Website",
     status: (leadToEdit?.status as any) || (isTechfluxOrg ? "Scraped" : "New"),
     rating: (leadToEdit?.rating as any) || "Warm",
@@ -51,6 +53,8 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         phone: leadToEdit.phone || "",
         companyName: leadToEdit.companyName || "",
         jobTitle: leadToEdit.jobTitle || "",
+        companyLinkedin: leadToEdit.companyLinkedin || "",
+        customerLinkedin: leadToEdit.customerLinkedin || "",
         source: leadToEdit.source || "Website",
         status: (leadToEdit.status as any) || "New",
         rating: (leadToEdit.rating as any) || "Warm",
@@ -66,6 +70,8 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         phone: "",
         companyName: "",
         jobTitle: "",
+        companyLinkedin: "",
+        customerLinkedin: "",
         source: "Website",
         status: isTechfluxOrg ? "Scraped" : "New",
         rating: "Warm",
@@ -211,6 +217,24 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
               placeholder="e.g. Director of Operations"
               value={formData.jobTitle || ""}
               onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Company LinkedIn URL</label>
+            <Input
+              placeholder="https://linkedin.com/company/..."
+              value={formData.companyLinkedin || ""}
+              onChange={(e) => setFormData({ ...formData, companyLinkedin: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Customer (User) LinkedIn Profile URL</label>
+            <Input
+              placeholder="https://linkedin.com/in/..."
+              value={formData.customerLinkedin || ""}
+              onChange={(e) => setFormData({ ...formData, customerLinkedin: e.target.value })}
             />
           </div>
 

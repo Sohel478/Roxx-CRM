@@ -185,6 +185,9 @@ describe("Scraped Leads CSV Importer (importCsvAction)", () => {
     expect(lead1?.status).toBe("Scraped");
     expect(lead1?.source).toBe("Scraped Data");
 
+    expect(lead1?.companyLinkedin).toBe("https://linkedin.com/company/techflux");
+    expect(lead1?.customerLinkedin).toBe("https://linkedin.com/in/janedoe");
+
     // Verify notes contain website, company linkedin, and personal linkedin profile
     expect(lead1?.description).toContain("Website: https://techflux.in");
     expect(lead1?.description).toContain("Company LinkedIn: https://linkedin.com/company/techflux");

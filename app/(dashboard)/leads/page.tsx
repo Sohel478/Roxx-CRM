@@ -136,6 +136,8 @@ export default function LeadsPage() {
       phone: lead.phone || "",
       companyName: lead.companyName || "",
       jobTitle: lead.jobTitle || "",
+      companyLinkedin: lead.companyLinkedin || "",
+      customerLinkedin: lead.customerLinkedin || "",
       source: lead.source,
       status: (lead.status as "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
       rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",

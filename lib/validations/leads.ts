@@ -7,6 +7,8 @@ export const leadSchema = z.object({
   phone: z.string().optional(),
   companyName: z.string().optional(),
   jobTitle: z.string().optional(),
+  companyLinkedin: z.string().optional().nullable(),
+  customerLinkedin: z.string().optional().nullable(),
   source: z.string().default("Website"),
   sourceDetail: z.string().optional(),
   status: z.enum(["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),
@@ -35,6 +37,8 @@ export interface LeadItem {
   phone: string | null;
   companyName: string | null;
   jobTitle: string | null;
+  companyLinkedin?: string | null;
+  customerLinkedin?: string | null;
   source: string;
   status: string;
   rating: string;

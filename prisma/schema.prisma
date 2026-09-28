@@ -240,6 +240,8 @@ model Lead {
   phone                 String?
   companyName           String?       @map("company_name")
   jobTitle              String?       @map("job_title")
+  companyLinkedin       String?       @map("company_linkedin")
+  customerLinkedin      String?       @map("customer_linkedin")
   source                String        // Website, Referral, etc.
   sourceDetail          String?       @map("source_detail")
   status                String        @default("New") // New, Contacted, Qualified, etc.

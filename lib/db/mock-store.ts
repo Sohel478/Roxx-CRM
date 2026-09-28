@@ -72,6 +72,8 @@ export interface MockLead {
   phone: string | null;
   companyName: string | null;
   jobTitle: string | null;
+  companyLinkedin?: string | null;
+  customerLinkedin?: string | null;
   source: string;
   sourceDetail?: string | null;
   status: string;
@@ -255,6 +257,8 @@ export const mockLeadsStore: MockLead[] = [
     phone: "+1 (555) 492-8172",
     companyName: "Cyberdyne Systems",
     jobTitle: "Director of IT Operations",
+    companyLinkedin: "https://linkedin.com/company/cyberdyne-systems",
+    customerLinkedin: "https://linkedin.com/in/elena-rostova",
     source: "Website",
     status: "New",
     rating: "Hot",
@@ -275,6 +279,8 @@ export const mockLeadsStore: MockLead[] = [
     phone: "+1 (555) 381-9021",
     companyName: "Vanguard Security",
     jobTitle: "VP Sales & Partnerships",
+    companyLinkedin: "https://linkedin.com/company/vanguard-sec",
+    customerLinkedin: "https://linkedin.com/in/marcus-vance",
     source: "LinkedIn",
     status: "Contacted",
     rating: "Warm",

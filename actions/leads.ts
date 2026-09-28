@@ -157,6 +157,8 @@ export async function getLeadsAction(params: {
           phone: l.phone,
           companyName: l.companyName,
           jobTitle: l.jobTitle,
+          companyLinkedin: l.companyLinkedin || null,
+          customerLinkedin: l.customerLinkedin || null,
           source: l.source,
           status: l.status,
           rating: l.rating || "Warm",
@@ -385,6 +387,8 @@ export async function createLeadAction(data: LeadFormData) {
     phone,
     companyName,
     jobTitle,
+    companyLinkedin,
+    customerLinkedin,
     source,
     sourceDetail,
     status,
@@ -407,6 +411,8 @@ export async function createLeadAction(data: LeadFormData) {
         phone: phone || null,
         companyName: companyName || null,
         jobTitle: jobTitle || null,
+        companyLinkedin: companyLinkedin || null,
+        customerLinkedin: customerLinkedin || null,
         source,
         sourceDetail: sourceDetail || null,
         status,
@@ -459,6 +465,8 @@ export async function createLeadAction(data: LeadFormData) {
       phone: phone || null,
       companyName: companyName || null,
       jobTitle: jobTitle || null,
+      companyLinkedin: companyLinkedin || null,
+      customerLinkedin: customerLinkedin || null,
       source,
       status,
       rating,
@@ -500,6 +508,8 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
     if (data.phone !== undefined) updatePayload.phone = data.phone?.trim() || null;
     if (data.companyName !== undefined) updatePayload.companyName = data.companyName?.trim() || null;
     if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
+    if (data.companyLinkedin !== undefined) updatePayload.companyLinkedin = data.companyLinkedin?.trim() || null;
+    if (data.customerLinkedin !== undefined) updatePayload.customerLinkedin = data.customerLinkedin?.trim() || null;
     if (data.source !== undefined) updatePayload.source = data.source;
     if (data.sourceDetail !== undefined) updatePayload.sourceDetail = data.sourceDetail?.trim() || null;
     if (data.status !== undefined) updatePayload.status = data.status;

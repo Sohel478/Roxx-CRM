@@ -103,6 +103,7 @@ export async function convertLeadAction(
           email: data.contactEmail?.trim() || null,
           phone: data.contactPhone?.trim() || null,
           jobTitle: data.contactJobTitle?.trim() || null,
+          linkedinUrl: lead.customerLinkedin || null,
           ownerId: userId,
         },
       });
@@ -295,6 +296,7 @@ export async function convertLeadAction(
       phone: data.contactPhone?.trim() || null,
       jobTitle: data.contactJobTitle?.trim() || null,
       department: null,
+      linkedinUrl: lead.customerLinkedin || null,
       createdAt: new Date().toISOString(),
     };
     mockContactsStore.unshift(newContact);
