@@ -16,6 +16,7 @@ import {
   mockUsersStore,
 } from "@/lib/db/mock-store";
 import { ensureDatabaseSchema } from "@/lib/db/migrate";
+import { changePasswordSchema } from "@/lib/validations/settings";
 
 const loginSchema = z.object({
   email: z.string().email("Please provide a valid email address"),
@@ -296,16 +297,33 @@ export async function loginAction(
       }
     } else {
       // 3. Fallback accounts for development & demo
-      const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
-      if (demoUser && password === "password123") {
+      const mockUser = mockUsersStore.find(
+        (u) => u.email.toLowerCase() === email.toLowerCase()
+      );
+      let isMockValid = false;
+      if (mockUser && mockUser.passwordHash) {
+        isMockValid = await verifyPassword(password, mockUser.passwordHash);
+      } else {
+        const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
+        if (demoUser && password === "password123") {
+          isMockValid = true;
+        }
+      }
+
+      if (isMockValid) {
+        const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
+        const role = mockUser?.role || demoUser?.role || "ADMIN";
+        const name = mockUser?.name || demoUser?.name || "Demo User";
+        const permissions = demoUser?.permissions || ALL_ADMIN_PERMISSIONS;
+
         const sessionUser: Omit<SessionUser, "expiresAt"> = {
-          id: `demo-user-${demoUser.role.toLowerCase()}`,
-          organizationId: "demo-org-123",
+          id: mockUser?.id || `demo-user-${role.toLowerCase()}`,
+          organizationId: mockUser?.organizationId || "demo-org-123",
           organizationName: "Demo Company",
           email,
-          name: demoUser.name,
-          role: demoUser.role,
-          permissions: demoUser.permissions,
+          name,
+          role,
+          permissions,
           isSuperAdmin: false, // Strict: Demo org admin, manager, sales are NOT Super Admin
           subscriptionPlan: "FREE_TRIAL",
           subscriptionStatus: "TRIAL",
@@ -325,16 +343,33 @@ export async function loginAction(
     }
     console.error("[loginAction] Unexpected error:", err);
     // Database connection issue fallback to demo accounts
-    const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
-    if (demoUser && password === "password123") {
+    const mockUser = mockUsersStore.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase()
+    );
+    let isMockValid = false;
+    if (mockUser && mockUser.passwordHash) {
+      isMockValid = await verifyPassword(password, mockUser.passwordHash);
+    } else {
+      const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
+      if (demoUser && password === "password123") {
+        isMockValid = true;
+      }
+    }
+
+    if (isMockValid) {
+      const demoUser = DEMO_FALLBACK_USERS[email.toLowerCase()];
+      const role = mockUser?.role || demoUser?.role || "ADMIN";
+      const name = mockUser?.name || demoUser?.name || "Demo User";
+      const permissions = demoUser?.permissions || ALL_ADMIN_PERMISSIONS;
+
       const sessionUser: Omit<SessionUser, "expiresAt"> = {
-        id: `demo-user-${demoUser.role.toLowerCase()}`,
-        organizationId: "demo-org-123",
+        id: mockUser?.id || `demo-user-${role.toLowerCase()}`,
+        organizationId: mockUser?.organizationId || "demo-org-123",
         organizationName: "Demo Company",
         email,
-        name: demoUser.name,
-        role: demoUser.role,
-        permissions: demoUser.permissions,
+        name,
+        role,
+        permissions,
         isSuperAdmin: false,
         subscriptionPlan: "FREE_TRIAL",
         subscriptionStatus: "TRIAL",
@@ -634,5 +669,137 @@ export async function logoutAction(): Promise<void> {
 export async function clearSessionAndRedirectAction(): Promise<void> {
   await clearSessionCookie();
   redirect("/login?reset=true");
+}
+
+export interface ChangePasswordState {
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
+export async function changePasswordAction(
+  prevState: ChangePasswordState,
+  formData: FormData
+): Promise<ChangePasswordState> {
+  const session = await getSession();
+  if (!session) {
+    return { success: false, error: "Authentication required. Please sign in again." };
+  }
+
+  const rawData = {
+    currentPassword: String(formData.get("currentPassword") || ""),
+    newPassword: String(formData.get("newPassword") || ""),
+    confirmPassword: String(formData.get("confirmPassword") || ""),
+  };
+
+  const validation = changePasswordSchema.safeParse(rawData);
+  if (!validation.success) {
+    return {
+      success: false,
+      error: validation.error.errors[0]?.message || "Validation failed",
+    };
+  }
+
+  const { currentPassword, newPassword } = validation.data;
+
+  try {
+    const dbUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: session.id },
+          { email: session.email.toLowerCase() },
+        ],
+      },
+    });
+
+    if (dbUser) {
+      const isCurrentValid = await verifyPassword(currentPassword, dbUser.passwordHash);
+      if (!isCurrentValid) {
+        return { success: false, error: "Current password does not match our records." };
+      }
+
+      const newPasswordHash = await hashPassword(newPassword);
+
+      await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { passwordHash: newPasswordHash },
+      });
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId: session.organizationId,
+            userId: session.id,
+            action: "USER_PASSWORD_CHANGED",
+            entityType: "User",
+            entityId: dbUser.id,
+            newValues: { changedAt: new Date().toISOString() },
+          },
+        });
+      } catch {}
+
+      return {
+        success: true,
+        message: "Your password has been changed successfully.",
+      };
+    }
+  } catch (dbErr: any) {
+    console.warn("[changePasswordAction] DB lookup failed, falling back to mock store:", dbErr);
+  }
+
+  // Fallback in mockUsersStore
+  const mockUser = mockUsersStore.find(
+    (u) => u.id === session.id || u.email.toLowerCase() === session.email.toLowerCase()
+  );
+
+  if (mockUser) {
+    let isCurrentValid = false;
+    if (mockUser.passwordHash) {
+      isCurrentValid = await verifyPassword(currentPassword, mockUser.passwordHash);
+    } else {
+      const expectedFallback = mockUser.isSuperAdmin ? "Momo$143" : "password123";
+      isCurrentValid = currentPassword === expectedFallback;
+    }
+
+    if (!isCurrentValid) {
+      return { success: false, error: "Current password does not match our records." };
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    mockUser.passwordHash = newPasswordHash;
+
+    return {
+      success: true,
+      message: "Your password has been changed successfully.",
+    };
+  }
+
+  // Fallback demo user
+  if (session.id.startsWith("demo-user-") || session.email.endsWith("@roxx-crm.local")) {
+    if (currentPassword !== "password123") {
+      return { success: false, error: "Current password does not match our records." };
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    mockUsersStore.push({
+      id: session.id,
+      organizationId: session.organizationId,
+      name: session.name,
+      email: session.email,
+      role: (session.role as any) || "ADMIN",
+      isActive: true,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      passwordHash: newPasswordHash,
+    });
+
+    return {
+      success: true,
+      message: "Your password has been changed successfully.",
+    };
+  }
+
+  return { success: false, error: "User account could not be found to update password." };
 }
 

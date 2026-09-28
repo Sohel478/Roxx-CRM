@@ -65,32 +65,36 @@ export function PublicNavbar({ isAuthenticated = false }: PublicNavbarProps) {
 
         {/* Action Buttons */}
         <div className="hidden items-center space-x-3 md:flex">
+          <Link href="/demo/login">
+            <Button
+              variant="outline"
+              className="text-xs font-bold border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 gap-1.5 shadow-2xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <span>Demo Login</span>
+            </Button>
+          </Link>
+
+          <Link href="/login">
+            <Button variant="outline" className="text-xs font-semibold">
+              Login
+            </Button>
+          </Link>
+
           {isAuthenticated ? (
             <Link href="/dashboard">
-              <Button className="bg-indigo-600 hover:bg-indigo-700">
-                Go to Dashboard
-                <ArrowRight className="ml-1.5 h-4 w-4" />
+              <Button className="bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold">
+                <span>Dashboard</span>
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>
             </Link>
           ) : (
-            <>
-              <Link href="/demo">
-                <Button variant="ghost" className="text-sm font-medium text-muted-foreground hover:text-foreground">
-                  Explore Demo
-                </Button>
-              </Link>
-              <Link href="/login">
-                <Button variant="outline" className="text-sm font-medium">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/signup">
-                <Button className="bg-indigo-600 shadow-sm shadow-indigo-600/20 hover:bg-indigo-700">
-                  Start Free Trial
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Button>
-              </Link>
-            </>
+            <Link href="/signup">
+              <Button className="bg-indigo-600 shadow-sm shadow-indigo-600/20 hover:bg-indigo-700 text-xs font-semibold">
+                <span>Start Free Trial</span>
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </Link>
           )}
         </div>
 
@@ -139,7 +143,18 @@ export function PublicNavbar({ isAuthenticated = false }: PublicNavbarProps) {
             >
               Contact
             </Link>
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col gap-2">
+              <Link href="/demo/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="outline" className="w-full justify-center border-amber-300 bg-amber-50 text-amber-900 gap-1.5 font-bold">
+                  <Sparkles className="h-4 w-4 text-amber-600" />
+                  <span>Demo Login</span>
+                </Button>
+              </Link>
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="outline" className="w-full">
+                  Login
+                </Button>
+              </Link>
               {isAuthenticated ? (
                 <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
                   <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
@@ -148,18 +163,11 @@ export function PublicNavbar({ isAuthenticated = false }: PublicNavbarProps) {
                   </Button>
                 </Link>
               ) : (
-                <div className="flex flex-col gap-2">
-                  <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-                    <Button variant="outline" className="w-full">
-                      Login
-                    </Button>
-                  </Link>
-                  <Link href="/signup" onClick={() => setMobileMenuOpen(false)}>
-                    <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
-                      Start 30-Day Free Trial
-                    </Button>
-                  </Link>
-                </div>
+                <Link href="/signup" onClick={() => setMobileMenuOpen(false)}>
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
+                    Start 30-Day Free Trial
+                  </Button>
+                </Link>
               )}
             </div>
           </div>

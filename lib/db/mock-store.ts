@@ -740,6 +740,7 @@ export interface MockUser {
   avatarUrl: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+  passwordHash?: string;
 }
 
 export const mockUsersStore: MockUser[] = [

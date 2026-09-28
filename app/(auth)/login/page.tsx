@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useEffect, Suspense } from "react";
+import { useActionState, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   UserCheck,
   Briefcase,
-  Crown,
+  Sparkles,
 } from "lucide-react";
 import { loginAction } from "@/actions/auth";
 import type { AuthState } from "@/types/auth";
@@ -21,29 +21,26 @@ const initialState: AuthState = {
   success: false,
 };
 
+type DetectedPersona = "ADMIN" | "MANAGER" | "SALES";
+
+function detectPersona(emailStr: string): DetectedPersona | null {
+  const lower = emailStr.toLowerCase().trim();
+  if (!lower) return null;
+  if (lower === "admin@roxx-crm.local" || lower.includes("admin")) return "ADMIN";
+  if (lower === "manager@roxx-crm.local" || lower.includes("manager")) return "MANAGER";
+  if (lower === "sales@roxx-crm.local" || lower.includes("sales") || lower.includes("rep")) return "SALES";
+  return null;
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "";
-  const portal = searchParams.get("portal");
-  const isSuperAdminRequested =
-    portal === "super_admin" ||
-    callbackUrl.includes("/super-admin") ||
-    searchParams.get("notice") === "unauthorized_tenant";
 
   const [state, formAction, isPending] = useActionState(loginAction, initialState);
-  const [email, setEmail] = useState(
-    isSuperAdminRequested ? "sohel@techflux.in" : "admin@roxx-crm.local"
-  );
-  const [password, setPassword] = useState(
-    isSuperAdminRequested ? "Momo$143" : "password123"
-  );
+  const [email, setEmail] = useState("admin@roxx-crm.local");
+  const [password, setPassword] = useState("password123");
 
-  useEffect(() => {
-    if (isSuperAdminRequested) {
-      setEmail("sohel@techflux.in");
-      setPassword("Momo$143");
-    }
-  }, [isSuperAdminRequested]);
+  const detectedRole = useMemo(() => detectPersona(email), [email]);
 
   const fillAccount = (accEmail: string, accPass = "password123") => {
     setEmail(accEmail);
@@ -57,82 +54,63 @@ function LoginForm() {
           <Flame className="w-7 h-7 fill-white" />
         </div>
         <h2 className="mt-4 text-center text-2xl font-bold tracking-tight text-slate-900">
-          {isSuperAdminRequested ? "Super Admin Portal Login" : "Sign in to Roxx CRM"}
+          Subscription Employee Login
         </h2>
         <p className="mt-1 text-center text-xs text-slate-500">
-          {isSuperAdminRequested
-            ? "Platform Owner console for multi-tenant management and billing"
-            : "Multi-tenant sales pipeline and customer relationship management"}
+          Sign in to access your organization&apos;s CRM workspace
         </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        {/* Notice if redirected from /super-admin */}
-        {isSuperAdminRequested && (
-          <div className="mb-4 p-3.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-900 text-xs flex items-start gap-2.5">
-            <Crown className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-purple-950">SaaS Platform Owner Portal</p>
-              <p className="text-[11px] text-purple-800 mt-0.5">
-                Sign in with SaaS Owner credentials (<code className="font-mono font-semibold">sohel@techflux.in</code>) to access the Super Admin Console.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Quick-Switch Pills */}
+        {/* Quick Persona Select Buttons on top */}
         <div className="mb-4 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            One-Click Login Accounts:
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Quick Role Switch:
+            </p>
+            {detectedRole && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                <Sparkles className="w-3 h-3 text-blue-500" />
+                Detected: {detectedRole === "ADMIN" ? "Admin" : detectedRole === "MANAGER" ? "Manager" : "Sales"}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => fillAccount("admin@roxx-crm.local")}
-              className={`flex items-center justify-center gap-1 px-2 py-1.5 border rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                email === "admin@roxx-crm.local"
-                  ? "bg-blue-50 border-blue-300 text-blue-700"
-                  : "bg-slate-50 hover:bg-blue-50 border-slate-200 text-slate-700"
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                detectedRole === "ADMIN" || email === "admin@roxx-crm.local"
+                  ? "bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-500/20 shadow-xs"
+                  : "bg-slate-50 hover:bg-blue-50/50 border-slate-200 text-slate-700"
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span className="truncate">Admin</span>
+              <span>Admin</span>
             </button>
             <button
               type="button"
               onClick={() => fillAccount("manager@roxx-crm.local")}
-              className={`flex items-center justify-center gap-1 px-2 py-1.5 border rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                email === "manager@roxx-crm.local"
-                  ? "bg-purple-50 border-purple-300 text-purple-700"
-                  : "bg-slate-50 hover:bg-purple-50 border-slate-200 text-slate-700"
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                detectedRole === "MANAGER" || email === "manager@roxx-crm.local"
+                  ? "bg-purple-50 border-purple-400 text-purple-700 ring-2 ring-purple-500/20 shadow-xs"
+                  : "bg-slate-50 hover:bg-purple-50/50 border-slate-200 text-slate-700"
               }`}
             >
               <Briefcase className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-              <span className="truncate">Manager</span>
+              <span>Manager</span>
             </button>
             <button
               type="button"
               onClick={() => fillAccount("sales@roxx-crm.local")}
-              className={`flex items-center justify-center gap-1 px-2 py-1.5 border rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                email === "sales@roxx-crm.local"
-                  ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                  : "bg-slate-50 hover:bg-emerald-50 border-slate-200 text-slate-700"
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                detectedRole === "SALES" || email === "sales@roxx-crm.local"
+                  ? "bg-emerald-50 border-emerald-400 text-emerald-700 ring-2 ring-emerald-500/20 shadow-xs"
+                  : "bg-slate-50 hover:bg-emerald-50/50 border-slate-200 text-slate-700"
               }`}
             >
               <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">Sales</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillAccount("sohel@techflux.in", "Momo$143")}
-              className={`flex items-center justify-center gap-1 px-2 py-1.5 border rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                email === "sohel@techflux.in"
-                  ? "bg-purple-100 border-purple-400 text-purple-900 shadow-xs"
-                  : "bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-800"
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-              <span className="truncate">Super Admin</span>
+              <span>Sales</span>
             </button>
           </div>
         </div>
@@ -154,7 +132,7 @@ function LoginForm() {
                 htmlFor="email"
                 className="block text-xs font-semibold text-slate-700 uppercase tracking-wider"
               >
-                Email address
+                Work Email Address
               </label>
               <div className="mt-1.5 relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -182,11 +160,6 @@ function LoginForm() {
                 >
                   Password
                 </label>
-                <div className="text-xs">
-                  <a href="#" className="font-semibold text-blue-600 hover:text-blue-500">
-                    Forgot password?
-                  </a>
-                </div>
               </div>
               <div className="mt-1.5 relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -217,15 +190,15 @@ function LoginForm() {
                     Signing in...
                   </>
                 ) : (
-                  "Sign in"
+                  "Sign in to Organization"
                 )}
               </button>
             </div>
           </form>
 
-          <div className="mt-5 text-center">
-            <p className="text-xs text-slate-600">
-              New to Roxx CRM?{" "}
+          <div className="mt-5 space-y-2 text-center text-xs">
+            <p className="text-slate-600">
+              New organization?{" "}
               <Link
                 href="/register"
                 className="font-bold text-blue-600 hover:text-blue-500 underline"
@@ -233,11 +206,14 @@ function LoginForm() {
                 Start 30-Day Free Trial (20 Seats)
               </Link>
             </p>
-          </div>
-
-          <div className="mt-4 border-t border-slate-100 pt-3 text-center">
-            <p className="text-xs text-slate-400">
-              SaaS Owner: <code className="text-slate-600 font-mono">sohel@techflux.in</code> &bull; Demo: <code className="text-slate-600 font-mono">password123</code>
+            <p className="text-slate-500">
+              Looking for an instant sandbox?{" "}
+              <Link
+                href="/demo/login"
+                className="font-semibold text-slate-700 hover:text-blue-600 underline"
+              >
+                Go to Demo Login
+              </Link>
             </p>
           </div>
         </div>
