@@ -13,9 +13,10 @@ interface LeadModalProps {
   onClose: () => void;
   onSuccess: () => void;
   leadToEdit?: (LeadFormData & { id: string }) | null;
+  isTechfluxOrg?: boolean;
 }
 
-export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalProps) {
+export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOrg = false }: LeadModalProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<any>(null);
@@ -28,7 +29,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalP
     companyName: leadToEdit?.companyName || "",
     jobTitle: leadToEdit?.jobTitle || "",
     source: leadToEdit?.source || "Website",
-    status: (leadToEdit?.status as any) || "New",
+    status: (leadToEdit?.status as any) || (isTechfluxOrg ? "Scraped" : "New"),
     rating: (leadToEdit?.rating as any) || "Warm",
     estimatedValue: leadToEdit?.estimatedValue || 0,
     currency: leadToEdit?.currency || "USD",
@@ -66,14 +67,14 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalP
         companyName: "",
         jobTitle: "",
         source: "Website",
-        status: "New",
+        status: isTechfluxOrg ? "Scraped" : "New",
         rating: "Warm",
         estimatedValue: 0,
         currency: "USD",
         description: "",
       });
     }
-  }, [isOpen, leadToEdit]);
+  }, [isOpen, leadToEdit, isTechfluxOrg]);
 
   // Duplicate detection debounced check
   useEffect(() => {
@@ -239,6 +240,9 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit }: LeadModalP
               onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
               className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
+              {(isTechfluxOrg || formData.status === "Scraped") && (
+                <option value="Scraped">Scraped</option>
+              )}
               <option value="New">New</option>
               <option value="Contacted">Contacted</option>
               <option value="Qualified">Qualified</option>

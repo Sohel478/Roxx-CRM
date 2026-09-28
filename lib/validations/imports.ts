@@ -27,6 +27,7 @@ export const leadImportRowSchema = z.object({
   source: z.string().optional().default("Website"),
   estimatedValue: z.coerce.number().min(0).optional().default(0),
   rating: z.enum(["Hot", "Warm", "Cold"]).optional().default("Warm"),
+  status: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
 });
 

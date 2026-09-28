@@ -9,7 +9,7 @@ export const leadSchema = z.object({
   jobTitle: z.string().optional(),
   source: z.string().default("Website"),
   sourceDetail: z.string().optional(),
-  status: z.enum(["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),
+  status: z.enum(["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),
   rating: z.enum(["Hot", "Warm", "Cold"]).default("Warm"),
   estimatedValue: z.coerce.number().min(0, "Estimated value cannot be negative").default(0),
   currency: z.string().default("USD"),
@@ -17,6 +17,13 @@ export const leadSchema = z.object({
 });
 
 export type LeadFormData = z.infer<typeof leadSchema>;
+
+export function isTechfluxOrganization(orgName?: string | null, orgId?: string | null): boolean {
+  if (!orgName && !orgId) return false;
+  const name = (orgName || "").toLowerCase().trim();
+  const id = (orgId || "").toLowerCase().trim();
+  return name.includes("techflux") || id.includes("techflux");
+}
 
 export interface LeadItem {
   id: string;

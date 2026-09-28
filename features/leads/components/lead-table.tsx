@@ -14,6 +14,7 @@ import {
   Snowflake,
   ChevronLeft,
   ChevronRight,
+  Play,
 } from "lucide-react";
 import type { LeadItem } from "@/lib/validations/leads";
 import { Badge } from "@/components/ui/badge";
@@ -29,12 +30,14 @@ interface LeadTableProps {
   };
   selectedStatus: string;
   selectedRating: string;
+  isTechfluxOrg?: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (search: string) => void;
   onStatusChange: (status: string) => void;
   onRatingChange: (rating: string) => void;
   onEdit: (lead: LeadItem) => void;
   onDelete: (id: string) => void;
+  onPickLead?: (id: string) => void;
 }
 
 export function LeadTable({
@@ -42,15 +45,23 @@ export function LeadTable({
   meta,
   selectedStatus,
   selectedRating,
+  isTechfluxOrg = false,
   onPageChange,
   onSearchChange,
   onStatusChange,
   onRatingChange,
   onEdit,
   onDelete,
+  onPickLead,
 }: LeadTableProps) {
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "Scraped":
+        return (
+          <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+            Scraped
+          </Badge>
+        );
       case "New":
         return <Badge variant="info">New</Badge>;
       case "Contacted":
@@ -95,7 +106,9 @@ export function LeadTable({
     }
   };
 
-  const statusTabs = ["ALL", "New", "Contacted", "Qualified", "Nurture", "Lost"];
+  const statusTabs = isTechfluxOrg
+    ? ["ALL", "Scraped", "New", "Contacted", "Qualified", "Nurture", "Lost"]
+    : ["ALL", "New", "Contacted", "Qualified", "Nurture", "Lost"];
 
   return (
     <div className="space-y-4">
@@ -213,6 +226,17 @@ export function LeadTable({
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {lead.status === "Scraped" && onPickLead && (
+                          <button
+                            type="button"
+                            onClick={() => onPickLead(lead.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shadow-2xs mr-1"
+                            title="Pick Lead & Activate to New"
+                          >
+                            <Play className="w-3 h-3 fill-indigo-600 text-indigo-600" />
+                            <span>Pick</span>
+                          </button>
+                        )}
                         <Link
                           href={`/leads/${lead.id}`}
                           className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"

@@ -14,6 +14,7 @@ import {
   leadSchema,
   LeadFormData,
   LeadItem,
+  isTechfluxOrganization,
 } from "@/lib/validations/leads";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
 import { createNotificationHelper } from "@/actions/notifications";
@@ -97,6 +98,7 @@ export async function getLeadsAction(params: {
 }) {
   const session = await requireAuth();
   const { organizationId } = await resolveTenantContext(session);
+  const isTechfluxOrg = isTechfluxOrganization(session.organizationName, session.organizationId);
   const page = Math.max(1, params.page || 1);
   const limit = Math.min(100, Math.max(1, params.limit || 10));
   const skip = (page - 1) * limit;
@@ -144,6 +146,7 @@ export async function getLeadsAction(params: {
     return {
       success: true,
       data: {
+        isTechfluxOrg,
         items: items.map((l) => ({
           id: l.id,
           leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
@@ -194,6 +197,7 @@ export async function getLeadsAction(params: {
     return {
       success: true,
       data: {
+        isTechfluxOrg,
         items: paginated,
         meta: {
           page,
@@ -660,6 +664,84 @@ export async function assignLeadAction(id: string, ownerId: string) {
       return { success: true, data: mockLeadsStore[idx] };
     }
     return { success: false, error: "Lead not found" };
+  }
+}
+
+/**
+ * Pick / Claim lead from Scraped status: moves status to "New" and assigns to current sales rep
+ */
+export async function pickLeadAction(id: string) {
+  try {
+    const session = await requireAuth();
+    const { organizationId, userId } = await resolveTenantContext(session);
+
+    try {
+      const updated = await prisma.lead.update({
+        where: {
+          id,
+          organizationId,
+        },
+        data: {
+          status: "New",
+          ownerId: userId,
+          assignedAt: new Date(),
+        },
+        include: {
+          owner: { select: { name: true } },
+        },
+      });
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId,
+            userId,
+            action: "LEAD_CLAIMED",
+            entityType: "Lead",
+            entityId: id,
+            newValues: {
+              previousStatus: "Scraped",
+              newStatus: "New",
+              ownerId: userId,
+              ownerName: session.name || "Sales Rep",
+            },
+          },
+        });
+      } catch {}
+
+      await createNotificationHelper({
+        organizationId,
+        userId,
+        type: "LEAD_ASSIGNED",
+        title: "Lead Claimed & Activated",
+        message: `You picked ${updated.firstName} ${updated.lastName || ""}`.trim() + " from Scraped and activated it to New.",
+        entityType: "lead",
+        entityId: id,
+      });
+
+      revalidatePath("/leads");
+      revalidatePath(`/leads/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: updated };
+    } catch (dbErr) {
+      console.warn("[pickLeadAction] Database error, falling back to mock store:", dbErr);
+    }
+
+    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx !== -1) {
+      mockLeadsStore[idx].status = "New";
+      mockLeadsStore[idx].ownerName = session.name || "Current User";
+      revalidatePath("/leads");
+      revalidatePath(`/leads/${id}`);
+      revalidatePath("/dashboard");
+      return { success: true, data: mockLeadsStore[idx] };
+    }
+    return { success: false, error: "Lead not found" };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to pick lead" };
   }
 }
 

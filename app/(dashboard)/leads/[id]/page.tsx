@@ -20,8 +20,10 @@ import {
   Tag,
   Trash2,
   Edit2,
+  Play,
 } from "lucide-react";
-import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction } from "@/actions/leads";
+import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction, pickLeadAction } from "@/actions/leads";
+import { getCurrentUserAction } from "@/actions/auth";
 import { getActivitiesAction } from "@/actions/activities";
 import { getTasksAction } from "@/actions/tasks";
 import { LeadModal } from "@/features/leads/components/lead-modal";
@@ -84,6 +86,18 @@ export default function LeadDetailPage() {
   const [activityFilter, setActivityFilter] = useState<string>("ALL");
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activityDefaultType] = useState<ActivityType>("CALL");
+  const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        const isTf =
+          (u.organizationName || "").toLowerCase().includes("techflux") ||
+          (u.organizationId || "").toLowerCase().includes("techflux");
+        setIsTechfluxOrg(isTf);
+      }
+    });
+  }, []);
 
   const loadLead = useCallback(async () => {
     if (!id) return;
@@ -161,7 +175,9 @@ export default function LeadDetailPage() {
     }
   };
 
-  const statuses = ["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Lost"];
+  const statuses = (isTechfluxOrg || lead.status === "Scraped")
+    ? ["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Lost"]
+    : ["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Lost"];
 
   const daysInactive = lead.createdAt
     ? Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
@@ -208,8 +224,15 @@ export default function LeadDetailPage() {
               </span>
               <Badge
                 variant={
-                  isConverted ? "success" : lead.status === "Qualified" ? "success" : "info"
+                  isConverted
+                    ? "success"
+                    : lead.status === "Qualified"
+                    ? "success"
+                    : lead.status === "Scraped"
+                    ? "secondary"
+                    : "info"
                 }
+                className={lead.status === "Scraped" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : undefined}
               >
                 {lead.status}
               </Badge>
@@ -225,6 +248,24 @@ export default function LeadDetailPage() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
+          {!isConverted && lead.status === "Scraped" && (
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={() => {
+                startTransition(async () => {
+                  await pickLeadAction(id);
+                  await loadLead();
+                });
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center gap-1.5"
+              title="Pick Lead & Activate to New"
+            >
+              <Play className="w-4 h-4 fill-white text-white" />
+              <span>Pick Lead (Activate)</span>
+            </Button>
+          )}
+
           {isConverted ? (
             <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 shadow-2xs">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -584,7 +625,7 @@ export default function LeadDetailPage() {
                 companyName: lead.companyName || "",
                 jobTitle: lead.jobTitle || "",
                 source: lead.source,
-                status: (lead.status as "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
+                status: (lead.status as "Scraped" | "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
                 rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",
                 estimatedValue: lead.estimatedValue,
                 currency: lead.currency || "USD",
@@ -592,6 +633,7 @@ export default function LeadDetailPage() {
               }
             : null
         }
+        isTechfluxOrg={isTechfluxOrg}
       />
     </div>
   );

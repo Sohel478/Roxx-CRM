@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { leadSchema } from "@/lib/validations/leads";
+import { leadSchema, isTechfluxOrganization } from "@/lib/validations/leads";
 
 describe("Lead Validation & Duplicate Rules", () => {
   it("validates valid lead data", () => {
@@ -57,11 +57,36 @@ describe("Lead Validation & Duplicate Rules", () => {
     expect(email1.trim().toLowerCase()).toBe(email2);
   });
 
-  it("supports all 7 standardized CRM lead statuses", () => {
-    const statuses = ["New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"];
+  it("supports all standardized CRM lead statuses including Scraped", () => {
+    const statuses = ["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"];
     for (const status of statuses) {
       const res = leadSchema.safeParse({ firstName: "Test", status });
       expect(res.success).toBe(true);
     }
+  });
+
+  it("identifies Techflux organization accurately and excludes others", () => {
+    expect(isTechfluxOrganization("Techflux", "org_123")).toBe(true);
+    expect(isTechfluxOrganization("techflux solutions", null)).toBe(true);
+    expect(isTechfluxOrganization(null, "techflux-tenant")).toBe(true);
+
+    expect(isTechfluxOrganization("Demo Company", "demo-org-123")).toBe(false);
+    expect(isTechfluxOrganization("Acme Corp", "org_acme")).toBe(false);
+    expect(isTechfluxOrganization(null, null)).toBe(false);
+  });
+
+  it("renders Scraped tab only for Techflux organization", () => {
+    const getTabsForOrg = (isTechflux: boolean) =>
+      isTechflux
+        ? ["ALL", "Scraped", "New", "Contacted", "Qualified", "Nurture", "Lost"]
+        : ["ALL", "New", "Contacted", "Qualified", "Nurture", "Lost"];
+
+    const techfluxTabs = getTabsForOrg(true);
+    expect(techfluxTabs).toContain("Scraped");
+    expect(techfluxTabs[1]).toBe("Scraped");
+
+    const otherOrgTabs = getTabsForOrg(false);
+    expect(otherOrgTabs).not.toContain("Scraped");
+    expect(otherOrgTabs[1]).toBe("New");
   });
 });

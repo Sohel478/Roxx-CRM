@@ -10,7 +10,9 @@ import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getLeadsAction,
   deleteLeadAction,
+  pickLeadAction,
 } from "@/actions/leads";
+import { getCurrentUserAction } from "@/actions/auth";
 import type { LeadItem, LeadFormData } from "@/lib/validations/leads";
 
 export default function LeadsPage() {
@@ -19,6 +21,7 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [rating, setRating] = useState("ALL");
+  const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -75,6 +78,9 @@ export default function LeadsPage() {
           if (res?.success && res.data) {
             setLeads(res.data.items);
             setMeta(res.data.meta);
+            if ("isTechfluxOrg" in res.data && typeof res.data.isTechfluxOrg === "boolean") {
+              setIsTechfluxOrg(res.data.isTechfluxOrg);
+            }
           }
         } catch (err) {
           console.error("Failed to load leads:", err);
@@ -83,6 +89,17 @@ export default function LeadsPage() {
     },
     [search, status, rating]
   );
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        const isTf =
+          (u.organizationName || "").toLowerCase().includes("techflux") ||
+          (u.organizationId || "").toLowerCase().includes("techflux");
+        setIsTechfluxOrg(isTf);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     loadLeads(1, search, status, rating);
@@ -96,6 +113,19 @@ export default function LeadsPage() {
     window.addEventListener("leadCreated", handleLeadCreated);
     return () => window.removeEventListener("leadCreated", handleLeadCreated);
   }, [loadLeads, search, status, rating]);
+
+  const handlePickLead = (id: string) => {
+    startTransition(async () => {
+      try {
+        const res = await pickLeadAction(id);
+        if (res.success) {
+          loadLeads(1, search, status, rating);
+        }
+      } catch (err) {
+        console.error("Failed to pick lead:", err);
+      }
+    });
+  };
 
   const handleEdit = (lead: LeadItem) => {
     setLeadToEdit({
@@ -174,12 +204,14 @@ export default function LeadsPage() {
         meta={meta}
         selectedStatus={status}
         selectedRating={rating}
+        isTechfluxOrg={isTechfluxOrg}
         onSearchChange={(q) => setSearch(q)}
         onStatusChange={(s) => setStatus(s)}
         onRatingChange={(r) => setRating(r)}
         onPageChange={(p) => loadLeads(p)}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onPickLead={handlePickLead}
       />
 
       {/* Modal Dialog */}
@@ -191,6 +223,7 @@ export default function LeadsPage() {
         }}
         onSuccess={() => loadLeads()}
         leadToEdit={leadToEdit}
+        isTechfluxOrg={isTechfluxOrg}
       />
 
       {/* Import Modal */}

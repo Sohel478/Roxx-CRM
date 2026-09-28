@@ -68,6 +68,7 @@ export async function importCsvAction(
           source: rowObj["source"] || "Website",
           estimatedValue: rowObj["estimatedvalue"] || rowObj["estimated_value"] || rowObj["value"] || 0,
           rating: rowObj["rating"] || "Warm",
+          status: rowObj["status"] || null,
           description: rowObj["description"] || null,
         });
 
@@ -128,10 +129,39 @@ export async function importCsvAction(
     // Insert valid records
     let importedCount = 0;
     const now = new Date().toISOString();
+    const isTechflux = (session.organizationName || "").toLowerCase().includes("techflux") ||
+      (session.organizationId || "").toLowerCase().includes("techflux");
 
     for (const rec of validRecords) {
       if (entityType === "leads") {
         const leadNum = `LEAD-${1000 + mockLeadsStore.length + 1}`;
+        const leadStatus = rec.status || (isTechflux ? "Scraped" : "New");
+
+        try {
+          await prisma.lead.create({
+            data: {
+              organizationId: session.organizationId,
+              leadNumber: leadNum,
+              firstName: rec.firstName,
+              lastName: rec.lastName || null,
+              email: rec.email || null,
+              phone: rec.phone || null,
+              companyName: rec.companyName || null,
+              jobTitle: rec.jobTitle || null,
+              source: rec.source || (isTechflux ? "Scraped Import" : "Import"),
+              status: leadStatus,
+              rating: rec.rating || "Warm",
+              estimatedValue: Number(rec.estimatedValue || 0),
+              currency: "INR",
+              ownerId: session.id,
+              createdById: session.id,
+              description: rec.description || null,
+            },
+          });
+        } catch (dbErr) {
+          console.warn("[importCsvAction] Prisma lead create error:", dbErr);
+        }
+
         const newLead = {
           id: `lead_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           organizationId: session.organizationId,
@@ -143,11 +173,11 @@ export async function importCsvAction(
           phone: rec.phone || null,
           companyName: rec.companyName || null,
           jobTitle: rec.jobTitle || null,
-          source: rec.source || "Import",
-          status: "New",
+          source: rec.source || (isTechflux ? "Scraped Import" : "Import"),
+          status: leadStatus,
           rating: rec.rating || "Warm",
           estimatedValue: Number(rec.estimatedValue || 0),
-          currency: "USD",
+          currency: "INR",
           ownerName: session.name || "Alex Sales",
           createdAt: now,
           description: rec.description || null,
