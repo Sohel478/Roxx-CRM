@@ -29,6 +29,7 @@ export interface MockContact {
   jobTitle: string | null;
   department: string | null;
   linkedinUrl?: string | null;
+  instagramUrl?: string | null;
   companyId: string | null;
   companyName: string | null;
   address?: string | null;
@@ -204,6 +205,8 @@ export const mockContactsStore: MockContact[] = [
     phone: "+1 (555) 019-2831",
     jobTitle: "VP of Engineering",
     department: "Engineering",
+    linkedinUrl: "https://linkedin.com/in/sarahconnor",
+    instagramUrl: "https://instagram.com/sarahconnor",
     companyId: "comp_1",
     companyName: "Acme Technologies",
     createdAt: new Date().toISOString(),
@@ -218,6 +221,8 @@ export const mockContactsStore: MockContact[] = [
     phone: "+1 (555) 019-2832",
     jobTitle: "Head of Procurement",
     department: "Operations",
+    linkedinUrl: "https://linkedin.com/in/michaelchang",
+    instagramUrl: "https://instagram.com/mchang_ops",
     companyId: "comp_1",
     companyName: "Acme Technologies",
     createdAt: new Date(Date.now() - 43200000).toISOString(),

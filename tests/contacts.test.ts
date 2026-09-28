@@ -51,4 +51,38 @@ describe("Contact Validation & Business Logic", () => {
     const res = contactSchema.safeParse(valid);
     expect(res.success).toBe(true);
   });
+
+  it("validates contact with instagramUrl", () => {
+    const validWithInstagram = {
+      firstName: "Emily",
+      lastName: "Rose",
+      email: "emily@example.com",
+      instagramUrl: "https://instagram.com/emilyrose",
+    };
+
+    const res = contactSchema.safeParse(validWithInstagram);
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.instagramUrl).toBe("https://instagram.com/emilyrose");
+    }
+  });
+
+  it("validates contact with inline new company details", () => {
+    const validWithNewCompany = {
+      firstName: "Alex",
+      lastName: "Rider",
+      email: "alex@innovatecorp.com",
+      newCompanyName: "Innovate Corp",
+      newCompanyWebsite: "https://innovatecorp.com",
+      instagramUrl: "@alexrider",
+    };
+
+    const res = contactSchema.safeParse(validWithNewCompany);
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.newCompanyName).toBe("Innovate Corp");
+      expect(res.data.newCompanyWebsite).toBe("https://innovatecorp.com");
+      expect(res.data.instagramUrl).toBe("@alexrider");
+    }
+  });
 });

@@ -8,8 +8,11 @@ export const contactSchema = z.object({
   alternatePhone: z.string().optional(),
   jobTitle: z.string().optional(),
   department: z.string().optional(),
-  linkedinUrl: z.string().url("Must be a valid URL").or(z.literal("")).optional(),
+  linkedinUrl: z.string().optional(),
+  instagramUrl: z.string().optional(),
   companyId: z.string().optional(),
+  newCompanyName: z.string().optional(),
+  newCompanyWebsite: z.string().optional(),
   address: z.string().optional(),
 });
 
@@ -26,6 +29,7 @@ export interface ContactItem {
   jobTitle: string | null;
   department: string | null;
   linkedinUrl?: string | null;
+  instagramUrl?: string | null;
   companyId: string | null;
   companyName: string | null;
   address?: string | null;

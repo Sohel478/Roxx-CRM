@@ -12,6 +12,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Instagram,
 } from "lucide-react";
 import type { ContactItem } from "@/lib/validations/contacts";
 import { Button } from "@/components/ui/button";
@@ -151,6 +152,17 @@ export function ContactTable({
                     {/* Row Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {contact.instagramUrl && (
+                          <a
+                            href={contact.instagramUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1.5 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
+                            title="View Instagram Profile"
+                          >
+                            <Instagram className="w-4 h-4" />
+                          </a>
+                        )}
                         <Link
                           href={`/contacts/${contact.id}`}
                           className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"

@@ -323,6 +323,7 @@ model Contact {
   jobTitle       String?       @map("job_title")
   department     String?
   linkedinUrl    String?       @map("linkedin_url")
+  instagramUrl   String?       @map("instagram_url")
   address        String?
   ownerId        String?       @map("owner_id")
   createdAt      DateTime      @default(now()) @map("created_at")

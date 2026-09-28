@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Building2,
   Globe,
+  Instagram,
   Activity,
   Trash2,
   Edit2,
@@ -27,6 +28,7 @@ interface ContactDetailData {
   jobTitle?: string | null;
   department?: string | null;
   linkedinUrl?: string | null;
+  instagramUrl?: string | null;
   companyId?: string | null;
   companyName?: string | null;
   company?: { id: string; name: string; industry?: string | null } | null;
@@ -146,8 +148,19 @@ export default function ContactDetailPage() {
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
             >
-              <Globe className="w-3.5 h-3.5" />
+              <Globe className="w-3.5 h-3.5 text-blue-600" />
               <span>LinkedIn</span>
+            </a>
+          )}
+          {contact.instagramUrl && (
+            <a
+              href={contact.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-pink-50 hover:bg-pink-100 border border-pink-200 text-pink-700 rounded-lg text-xs font-semibold transition-colors"
+            >
+              <Instagram className="w-3.5 h-3.5 text-pink-600" />
+              <span>Instagram</span>
             </a>
           )}
 
@@ -227,6 +240,34 @@ export default function ContactDetailPage() {
                 <div>
                   <span className="text-slate-400 block font-medium">Alternate Phone</span>
                   <span className="text-slate-800 font-semibold">{contact.alternatePhone}</span>
+                </div>
+              )}
+              {contact.linkedinUrl && (
+                <div>
+                  <span className="text-slate-400 block font-medium">LinkedIn</span>
+                  <a
+                    href={contact.linkedinUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline font-semibold flex items-center gap-1 mt-0.5"
+                  >
+                    <Globe className="w-3 h-3" />
+                    <span>View Profile</span>
+                  </a>
+                </div>
+              )}
+              {contact.instagramUrl && (
+                <div>
+                  <span className="text-slate-400 block font-medium">Instagram</span>
+                  <a
+                    href={contact.instagramUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-pink-600 hover:underline font-semibold flex items-center gap-1 mt-0.5"
+                  >
+                    <Instagram className="w-3 h-3" />
+                    <span>View Profile</span>
+                  </a>
                 </div>
               )}
             </div>

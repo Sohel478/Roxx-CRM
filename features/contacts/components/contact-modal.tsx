@@ -8,6 +8,7 @@ import { createContactAction, updateContactAction } from "@/actions/contacts";
 import type { ContactFormData } from "@/lib/validations/contacts";
 import { getCompaniesAction } from "@/actions/companies";
 import type { CompanyItem } from "@/lib/validations/companies";
+import { Building2 } from "lucide-react";
 
 interface ContactModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export function ContactModal({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
+  const [companyMode, setCompanyMode] = useState<"select" | "create">("select");
 
   const [formData, setFormData] = useState<ContactFormData>({
     firstName: contactToEdit?.firstName || "",
@@ -37,7 +39,10 @@ export function ContactModal({
     jobTitle: contactToEdit?.jobTitle || "",
     department: contactToEdit?.department || "",
     linkedinUrl: contactToEdit?.linkedinUrl || "",
+    instagramUrl: (contactToEdit as any)?.instagramUrl || "",
     companyId: contactToEdit?.companyId || defaultCompanyId || "",
+    newCompanyName: "",
+    newCompanyWebsite: "",
     address: contactToEdit?.address || "",
   });
 
@@ -46,6 +51,7 @@ export function ContactModal({
     if (!isOpen) return;
 
     setError(null);
+    setCompanyMode("select");
 
     if (contactToEdit) {
       setFormData({
@@ -57,7 +63,10 @@ export function ContactModal({
         jobTitle: contactToEdit.jobTitle || "",
         department: contactToEdit.department || "",
         linkedinUrl: (contactToEdit as any).linkedinUrl || "",
+        instagramUrl: (contactToEdit as any).instagramUrl || "",
         companyId: contactToEdit.companyId || defaultCompanyId || "",
+        newCompanyName: "",
+        newCompanyWebsite: "",
         address: (contactToEdit as any).address || "",
       });
     } else {
@@ -70,7 +79,10 @@ export function ContactModal({
         jobTitle: "",
         department: "",
         linkedinUrl: "",
+        instagramUrl: "",
         companyId: defaultCompanyId || "",
+        newCompanyName: "",
+        newCompanyWebsite: "",
         address: "",
       });
     }
@@ -92,13 +104,25 @@ export function ContactModal({
     e.preventDefault();
     setError(null);
 
+    if (companyMode === "create" && (!formData.newCompanyName || !formData.newCompanyName.trim())) {
+      setError("Please provide a company name when creating a new company.");
+      return;
+    }
+
     startTransition(async () => {
       try {
+        const payload: ContactFormData = {
+          ...formData,
+          companyId: companyMode === "select" ? (formData.companyId || "") : "",
+          newCompanyName: companyMode === "create" ? (formData.newCompanyName?.trim() || "") : "",
+          newCompanyWebsite: companyMode === "create" ? (formData.newCompanyWebsite?.trim() || "") : "",
+        };
+
         let result;
         if (contactToEdit) {
-          result = await updateContactAction(contactToEdit.id, formData);
+          result = await updateContactAction(contactToEdit.id, payload);
         } else {
-          result = await createContactAction(formData);
+          result = await createContactAction(payload);
         }
 
         if (result?.success) {
@@ -179,22 +203,6 @@ export function ContactModal({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Company Account</label>
-            <select
-              value={formData.companyId || ""}
-              onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-              className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              <option value="">No Company (Standalone Contact)</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">Department</label>
             <Input
               placeholder="e.g. Technology, Operations"
@@ -203,13 +211,110 @@ export function ContactModal({
             />
           </div>
 
+          {/* Company Selector or Inline Creator */}
+          <div className="sm:col-span-2 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-slate-700" />
+                <span className="text-xs font-semibold text-slate-800">Company Account</span>
+              </div>
+              <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 text-xs self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompanyMode("select");
+                    setFormData((prev) => ({ ...prev, newCompanyName: "", newCompanyWebsite: "" }));
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    companyMode === "select"
+                      ? "bg-white text-slate-900 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Select Existing Company
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompanyMode("create");
+                    setFormData((prev) => ({ ...prev, companyId: "" }));
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    companyMode === "create"
+                      ? "bg-white text-slate-900 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  + Add New Company
+                </button>
+              </div>
+            </div>
+
+            {companyMode === "select" ? (
+              <div className="space-y-1">
+                <select
+                  value={formData.companyId || ""}
+                  onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                  className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <option value="">No Company (Standalone Contact)</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-500">
+                  Select an existing organization or click &quot;+ Add New Company&quot; to add a new one directly.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Company Name <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      required={companyMode === "create"}
+                      placeholder="e.g. Acme Corporation"
+                      value={formData.newCompanyName || ""}
+                      onChange={(e) => setFormData({ ...formData, newCompanyName: e.target.value })}
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700">Company Website</label>
+                    <Input
+                      placeholder="e.g. https://acme.com"
+                      value={formData.newCompanyWebsite || ""}
+                      onChange={(e) => setFormData({ ...formData, newCompanyWebsite: e.target.value })}
+                      className="bg-white"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  This company will be saved to your Companies directory automatically. Additional company details can be added anytime in the Companies tab.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700">LinkedIn Profile</label>
             <Input
-              type="url"
               placeholder="https://linkedin.com/in/username"
               value={formData.linkedinUrl || ""}
               onChange={(e) => setFormData({ ...formData, linkedinUrl: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Instagram Profile / URL</label>
+            <Input
+              placeholder="https://instagram.com/username or @username"
+              value={formData.instagramUrl || ""}
+              onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
             />
           </div>
         </div>

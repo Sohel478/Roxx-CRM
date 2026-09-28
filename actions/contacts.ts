@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockContactsStore } from "@/lib/db/mock-store";
+import { mockContactsStore, mockCompaniesStore } from "@/lib/db/mock-store";
 import {
   contactSchema,
   ContactFormData,
@@ -76,6 +76,7 @@ export async function getContactsAction(params: {
           jobTitle: c.jobTitle,
           department: c.department,
           linkedinUrl: c.linkedinUrl,
+          instagramUrl: (c as any).instagramUrl || null,
           companyId: c.companyId,
           companyName: c.company?.name || null,
           address: c.address,
@@ -185,6 +186,25 @@ export async function getContactByIdAction(id: string) {
   }
 }
 
+function normalizeSocialUrl(url?: string | null, platform: "instagram" | "linkedin" = "instagram") {
+  if (!url) return null;
+  let clean = url.trim();
+  if (!clean) return null;
+  if (platform === "instagram") {
+    if (clean.startsWith("@")) {
+      return `https://instagram.com/${clean.slice(1)}`;
+    }
+    if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+      return clean.includes("instagram.com") ? `https://${clean}` : `https://instagram.com/${clean}`;
+    }
+  } else if (platform === "linkedin") {
+    if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+      return clean.includes("linkedin.com") ? `https://${clean}` : `https://linkedin.com/in/${clean}`;
+    }
+  }
+  return clean;
+}
+
 /**
  * Create a new contact
  */
@@ -204,8 +224,75 @@ export async function createContactAction(data: ContactFormData) {
       return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
     }
 
-    const { firstName, lastName, email, phone, alternatePhone, jobTitle, department, linkedinUrl, companyId, address } =
-      parsed.data;
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      alternatePhone,
+      jobTitle,
+      department,
+      linkedinUrl,
+      instagramUrl,
+      companyId,
+      newCompanyName,
+      newCompanyWebsite,
+      address,
+    } = parsed.data;
+
+    let finalCompanyId = companyId || null;
+    let finalCompanyName: string | null = null;
+
+    // Handle inline creation of a new company directly from contact form
+    if (newCompanyName && newCompanyName.trim().length > 0) {
+      const compName = newCompanyName.trim();
+      let compWebsite = newCompanyWebsite?.trim() || null;
+      if (compWebsite && !compWebsite.startsWith("http://") && !compWebsite.startsWith("https://")) {
+        compWebsite = `https://${compWebsite}`;
+      }
+
+      try {
+        const createdComp = await prisma.company.create({
+          data: {
+            organizationId,
+            name: compName,
+            website: compWebsite,
+            ownerId: userId,
+            status: "Active",
+          },
+        });
+        finalCompanyId = createdComp.id;
+        finalCompanyName = createdComp.name;
+      } catch (compErr) {
+        console.warn("[createContactAction] DB company create fallback:", compErr);
+        const newCompId = `comp_${Date.now()}`;
+        const newMockComp: any = {
+          id: newCompId,
+          organizationId,
+          name: compName,
+          industry: null,
+          website: compWebsite,
+          email: null,
+          phone: null,
+          city: null,
+          country: null,
+          status: "Active",
+          ownerId: userId,
+          createdAt: new Date().toISOString(),
+          contactCount: 1,
+        };
+        mockCompaniesStore.unshift(newMockComp);
+        finalCompanyId = newCompId;
+        finalCompanyName = compName;
+      }
+      revalidatePath("/companies");
+    } else if (finalCompanyId) {
+      const found = mockCompaniesStore.find((c) => c.id === finalCompanyId);
+      if (found) finalCompanyName = found.name;
+    }
+
+    const cleanLinkedin = normalizeSocialUrl(linkedinUrl, "linkedin");
+    const cleanInstagram = normalizeSocialUrl(instagramUrl, "instagram");
 
     try {
       const created = await prisma.contact.create({
@@ -218,13 +305,14 @@ export async function createContactAction(data: ContactFormData) {
           alternatePhone: alternatePhone?.trim() || null,
           jobTitle: jobTitle?.trim() || null,
           department: department?.trim() || null,
-          linkedinUrl: linkedinUrl?.trim() || null,
-          companyId: companyId || null,
+          linkedinUrl: cleanLinkedin,
+          instagramUrl: cleanInstagram,
+          companyId: finalCompanyId,
           address: address?.trim() || null,
           ownerId: userId,
         },
         include: {
-          company: { select: { name: true } },
+          company: { select: { id: true, name: true } },
         },
       });
 
@@ -242,7 +330,8 @@ export async function createContactAction(data: ContactFormData) {
       } catch {}
 
       revalidatePath("/contacts");
-      if (companyId) revalidatePath(`/companies/${companyId}`);
+      if (finalCompanyId) revalidatePath(`/companies/${finalCompanyId}`);
+      revalidatePath("/companies");
       return { success: true, data: created };
     } catch {
       const fullName = `${firstName} ${lastName || ""}`.trim();
@@ -254,14 +343,20 @@ export async function createContactAction(data: ContactFormData) {
         fullName,
         email: email?.trim() || null,
         phone: phone?.trim() || null,
+        alternatePhone: alternatePhone?.trim() || null,
         jobTitle: jobTitle?.trim() || null,
         department: department?.trim() || null,
-        companyId: companyId || null,
-        companyName: companyId ? "Acme Technologies" : null,
+        linkedinUrl: cleanLinkedin,
+        instagramUrl: cleanInstagram,
+        companyId: finalCompanyId,
+        companyName: finalCompanyName || (finalCompanyId ? "Acme Technologies" : null),
+        address: address?.trim() || null,
         createdAt: new Date().toISOString(),
       };
       mockContactsStore.unshift(newContact);
       revalidatePath("/contacts");
+      if (finalCompanyId) revalidatePath(`/companies/${finalCompanyId}`);
+      revalidatePath("/companies");
       return { success: true, data: newContact };
     }
   } catch (err: any) {
@@ -288,9 +383,49 @@ export async function updateContactAction(id: string, data: Partial<ContactFormD
     if (data.alternatePhone !== undefined) updatePayload.alternatePhone = data.alternatePhone?.trim() || null;
     if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
     if (data.department !== undefined) updatePayload.department = data.department?.trim() || null;
-    if (data.linkedinUrl !== undefined) updatePayload.linkedinUrl = data.linkedinUrl?.trim() || null;
-    if (data.companyId !== undefined) updatePayload.companyId = data.companyId || null;
+    if (data.linkedinUrl !== undefined) updatePayload.linkedinUrl = normalizeSocialUrl(data.linkedinUrl, "linkedin");
+    if (data.instagramUrl !== undefined) updatePayload.instagramUrl = normalizeSocialUrl(data.instagramUrl, "instagram");
     if (data.address !== undefined) updatePayload.address = data.address?.trim() || null;
+
+    if (data.newCompanyName && data.newCompanyName.trim().length > 0) {
+      const compName = data.newCompanyName.trim();
+      let compWebsite = data.newCompanyWebsite?.trim() || null;
+      if (compWebsite && !compWebsite.startsWith("http://") && !compWebsite.startsWith("https://")) {
+        compWebsite = `https://${compWebsite}`;
+      }
+      try {
+        const createdComp = await prisma.company.create({
+          data: {
+            organizationId: "demo-org-123",
+            name: compName,
+            website: compWebsite,
+            ownerId: userId,
+            status: "Active",
+          },
+        });
+        updatePayload.companyId = createdComp.id;
+      } catch {
+        const newCompId = `comp_${Date.now()}`;
+        mockCompaniesStore.unshift({
+          id: newCompId,
+          organizationId: "demo-org-123",
+          name: compName,
+          industry: null,
+          website: compWebsite,
+          email: null,
+          phone: null,
+          city: null,
+          country: null,
+          status: "Active",
+          createdAt: new Date().toISOString(),
+          contactCount: 1,
+        } as any);
+        updatePayload.companyId = newCompId;
+      }
+      revalidatePath("/companies");
+    } else if (data.companyId !== undefined) {
+      updatePayload.companyId = data.companyId || null;
+    }
 
     try {
       const existing = await prisma.contact.findUnique({
@@ -333,6 +468,10 @@ export async function updateContactAction(id: string, data: Partial<ContactFormD
       };
       if (updatePayload.firstName || updatePayload.lastName !== undefined) {
         updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
+      }
+      if (updatePayload.companyId !== undefined) {
+        const comp = mockCompaniesStore.find((c) => c.id === updatePayload.companyId);
+        updated.companyName = comp?.name || null;
       }
       mockContactsStore[idx] = updated;
       revalidatePath("/contacts");
