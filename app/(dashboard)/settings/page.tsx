@@ -9,6 +9,7 @@ import {
   RefreshCw,
   CreditCard,
   KeyRound,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeamMembersTab } from "@/features/settings/components/team-members-tab";
@@ -17,6 +18,7 @@ import { OrganizationProfileTab } from "@/features/settings/components/organizat
 import { PipelineStagesTab } from "@/features/settings/components/pipeline-stages-tab";
 import { BillingTab } from "@/features/settings/components/billing-tab";
 import { ChangePasswordTab } from "@/features/settings/components/change-password-tab";
+import { SalesTargetsTab } from "@/features/settings/components/sales-targets-tab";
 import { getUsersAction, getTenantSeatUsageAction } from "@/actions/users";
 import type { UserItem, TenantSeatUsage } from "@/lib/validations/settings";
 import { getAuditLogsAction } from "@/actions/audit";
@@ -30,7 +32,7 @@ import type {
   PipelineStageItem,
 } from "@/lib/validations/settings";
 
-type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security";
+type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("team");
@@ -83,7 +85,7 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as TabType;
-      if (tab && ["team", "audit", "organization", "stages", "billing", "security"].includes(tab)) {
+      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets"].includes(tab)) {
         setActiveTab(tab);
       }
     }
@@ -198,6 +200,19 @@ export default function SettingsPage() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("targets")}
+          className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+            activeTab === "targets"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          <span>Sales Targets &amp; Quotas</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("security")}
           className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === "security"
@@ -218,6 +233,10 @@ export default function SettingsPage() {
             onRefresh={loadData}
             maxSeats={seatUsage?.maxSeats || 20}
           />
+        )}
+
+        {activeTab === "targets" && (
+          <SalesTargetsTab />
         )}
 
         {activeTab === "audit" && (

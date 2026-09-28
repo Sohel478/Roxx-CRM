@@ -13,13 +13,21 @@ import {
   ChevronRight,
   BarChart3,
   Target,
+  Pencil,
+  UserCheck,
 } from "lucide-react";
 import { getReportsAnalyticsAction } from "@/actions/reports";
 import { getTasksAction } from "@/actions/tasks";
-import { ReportsAnalyticsData } from "@/lib/validations/reports";
+import { getMonthlyTargetsAction } from "@/actions/targets";
+import { getCurrentUserAction } from "@/actions/auth";
+import type { ReportsAnalyticsData } from "@/lib/validations/reports";
+import type { MonthlyTargetData } from "@/lib/validations/settings";
+import type { SessionUser } from "@/lib/auth/session";
 
 export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<ReportsAnalyticsData | null>(null);
+  const [targetsData, setTargetsData] = useState<MonthlyTargetData | null>(null);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [taskSummary, setTaskSummary] = useState({
     total: 0,
     dueToday: 0,
@@ -31,9 +39,11 @@ export default function DashboardPage() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [reportRes, tasksRes] = await Promise.all([
+    const [reportRes, tasksRes, targetsRes, userRes] = await Promise.all([
       getReportsAnalyticsAction("all"),
       getTasksAction(),
+      getMonthlyTargetsAction(),
+      getCurrentUserAction(),
     ]);
 
     if (reportRes.success && reportRes.data) {
@@ -41,6 +51,12 @@ export default function DashboardPage() {
     }
     if (tasksRes.success && tasksRes.data) {
       setTaskSummary(tasksRes.data.summary);
+    }
+    if (targetsRes.success && targetsRes.data) {
+      setTargetsData(targetsRes.data);
+    }
+    if (userRes) {
+      setCurrentUser(userRes);
     }
     setIsLoading(false);
   }, []);
@@ -53,13 +69,25 @@ export default function DashboardPage() {
   const funnel = analytics?.funnel || [];
   const leaderboard = analytics?.teamLeaderboard || [];
 
-  const monthlyQuotaTarget = 100000;
-  const wonRevenue = summary?.totalRevenueWon || 0;
+  const monthlyQuotaTarget = targetsData?.orgTarget || 100000;
+  const currencySymbol = targetsData?.currency === "INR" ? "₹" : "$";
+  const wonRevenue = summary?.totalRevenueWon || targetsData?.totalWon || 0;
   const attainmentPercent = Math.round((wonRevenue / monthlyQuotaTarget) * 100);
   const remainingGap = Math.max(0, monthlyQuotaTarget - wonRevenue);
   const weightedPipeline = summary?.weightedForecast || 0;
   const pipelineCoverage =
     remainingGap > 0 ? ((weightedPipeline / remainingGap) * 100).toFixed(0) : "100";
+
+  const isAdmin =
+    currentUser?.role?.toUpperCase() === "ADMIN" ||
+    currentUser?.role?.toUpperCase() === "ADMINISTRATOR" ||
+    currentUser?.isSuperAdmin;
+
+  const myTarget = targetsData?.users?.find(
+    (u) =>
+      u.userId === currentUser?.id ||
+      u.userEmail?.toLowerCase() === currentUser?.email?.toLowerCase()
+  );
 
   return (
     <div className="space-y-6">
@@ -231,9 +259,19 @@ export default function DashboardPage() {
                     ? "Pacing Well ⚡"
                     : "Needs Push 📈"}
                 </span>
+
+                {isAdmin && (
+                  <Link
+                    href="/settings?tab=targets"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Edit Targets</span>
+                  </Link>
+                )}
               </div>
               <p className="text-xs text-slate-500">
-                Pacing against monthly organization goal of ${monthlyQuotaTarget.toLocaleString()} USD
+                Pacing against monthly organization goal of {currencySymbol}{monthlyQuotaTarget.toLocaleString()} {targetsData?.currency || "USD"}
               </p>
             </div>
           </div>
@@ -255,7 +293,7 @@ export default function DashboardPage() {
               style={{
                 width: `${Math.min(attainmentPercent, 100)}%`,
               }}
-              title={`Won: $${wonRevenue.toLocaleString()}`}
+              title={`Won: ${currencySymbol}${wonRevenue.toLocaleString()}`}
             />
             {/* Weighted Pipeline contribution preview */}
             {attainmentPercent < 100 && (
@@ -267,7 +305,7 @@ export default function DashboardPage() {
                     100 - Math.min(attainmentPercent, 100)
                   )}%`,
                 }}
-                title={`Weighted Forecast: $${weightedPipeline.toLocaleString()}`}
+                title={`Weighted Forecast: ${currencySymbol}${weightedPipeline.toLocaleString()}`}
               />
             )}
           </div>
@@ -277,20 +315,46 @@ export default function DashboardPage() {
             <div className="flex items-center gap-4">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span>Closed Won: <strong className="text-slate-900">${wonRevenue.toLocaleString()}</strong></span>
+                <span>Closed Won: <strong className="text-slate-900">{currencySymbol}{wonRevenue.toLocaleString()}</strong></span>
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                <span>Weighted Forecast: <strong className="text-slate-900">${weightedPipeline.toLocaleString()}</strong></span>
+                <span>Weighted Forecast: <strong className="text-slate-900">{currencySymbol}{weightedPipeline.toLocaleString()}</strong></span>
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span>Remaining Gap: <strong className="text-slate-800">${remainingGap.toLocaleString()}</strong></span>
+              <span>Remaining Gap: <strong className="text-slate-800">{currencySymbol}{remainingGap.toLocaleString()}</strong></span>
               <span>&bull;</span>
               <span>Pipeline Coverage: <strong className="text-blue-600">{pipelineCoverage}%</strong></span>
             </div>
           </div>
         </div>
+
+        {/* Personal Target Pill (if user has an individual target assigned) */}
+        {myTarget && myTarget.targetAmount > 0 && (
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+              <div>
+                <span className="font-bold text-slate-800">My Monthly Quota: </span>
+                <span className="text-slate-600">
+                  {currencySymbol}{myTarget.revenueWon.toLocaleString()} won of {currencySymbol}{myTarget.targetAmount.toLocaleString()} target
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 min-w-[140px]">
+              <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(myTarget.attainmentPercent, 100)}%` }}
+                />
+              </div>
+              <span className="font-bold text-blue-700 text-xs shrink-0">
+                {myTarget.attainmentPercent}%
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Middle Grid: Funnel & Leaderboard */}
@@ -409,11 +473,23 @@ export default function DashboardPage() {
 
                   <div className="text-right shrink-0">
                     <p className="text-xs font-bold text-emerald-600">
-                      ${rep.revenueWon.toLocaleString()}
+                      {currencySymbol}{rep.revenueWon.toLocaleString()}
                     </p>
-                    <p className="text-[10px] text-slate-400">
-                      Pipe: ${rep.pipelineValue.toLocaleString()}
-                    </p>
+                    {(() => {
+                      const repTarget = targetsData?.users?.find((u) => u.userId === rep.userId);
+                      if (repTarget && repTarget.targetAmount > 0) {
+                        return (
+                          <p className="text-[10px] text-blue-600 font-semibold">
+                            Target: {currencySymbol}{repTarget.targetAmount.toLocaleString()} ({repTarget.attainmentPercent}%)
+                          </p>
+                        );
+                      }
+                      return (
+                        <p className="text-[10px] text-slate-400">
+                          Pipe: {currencySymbol}{rep.pipelineValue.toLocaleString()}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}

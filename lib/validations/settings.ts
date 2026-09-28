@@ -86,3 +86,36 @@ export const changePasswordSchema = z
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+export const userTargetItemSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  targetAmount: z.number().min(0, "Target cannot be negative"),
+});
+
+export const monthlyTargetSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"),
+  orgTarget: z.number().min(0, "Organization target cannot be negative"),
+  userTargets: z.array(userTargetItemSchema),
+});
+
+export type MonthlyTargetInput = z.infer<typeof monthlyTargetSchema>;
+
+export interface UserTargetData {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  role: string;
+  targetAmount: number;
+  revenueWon: number;
+  attainmentPercent: number;
+}
+
+export interface MonthlyTargetData {
+  month: string;
+  orgTarget: number;
+  totalAllocated: number;
+  totalWon: number;
+  attainmentPercent: number;
+  currency: string;
+  users: UserTargetData[];
+}
+

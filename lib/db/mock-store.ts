@@ -1177,3 +1177,18 @@ export const mockNotificationsStore: MockNotification[] = [
   },
 ];
 
+export interface MockMonthTarget {
+  orgTarget: number;
+  userTargets: Record<string, number>;
+}
+
+export const mockSalesTargetsStore: Record<string, MockMonthTarget> = {
+  [new Date().toISOString().slice(0, 7)]: {
+    orgTarget: 100000,
+    userTargets: {
+      usr_sarah: 60000,
+      usr_alex: 40000,
+    },
+  },
+};
+
