@@ -117,5 +117,6 @@ export interface MonthlyTargetData {
   attainmentPercent: number;
   currency: string;
   users: UserTargetData[];
+  isPersonalView?: boolean;
 }
 

@@ -237,6 +237,7 @@ model Lead {
   firstName             String        @map("first_name")
   lastName              String?       @map("last_name")
   email                 String?
+  supportEmail          String?       @map("support_email")
   phone                 String?
   companyName           String?       @map("company_name")
   jobTitle              String?       @map("job_title")
@@ -273,6 +274,7 @@ model Lead {
   @@index([organizationId, status])
   @@index([organizationId, ownerId])
   @@index([organizationId, email])
+  @@index([organizationId, supportEmail])
   @@index([organizationId, phone])
   @@index([organizationId, createdAt])
   @@map("leads")

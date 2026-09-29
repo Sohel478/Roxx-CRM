@@ -108,10 +108,26 @@ export async function importCsvAction(
           ""
         ).trim() || null;
 
-        // 4. Sanitize email
-        let email = (rowObj["email"] || "").trim() || null;
+        // 4. Sanitize emails (Customer Email & Support Email)
+        let email = (
+          rowObj["customer email"] ||
+          rowObj["customer_email"] ||
+          rowObj["customeremail"] ||
+          rowObj["email"] ||
+          ""
+        ).trim() || null;
         if (email && (!email.includes("@") || email.toLowerCase() === "n/a" || email === "-")) {
           email = null;
+        }
+
+        let supportEmail = (
+          rowObj["support email"] ||
+          rowObj["support_email"] ||
+          rowObj["supportemail"] ||
+          ""
+        ).trim() || null;
+        if (supportEmail && (!supportEmail.includes("@") || supportEmail.toLowerCase() === "n/a" || supportEmail === "-")) {
+          supportEmail = null;
         }
 
         // 5. Extract Scraped metadata: Website, Company LinkedIn, Personal LinkedIn Profile
@@ -167,6 +183,7 @@ export async function importCsvAction(
           firstName,
           lastName,
           email,
+          supportEmail,
           phone,
           companyName,
           jobTitle: (rowObj["jobtitle"] || rowObj["job_title"] || rowObj["title"] || "").trim() || null,
@@ -250,6 +267,7 @@ export async function importCsvAction(
               firstName: rec.firstName,
               lastName: rec.lastName || null,
               email: rec.email || null,
+              supportEmail: rec.supportEmail || null,
               phone: rec.phone || null,
               companyName: rec.companyName || null,
               jobTitle: rec.jobTitle || null,
@@ -277,6 +295,7 @@ export async function importCsvAction(
           lastName: rec.lastName || null,
           fullName: `${rec.firstName} ${rec.lastName || ""}`.trim(),
           email: rec.email || null,
+          supportEmail: rec.supportEmail || null,
           phone: rec.phone || null,
           companyName: rec.companyName || null,
           jobTitle: rec.jobTitle || null,
@@ -287,6 +306,8 @@ export async function importCsvAction(
           rating: rec.rating || "Warm",
           estimatedValue: Number(rec.estimatedValue || 0),
           currency: "INR",
+          ownerId: session.id,
+          createdById: session.id,
           ownerName: session.name || "Alex Sales",
           createdAt: now,
           description: rec.description || null,

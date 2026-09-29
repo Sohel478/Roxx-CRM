@@ -40,9 +40,16 @@ export async function getMonthlyTargetsAction(
   if (!session) {
     return { success: false, error: "Authentication required" };
   }
-  const { organizationId } = await resolveTenantContext(session);
+  const { organizationId, userId } = await resolveTenantContext(session);
   const currentMonth = targetMonth || new Date().toISOString().slice(0, 7);
   const { start, end } = getMonthDateRange(currentMonth);
+
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
 
   try {
     // 1. Fetch Organization settings / currency
@@ -134,6 +141,33 @@ export async function getMonthlyTargetsAction(
         };
       });
 
+      if (!isAdminOrManager) {
+        const myTarget = usersData.find(
+          (u) =>
+            u.userId === session.id ||
+            u.userId === userId ||
+            u.userEmail.toLowerCase() === session.email.toLowerCase()
+        );
+        const myTargetAmount = myTarget?.targetAmount || 0;
+        const myRevenueWon = myTarget?.revenueWon || 0;
+        const myAttainment =
+          myTargetAmount > 0 ? Math.round((myRevenueWon / myTargetAmount) * 100) : 0;
+
+        return {
+          success: true,
+          data: {
+            month: currentMonth,
+            orgTarget: myTargetAmount,
+            totalAllocated: myTargetAmount,
+            totalWon: myRevenueWon,
+            attainmentPercent: myAttainment,
+            currency,
+            users: myTarget ? [{ ...myTarget, attainmentPercent: myAttainment }] : [],
+            isPersonalView: true,
+          },
+        };
+      }
+
       const attainmentPercent = savedOrgTarget > 0 ? Math.round((totalWon / savedOrgTarget) * 100) : 0;
 
       return {
@@ -146,6 +180,7 @@ export async function getMonthlyTargetsAction(
           attainmentPercent,
           currency,
           users: usersData,
+          isPersonalView: false,
         },
       };
     }
@@ -209,6 +244,33 @@ export async function getMonthlyTargetsAction(
     };
   });
 
+  if (!isAdminOrManager) {
+    const myTarget = usersData.find(
+      (u) =>
+        u.userId === session.id ||
+        u.userId === userId ||
+        u.userEmail.toLowerCase() === session.email.toLowerCase()
+    );
+    const myTargetAmount = myTarget?.targetAmount || 0;
+    const myRevenueWon = myTarget?.revenueWon || 0;
+    const myAttainment =
+      myTargetAmount > 0 ? Math.round((myRevenueWon / myTargetAmount) * 100) : 0;
+
+    return {
+      success: true,
+      data: {
+        month: currentMonth,
+        orgTarget: myTargetAmount,
+        totalAllocated: myTargetAmount,
+        totalWon: myRevenueWon,
+        attainmentPercent: myAttainment,
+        currency: mockOrgSettingsStore.defaultCurrency || "USD",
+        users: myTarget ? [{ ...myTarget, attainmentPercent: myAttainment }] : [],
+        isPersonalView: true,
+      },
+    };
+  }
+
   const attainmentPercent = mockTarget.orgTarget > 0 ? Math.round((totalWon / mockTarget.orgTarget) * 100) : 0;
 
   return {
@@ -221,6 +283,7 @@ export async function getMonthlyTargetsAction(
       attainmentPercent,
       currency: mockOrgSettingsStore.defaultCurrency || "USD",
       users: usersData,
+      isPersonalView: false,
     },
   };
 }

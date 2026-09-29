@@ -142,6 +142,7 @@ export default function LeadsPage() {
       firstName: lead.firstName,
       lastName: lead.lastName || "",
       email: lead.email || "",
+      supportEmail: lead.supportEmail || "",
       phone: lead.phone || "",
       companyName: lead.companyName || "",
       jobTitle: lead.jobTitle || "",
@@ -153,6 +154,7 @@ export default function LeadsPage() {
       estimatedValue: lead.estimatedValue,
       currency: lead.currency || "USD",
       description: lead.description || "",
+      ownerId: lead.ownerId || undefined,
     });
     setIsModalOpen(true);
   };

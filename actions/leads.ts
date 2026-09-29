@@ -9,6 +9,7 @@ import {
   mockCompaniesStore,
   mockContactsStore,
   mockOpportunitiesStore,
+  mockUsersStore,
 } from "@/lib/db/mock-store";
 import {
   leadSchema,
@@ -97,17 +98,38 @@ export async function getLeadsAction(params: {
   rating?: string;
 }) {
   const session = await requireAuth();
-  const { organizationId } = await resolveTenantContext(session);
+  const { organizationId, userId } = await resolveTenantContext(session);
   const isTechfluxOrg = isTechfluxOrganization(session.organizationName, session.organizationId);
   const page = Math.max(1, params.page || 1);
   const limit = Math.min(100, Math.max(1, params.limit || 10));
   const skip = (page - 1) * limit;
+
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
 
   try {
     const where: any = {
       organizationId,
       deletedAt: null,
     };
+
+    if (!isAdminOrManager) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { ownerId: session.id },
+            { ownerId: userId },
+            { createdById: session.id },
+            { createdById: userId },
+          ],
+        },
+      ];
+    }
 
     if (params.status && params.status !== "ALL") {
       where.status = params.status;
@@ -124,6 +146,7 @@ export async function getLeadsAction(params: {
         { firstName: { contains: params.search, mode: "insensitive" } },
         { lastName: { contains: params.search, mode: "insensitive" } },
         { email: { contains: params.search, mode: "insensitive" } },
+        { supportEmail: { contains: params.search, mode: "insensitive" } },
         { phone: { contains: params.search, mode: "insensitive" } },
         { companyName: { contains: params.search, mode: "insensitive" } },
         { leadNumber: { contains: params.search, mode: "insensitive" } },
@@ -138,7 +161,7 @@ export async function getLeadsAction(params: {
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
-          owner: { select: { name: true } },
+          owner: { select: { id: true, name: true } },
         },
       }),
     ]);
@@ -154,6 +177,7 @@ export async function getLeadsAction(params: {
           lastName: l.lastName,
           fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
           email: l.email,
+          supportEmail: l.supportEmail || null,
           phone: l.phone,
           companyName: l.companyName,
           jobTitle: l.jobTitle,
@@ -165,6 +189,8 @@ export async function getLeadsAction(params: {
           estimatedValue: Number(l.estimatedValue || 0),
           currency: l.currency,
           description: l.description,
+          ownerId: l.ownerId || null,
+          createdById: l.createdById || null,
           ownerName: l.owner?.name || null,
           createdAt: l.createdAt.toISOString(),
         })),
@@ -179,10 +205,22 @@ export async function getLeadsAction(params: {
   } catch {
     // In-memory fallback
     let filtered = mockLeadsStore.filter((l) => {
+      if (!isAdminOrManager) {
+        const isOwner =
+          l.ownerId === session.id ||
+          l.ownerId === userId ||
+          (l.ownerName && (l.ownerName === session.name || l.ownerName === "Alex Sales"));
+        const isCreator = l.createdById === session.id || l.createdById === userId;
+        if (!isOwner && !isCreator) {
+          return false;
+        }
+      }
+
       const matchesSearch =
         !params.search ||
         l.fullName.toLowerCase().includes(params.search.toLowerCase()) ||
         (l.email && l.email.toLowerCase().includes(params.search.toLowerCase())) ||
+        (l.supportEmail && l.supportEmail.toLowerCase().includes(params.search.toLowerCase())) ||
         (l.companyName && l.companyName.toLowerCase().includes(params.search.toLowerCase())) ||
         (l.leadNumber && l.leadNumber.toLowerCase().includes(params.search.toLowerCase()));
 
@@ -217,7 +255,13 @@ export async function getLeadsAction(params: {
  */
 export async function getLeadByIdAction(id: string) {
   const session = await requireAuth();
-  const { organizationId } = await resolveTenantContext(session);
+  const { organizationId, userId } = await resolveTenantContext(session);
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
 
   try {
     const lead = await prisma.lead.findFirst({
@@ -245,6 +289,17 @@ export async function getLeadByIdAction(id: string) {
     if (!lead) {
       const mock = mockLeadsStore.find((l) => l.id === id);
       if (mock) {
+        if (!isAdminOrManager) {
+          const isOwner =
+            mock.ownerId === session.id ||
+            mock.ownerId === userId ||
+            (mock.ownerName && (mock.ownerName === session.name || mock.ownerName === "Alex Sales"));
+          const isCreator = mock.createdById === session.id || mock.createdById === userId;
+          if (!isOwner && !isCreator) {
+            return { success: false, error: "Unauthorized: You do not have access to this lead" };
+          }
+        }
+
         let convertedInfo = null;
         if (mock.convertedCompanyId || mock.convertedAt) {
           const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
@@ -266,7 +321,7 @@ export async function getLeadByIdAction(id: string) {
           data: {
             ...mock,
             convertedInfo,
-            owner: { id: "usr_alex", name: mock.ownerName || "Alex Sales" },
+            owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
             activities: [],
             tasks: [],
             notes: [],
@@ -274,6 +329,14 @@ export async function getLeadByIdAction(id: string) {
         };
       }
       return { success: false, error: "Lead not found" };
+    }
+
+    if (!isAdminOrManager) {
+      const isOwner = lead.ownerId === session.id || lead.ownerId === userId;
+      const isCreator = lead.createdById === session.id || lead.createdById === userId;
+      if (!isOwner && !isCreator) {
+        return { success: false, error: "Unauthorized: You do not have access to this lead" };
+      }
     }
 
     let convertedInfo = null;
@@ -326,10 +389,24 @@ export async function getLeadByIdAction(id: string) {
         fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
       },
     };
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("Unauthorized")) {
+      return { success: false, error: err.message };
+    }
     console.error("[getLeadByIdAction] Database error:", err);
     const mock = mockLeadsStore.find((l) => l.id === id);
     if (mock) {
+      if (!isAdminOrManager) {
+        const isOwner =
+          mock.ownerId === session.id ||
+          mock.ownerId === userId ||
+          (mock.ownerName && (mock.ownerName === session.name || mock.ownerName === "Alex Sales"));
+        const isCreator = mock.createdById === session.id || mock.createdById === userId;
+        if (!isOwner && !isCreator) {
+          return { success: false, error: "Unauthorized: You do not have access to this lead" };
+        }
+      }
+
       let convertedInfo = null;
       if (mock.convertedCompanyId || mock.convertedAt) {
         const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
@@ -351,7 +428,7 @@ export async function getLeadByIdAction(id: string) {
         data: {
           ...mock,
           convertedInfo,
-          owner: { id: "usr_alex", name: mock.ownerName || "Alex Sales" },
+          owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
           activities: [],
           tasks: [],
           notes: [],
@@ -369,6 +446,13 @@ export async function createLeadAction(data: LeadFormData) {
   const session = await requirePermission("lead:create");
   const { organizationId, userId } = await resolveTenantContext(session);
 
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
+
   const limitCheck = await SubscriptionService.checkLimit(organizationId, "leads");
   if (!limitCheck.allowed) {
     return { success: false, error: limitCheck.message || "Lead limit reached. Please upgrade your subscription plan." };
@@ -384,6 +468,7 @@ export async function createLeadAction(data: LeadFormData) {
     firstName,
     lastName,
     email,
+    supportEmail,
     phone,
     companyName,
     jobTitle,
@@ -396,8 +481,10 @@ export async function createLeadAction(data: LeadFormData) {
     estimatedValue,
     currency,
     description,
+    ownerId,
   } = parsed.data;
 
+  const finalOwnerId = isAdminOrManager && ownerId ? ownerId : userId;
   const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
 
   try {
@@ -408,6 +495,7 @@ export async function createLeadAction(data: LeadFormData) {
         firstName,
         lastName: lastName || null,
         email: email || null,
+        supportEmail: supportEmail || null,
         phone: phone || null,
         companyName: companyName || null,
         jobTitle: jobTitle || null,
@@ -420,7 +508,7 @@ export async function createLeadAction(data: LeadFormData) {
         estimatedValue,
         currency,
         description: description || null,
-        ownerId: userId,
+        ownerId: finalOwnerId,
         createdById: userId,
       },
     });
@@ -454,6 +542,7 @@ export async function createLeadAction(data: LeadFormData) {
   } catch (err) {
     console.error("[createLeadAction] Database error:", err);
     const fullName = `${firstName} ${lastName || ""}`.trim();
+    const assignedUser = mockUsersStore.find((u) => u.id === finalOwnerId);
     const newLead: LeadItem & { organizationId: string; description?: string } = {
       id: `lead_${Date.now()}`,
       organizationId,
@@ -462,6 +551,7 @@ export async function createLeadAction(data: LeadFormData) {
       lastName: lastName || null,
       fullName,
       email: email || null,
+      supportEmail: supportEmail || null,
       phone: phone || null,
       companyName: companyName || null,
       jobTitle: jobTitle || null,
@@ -472,7 +562,9 @@ export async function createLeadAction(data: LeadFormData) {
       rating,
       estimatedValue,
       currency,
-      ownerName: session.name,
+      ownerId: finalOwnerId,
+      createdById: userId,
+      ownerName: assignedUser ? assignedUser.name : (finalOwnerId === userId ? session.name : "Sales Rep"),
       createdAt: new Date().toISOString(),
       description,
     };
@@ -500,11 +592,18 @@ export async function createLeadAction(data: LeadFormData) {
 export async function updateLeadAction(id: string, data: Partial<LeadFormData>) {
   try {
     const session = await requirePermission("lead:update");
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
 
     const updatePayload: Record<string, any> = {};
     if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
     if (data.lastName !== undefined) updatePayload.lastName = data.lastName?.trim() || null;
     if (data.email !== undefined) updatePayload.email = data.email?.trim() || null;
+    if (data.supportEmail !== undefined) updatePayload.supportEmail = data.supportEmail?.trim() || null;
     if (data.phone !== undefined) updatePayload.phone = data.phone?.trim() || null;
     if (data.companyName !== undefined) updatePayload.companyName = data.companyName?.trim() || null;
     if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
@@ -517,6 +616,10 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
     if (data.estimatedValue !== undefined) updatePayload.estimatedValue = Number(data.estimatedValue) || 0;
     if (data.currency !== undefined) updatePayload.currency = data.currency || "USD";
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
+    if (data.ownerId !== undefined && isAdminOrManager) {
+      updatePayload.ownerId = data.ownerId || null;
+      updatePayload.assignedAt = new Date();
+    }
 
     try {
       const updated = await prisma.lead.update({
@@ -556,6 +659,11 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       };
       if (updatePayload.firstName || updatePayload.lastName !== undefined) {
         updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
+      }
+      if (updatePayload.ownerId !== undefined) {
+        const assignedUser = mockUsersStore.find((u) => u.id === updatePayload.ownerId);
+        updated.ownerId = updatePayload.ownerId;
+        updated.ownerName = assignedUser ? assignedUser.name : (updatePayload.ownerId ? "Assigned User" : null);
       }
       mockLeadsStore[idx] = updated;
       revalidatePath("/leads");
@@ -632,7 +740,17 @@ export async function updateLeadStatusAction(id: string, newStatus: string) {
  * Assign lead to an owner
  */
 export async function assignLeadAction(id: string, ownerId: string) {
-  const session = await requirePermission("lead:assign");
+  const session = await requireAuth();
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
+
+  if (!isAdminOrManager) {
+    return { success: false, error: "Unauthorized: Only Admins and Managers can reassign leads" };
+  }
 
   try {
     const updated = await prisma.lead.update({
@@ -668,7 +786,9 @@ export async function assignLeadAction(id: string, ownerId: string) {
   } catch {
     const idx = mockLeadsStore.findIndex((l) => l.id === id);
     if (idx !== -1) {
-      mockLeadsStore[idx].ownerName = "Assigned User";
+      const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
+      mockLeadsStore[idx].ownerId = ownerId;
+      mockLeadsStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       return { success: true, data: mockLeadsStore[idx] };

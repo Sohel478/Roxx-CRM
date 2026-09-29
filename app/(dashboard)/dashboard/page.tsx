@@ -14,7 +14,6 @@ import {
   BarChart3,
   Target,
   Pencil,
-  UserCheck,
 } from "lucide-react";
 import { getReportsAnalyticsAction } from "@/actions/reports";
 import { getTasksAction } from "@/actions/tasks";
@@ -69,25 +68,26 @@ export default function DashboardPage() {
   const funnel = analytics?.funnel || [];
   const leaderboard = analytics?.teamLeaderboard || [];
 
-  const monthlyQuotaTarget = targetsData?.orgTarget || 100000;
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdmin =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    Boolean(currentUser?.isSuperAdmin);
+  const isManager = roleUpper === "MANAGER";
+  const isAdminOrManager = isAdmin || isManager;
+  const isPersonalView = Boolean(targetsData?.isPersonalView) || !isAdminOrManager;
+
+  const monthlyQuotaTarget = targetsData?.orgTarget ?? (isPersonalView ? 0 : 100000);
   const currencySymbol = targetsData?.currency === "INR" ? "₹" : "$";
-  const wonRevenue = summary?.totalRevenueWon || targetsData?.totalWon || 0;
-  const attainmentPercent = Math.round((wonRevenue / monthlyQuotaTarget) * 100);
+  const wonRevenue = isPersonalView
+    ? (targetsData?.totalWon ?? 0)
+    : (summary?.totalRevenueWon || targetsData?.totalWon || 0);
+  const attainmentPercent =
+    monthlyQuotaTarget > 0 ? Math.round((wonRevenue / monthlyQuotaTarget) * 100) : 0;
   const remainingGap = Math.max(0, monthlyQuotaTarget - wonRevenue);
   const weightedPipeline = summary?.weightedForecast || 0;
   const pipelineCoverage =
     remainingGap > 0 ? ((weightedPipeline / remainingGap) * 100).toFixed(0) : "100";
-
-  const isAdmin =
-    currentUser?.role?.toUpperCase() === "ADMIN" ||
-    currentUser?.role?.toUpperCase() === "ADMINISTRATOR" ||
-    currentUser?.isSuperAdmin;
-
-  const myTarget = targetsData?.users?.find(
-    (u) =>
-      u.userId === currentUser?.id ||
-      u.userEmail?.toLowerCase() === currentUser?.email?.toLowerCase()
-  );
 
   return (
     <div className="space-y-6">
@@ -238,11 +238,15 @@ export default function DashboardPage() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-bold text-slate-900">
-                  Monthly Team Sales Target &amp; Quota Attainment
+                  {isPersonalView
+                    ? "My Monthly Sales Target & Quota Attainment"
+                    : "Monthly Team Sales Target & Quota Attainment"}
                 </h3>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    attainmentPercent >= 100
+                    monthlyQuotaTarget === 0
+                      ? "bg-slate-100 text-slate-600"
+                      : attainmentPercent >= 100
                       ? "bg-emerald-100 text-emerald-800"
                       : attainmentPercent >= 75
                       ? "bg-blue-100 text-blue-800"
@@ -251,7 +255,9 @@ export default function DashboardPage() {
                       : "bg-rose-100 text-rose-800"
                   }`}
                 >
-                  {attainmentPercent >= 100
+                  {monthlyQuotaTarget === 0
+                    ? "No Quota Set"
+                    : attainmentPercent >= 100
                     ? "Quota Crushed 🎉"
                     : attainmentPercent >= 75
                     ? "On Track 🚀"
@@ -271,16 +277,22 @@ export default function DashboardPage() {
                 )}
               </div>
               <p className="text-xs text-slate-500">
-                Pacing against monthly organization goal of {currencySymbol}{monthlyQuotaTarget.toLocaleString()} {targetsData?.currency || "USD"}
+                {isPersonalView
+                  ? monthlyQuotaTarget > 0
+                    ? `Pacing against your monthly personal quota of ${currencySymbol}${monthlyQuotaTarget.toLocaleString()} ${targetsData?.currency || "USD"}`
+                    : "No individual quota assigned for this month yet. Check with your sales manager."
+                  : `Pacing against monthly organization goal of ${currencySymbol}${monthlyQuotaTarget.toLocaleString()} ${targetsData?.currency || "USD"}`}
               </p>
             </div>
           </div>
 
           <div className="flex items-baseline gap-1 self-start sm:self-auto">
             <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              {attainmentPercent}%
+              {monthlyQuotaTarget > 0 ? `${attainmentPercent}%` : "—"}
             </span>
-            <span className="text-xs font-semibold text-slate-400">of goal achieved</span>
+            <span className="text-xs font-semibold text-slate-400">
+              {monthlyQuotaTarget > 0 ? "of goal achieved" : "quota unassigned"}
+            </span>
           </div>
         </div>
 
@@ -291,12 +303,12 @@ export default function DashboardPage() {
             <div
               className="bg-emerald-500 h-full rounded-l-full transition-all duration-700"
               style={{
-                width: `${Math.min(attainmentPercent, 100)}%`,
+                width: `${monthlyQuotaTarget > 0 ? Math.min(attainmentPercent, 100) : 0}%`,
               }}
               title={`Won: ${currencySymbol}${wonRevenue.toLocaleString()}`}
             />
             {/* Weighted Pipeline contribution preview */}
-            {attainmentPercent < 100 && (
+            {monthlyQuotaTarget > 0 && attainmentPercent < 100 && (
               <div
                 className="bg-blue-400/80 h-full transition-all duration-700"
                 style={{
@@ -312,46 +324,134 @@ export default function DashboardPage() {
 
           {/* Progress Legend */}
           <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1 gap-2">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                 <span>Closed Won: <strong className="text-slate-900">{currencySymbol}{wonRevenue.toLocaleString()}</strong></span>
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                <span>Weighted Forecast: <strong className="text-slate-900">{currencySymbol}{weightedPipeline.toLocaleString()}</strong></span>
-              </span>
+              {!isPersonalView && (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                  <span>Weighted Forecast: <strong className="text-slate-900">{currencySymbol}{weightedPipeline.toLocaleString()}</strong></span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <span>Remaining Gap: <strong className="text-slate-800">{currencySymbol}{remainingGap.toLocaleString()}</strong></span>
-              <span>&bull;</span>
-              <span>Pipeline Coverage: <strong className="text-blue-600">{pipelineCoverage}%</strong></span>
+              {!isPersonalView && (
+                <>
+                  <span>&bull;</span>
+                  <span>Pipeline Coverage: <strong className="text-blue-600">{pipelineCoverage}%</strong></span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Personal Target Pill (if user has an individual target assigned) */}
-        {myTarget && myTarget.targetAmount > 0 && (
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+        {/* For Admin / Manager: Team Member Target Status Table */}
+        {!isPersonalView && targetsData?.users && targetsData.users.length > 0 && (
+          <div className="pt-4 border-t border-slate-100 space-y-3">
+            <div className="flex items-center justify-between">
               <div>
-                <span className="font-bold text-slate-800">My Monthly Quota: </span>
-                <span className="text-slate-600">
-                  {currencySymbol}{myTarget.revenueWon.toLocaleString()} won of {currencySymbol}{myTarget.targetAmount.toLocaleString()} target
-                </span>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Users2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Team Quota Attainment &amp; Target Status</span>
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Individual quotas and revenue attainment for sales reps and managers.
+                </p>
               </div>
+              <Link
+                href="/settings?tab=targets"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <span>Adjust Quotas</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-            <div className="flex items-center gap-2.5 min-w-[140px]">
-              <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(myTarget.attainmentPercent, 100)}%` }}
-                />
-              </div>
-              <span className="font-bold text-blue-700 text-xs shrink-0">
-                {myTarget.attainmentPercent}%
-              </span>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                    <th className="py-2.5 px-3">Team Member</th>
+                    <th className="py-2.5 px-3">Role</th>
+                    <th className="py-2.5 px-3 text-right">Quota Target</th>
+                    <th className="py-2.5 px-3 text-right">Won Revenue</th>
+                    <th className="py-2.5 px-3">Attainment</th>
+                    <th className="py-2.5 px-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {targetsData.users.map((u) => {
+                    const uAttainment =
+                      u.targetAmount > 0 ? Math.round((u.revenueWon / u.targetAmount) * 100) : 0;
+                    return (
+                      <tr key={u.userId} className="hover:bg-slate-50/75 transition-colors">
+                        <td className="py-2.5 px-3 font-semibold text-slate-900">
+                          <div>{u.userName}</div>
+                          <div className="text-[10px] text-slate-400 font-normal">{u.userEmail}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                          <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-medium">
+                            {u.role.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                          {u.targetAmount > 0 ? `${currencySymbol}${u.targetAmount.toLocaleString()}` : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                          {currencySymbol}{u.revenueWon.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 min-w-[130px]">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  uAttainment >= 100
+                                    ? "bg-emerald-500"
+                                    : uAttainment >= 75
+                                    ? "bg-blue-600"
+                                    : uAttainment >= 50
+                                    ? "bg-amber-500"
+                                    : "bg-rose-500"
+                                }`}
+                                style={{ width: `${Math.min(uAttainment, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-700 w-8 text-right">
+                              {uAttainment}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {u.targetAmount === 0 ? (
+                            <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
+                              No Target
+                            </span>
+                          ) : uAttainment >= 100 ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Crushed 🎉
+                            </span>
+                          ) : uAttainment >= 75 ? (
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                              On Track 🚀
+                            </span>
+                          ) : uAttainment >= 50 ? (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              Pacing ⚡
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                              Needs Push 📈
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

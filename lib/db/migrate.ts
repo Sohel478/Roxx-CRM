@@ -96,6 +96,16 @@ export async function ensureDatabaseSchema(): Promise<void> {
       console.warn("[ensureDatabaseSchema] contacts alter warning:", err);
     });
 
+    // 3c. Ensure columns exist on leads table
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "leads" 
+        ADD COLUMN IF NOT EXISTS "support_email" TEXT,
+        ADD COLUMN IF NOT EXISTS "company_linkedin" TEXT,
+        ADD COLUMN IF NOT EXISTS "customer_linkedin" TEXT;
+    `).catch((err) => {
+      console.warn("[ensureDatabaseSchema] leads alter warning:", err);
+    });
+
     // 4. Ensure SaaS Platform Tables exist
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "platform_users" (

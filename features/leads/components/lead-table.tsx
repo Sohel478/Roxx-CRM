@@ -189,21 +189,39 @@ export function LeadTable({
                     {/* Lead Name & Number */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="group flex flex-col font-semibold text-slate-900 hover:text-blue-600 min-w-0"
-                        >
-                          <span className="group-hover:underline truncate">{lead.fullName}</span>
+                        <div className="flex flex-col font-semibold text-slate-900 min-w-0">
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className="group hover:text-blue-600 truncate"
+                          >
+                            <span className="group-hover:underline">{lead.fullName}</span>
+                          </Link>
                           <span className="text-[11px] text-slate-400 font-mono font-normal">
                             {lead.leadNumber} &bull; {lead.source}
                           </span>
-                        </Link>
+                          {(lead.email || lead.supportEmail) && (
+                            <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
+                              {lead.email && (
+                                <span className="inline-flex items-center gap-1 text-slate-600 truncate max-w-[190px]" title={`Customer Email: ${lead.email}`}>
+                                  <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate">{lead.email}</span>
+                                </span>
+                              )}
+                              {lead.supportEmail && (
+                                <span className="inline-flex items-center gap-1 text-indigo-600 font-medium truncate max-w-[190px]" title={`Support Email: ${lead.supportEmail}`}>
+                                  <span className="text-[10px] bg-indigo-50 border border-indigo-200 px-1 rounded text-indigo-700 font-semibold">Support</span>
+                                  <span className="truncate">{lead.supportEmail}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         {lead.customerLinkedin && (
                           <a
                             href={lead.customerLinkedin}
                             target="_blank"
                             rel="noreferrer"
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0 self-start mt-0.5"
                             title={`Customer LinkedIn: ${lead.customerLinkedin}`}
                           >
                             <span className="sr-only">Customer LinkedIn</span>

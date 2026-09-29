@@ -21,6 +21,7 @@ export const leadImportRowSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().optional().nullable(),
   email: z.string().email("Invalid email").optional().nullable().or(z.literal("")),
+  supportEmail: z.string().email("Invalid email").optional().nullable().or(z.literal("")),
   phone: z.string().optional().nullable(),
   companyName: z.string().optional().nullable(),
   jobTitle: z.string().optional().nullable(),

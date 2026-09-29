@@ -69,6 +69,7 @@ export interface MockLead {
   lastName: string | null;
   fullName: string;
   email: string | null;
+  supportEmail?: string | null;
   phone: string | null;
   companyName: string | null;
   jobTitle: string | null;
@@ -80,7 +81,9 @@ export interface MockLead {
   rating: string;
   estimatedValue: number;
   currency: string;
+  ownerId?: string | null;
   ownerName: string | null;
+  createdById?: string | null;
   createdAt: string;
   description?: string | null;
   convertedAt?: string | null;

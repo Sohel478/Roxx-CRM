@@ -4,11 +4,13 @@ export const leadSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().optional(),
   email: z.string().email("Must be a valid email").or(z.literal("")).optional(),
+  supportEmail: z.string().email("Must be a valid email").or(z.literal("")).optional().nullable(),
   phone: z.string().optional(),
   companyName: z.string().optional(),
   jobTitle: z.string().optional(),
   companyLinkedin: z.string().optional().nullable(),
   customerLinkedin: z.string().optional().nullable(),
+  ownerId: z.string().optional().nullable(),
   source: z.string().default("Website"),
   sourceDetail: z.string().optional(),
   status: z.enum(["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),
@@ -34,6 +36,7 @@ export interface LeadItem {
   lastName: string | null;
   fullName: string;
   email: string | null;
+  supportEmail?: string | null;
   phone: string | null;
   companyName: string | null;
   jobTitle: string | null;
@@ -45,7 +48,9 @@ export interface LeadItem {
   estimatedValue: number;
   currency: string;
   description?: string | null;
+  ownerId?: string | null;
   ownerName: string | null;
+  createdById?: string | null;
   createdAt: string;
   convertedAt?: string | null;
   convertedCompanyId?: string | null;

@@ -1,18 +1,22 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { AlertTriangle, Flame, Snowflake, Zap } from "lucide-react";
+import { AlertTriangle, Flame, Snowflake, Zap, UserCheck } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { createLeadAction, updateLeadAction, checkLeadDuplicateAction } from "@/actions/leads";
+import { getCurrentUserAction } from "@/actions/auth";
+import { getUsersAction } from "@/actions/users";
 import type { LeadFormData } from "@/lib/validations/leads";
+import type { SessionUser } from "@/lib/auth/session";
+import type { UserItem } from "@/lib/validations/settings";
 
 interface LeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  leadToEdit?: (LeadFormData & { id: string }) | null;
+  leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null }) | null;
   isTechfluxOrg?: boolean;
 }
 
@@ -20,11 +24,21 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(currentUser?.isSuperAdmin);
 
   const [formData, setFormData] = useState<LeadFormData>({
     firstName: leadToEdit?.firstName || "",
     lastName: leadToEdit?.lastName || "",
     email: leadToEdit?.email || "",
+    supportEmail: leadToEdit?.supportEmail || "",
     phone: leadToEdit?.phone || "",
     companyName: leadToEdit?.companyName || "",
     jobTitle: leadToEdit?.jobTitle || "",
@@ -36,7 +50,29 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     estimatedValue: leadToEdit?.estimatedValue || 0,
     currency: leadToEdit?.currency || "USD",
     description: leadToEdit?.description || "",
+    ownerId: leadToEdit?.ownerId || undefined,
   });
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        setCurrentUser(u);
+        const rUpper = u.role?.toUpperCase();
+        if (
+          rUpper === "ADMIN" ||
+          rUpper === "ADMINISTRATOR" ||
+          rUpper === "MANAGER" ||
+          u.isSuperAdmin
+        ) {
+          getUsersAction().then((res) => {
+            if (res.success && res.data) {
+              setTeamMembers(res.data.filter((member) => member.isActive));
+            }
+          });
+        }
+      }
+    });
+  }, []);
 
   // Synchronize form fields whenever modal opens or leadToEdit changes
   useEffect(() => {
@@ -50,6 +86,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         firstName: leadToEdit.firstName || "",
         lastName: leadToEdit.lastName || "",
         email: leadToEdit.email || "",
+        supportEmail: leadToEdit.supportEmail || "",
         phone: leadToEdit.phone || "",
         companyName: leadToEdit.companyName || "",
         jobTitle: leadToEdit.jobTitle || "",
@@ -61,12 +98,14 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         estimatedValue: leadToEdit.estimatedValue || 0,
         currency: leadToEdit.currency || "USD",
         description: leadToEdit.description || "",
+        ownerId: leadToEdit.ownerId || undefined,
       });
     } else {
       setFormData({
         firstName: "",
         lastName: "",
         email: "",
+        supportEmail: "",
         phone: "",
         companyName: "",
         jobTitle: "",
@@ -78,6 +117,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         estimatedValue: 0,
         currency: "USD",
         description: "",
+        ownerId: undefined,
       });
     }
   }, [isOpen, leadToEdit, isTechfluxOrg]);
@@ -184,12 +224,22 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-700">Email Address</label>
+            <label className="text-xs font-semibold text-slate-700">Customer Email</label>
             <Input
               type="email"
-              placeholder="elena@company.com"
+              placeholder="customer@company.com"
               value={formData.email || ""}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700">Support Email</label>
+            <Input
+              type="email"
+              placeholder="support@company.com"
+              value={formData.supportEmail || ""}
+              onChange={(e) => setFormData({ ...formData, supportEmail: e.target.value })}
             />
           </div>
 
@@ -329,6 +379,30 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
               onChange={(e) => setFormData({ ...formData, estimatedValue: Number(e.target.value) })}
             />
           </div>
+
+          {isAdminOrManager && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                <span>Assign To (Sales Rep / Account Owner)</span>
+              </label>
+              <select
+                value={formData.ownerId || ""}
+                onChange={(e) => setFormData({ ...formData, ownerId: e.target.value || undefined })}
+                className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <option value="">Assign to Self ({currentUser?.name || "You"})</option>
+                {teamMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name} — {member.role.replace(/_/g, " ")} ({member.email})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                Only the assigned sales rep, org managers, and admins will have access to this lead record.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-semibold text-slate-700">Lead Description &amp; Context</label>

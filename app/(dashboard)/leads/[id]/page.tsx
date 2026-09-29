@@ -23,9 +23,17 @@ import {
   Play,
   Globe,
   ExternalLink,
+  UserCheck,
 } from "lucide-react";
-import { getLeadByIdAction, updateLeadStatusAction, deleteLeadAction, pickLeadAction } from "@/actions/leads";
+import {
+  getLeadByIdAction,
+  updateLeadStatusAction,
+  deleteLeadAction,
+  pickLeadAction,
+  assignLeadAction,
+} from "@/actions/leads";
 import { getCurrentUserAction } from "@/actions/auth";
+import { getUsersAction } from "@/actions/users";
 import { getActivitiesAction } from "@/actions/activities";
 import { getTasksAction } from "@/actions/tasks";
 import { LeadModal } from "@/features/leads/components/lead-modal";
@@ -39,6 +47,8 @@ import { InlineComposer } from "@/features/dossier/components/inline-composer";
 import { AssociationsPanel } from "@/features/dossier/components/associations-panel";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
 import { TaskItem } from "@/lib/validations/tasks";
+import type { SessionUser } from "@/lib/auth/session";
+import type { UserItem } from "@/lib/validations/settings";
 
 interface LeadDetailData {
   id: string;
@@ -47,6 +57,7 @@ interface LeadDetailData {
   lastName?: string | null;
   fullName: string;
   email?: string | null;
+  supportEmail?: string | null;
   phone?: string | null;
   companyName?: string | null;
   jobTitle?: string | null;
@@ -60,7 +71,9 @@ interface LeadDetailData {
   description?: string | null;
   createdAt: string;
   owner?: { id: string; name: string } | null;
+  ownerId?: string | null;
   ownerName?: string | null;
+  createdById?: string | null;
   convertedAt?: string | null;
   convertedCompanyId?: string | null;
   convertedContactId?: string | null;
@@ -91,14 +104,37 @@ export default function LeadDetailPage() {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activityDefaultType] = useState<ActivityType>("CALL");
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(currentUser?.isSuperAdmin);
 
   useEffect(() => {
     getCurrentUserAction().then((u) => {
       if (u) {
+        setCurrentUser(u);
         const isTf =
           (u.organizationName || "").toLowerCase().includes("techflux") ||
           (u.organizationId || "").toLowerCase().includes("techflux");
         setIsTechfluxOrg(isTf);
+        const rUpper = u.role?.toUpperCase();
+        if (
+          rUpper === "ADMIN" ||
+          rUpper === "ADMINISTRATOR" ||
+          rUpper === "MANAGER" ||
+          u.isSuperAdmin
+        ) {
+          getUsersAction().then((res) => {
+            if (res.success && res.data) {
+              setTeamMembers(res.data.filter((m) => m.isActive));
+            }
+          });
+        }
       }
     });
   }, []);
@@ -126,6 +162,16 @@ export default function LeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
+
+  const handleAssignLead = (newOwnerId: string) => {
+    if (!newOwnerId) return;
+    startTransition(async () => {
+      const res = await assignLeadAction(id, newOwnerId);
+      if (res.success) {
+        await loadLead();
+      }
+    });
+  };
 
   const handleStatusChange = (newStatus: string) => {
     startTransition(async () => {
@@ -459,9 +505,14 @@ export default function LeadDetailPage() {
                 icon: <User className="w-3.5 h-3.5 text-slate-400" />,
               },
               {
-                label: "Email Address",
+                label: "Customer Email",
                 value: lead.email || "Not provided",
                 icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
+              },
+              {
+                label: "Support Email",
+                value: lead.supportEmail || "Not provided",
+                icon: <Mail className="w-3.5 h-3.5 text-indigo-500" />,
               },
               {
                 label: "Phone Number",
@@ -502,6 +553,37 @@ export default function LeadDetailPage() {
               },
             ]}
           />
+
+          {/* Quick Lead Reassignment for Admin / Manager */}
+          {isAdminOrManager && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-blue-600" />
+                  <span>Assign Lead (Owner)</span>
+                </h3>
+                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded">
+                  Admin / Manager
+                </span>
+              </div>
+              <select
+                value={lead.owner?.id || lead.ownerId || ""}
+                disabled={isPending}
+                onChange={(e) => handleAssignLead(e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <option value="">Choose Sales Rep / Manager</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.role.replace(/_/g, " ")})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 leading-normal">
+                Reassigning immediately grants access to the chosen sales rep while preserving manager/admin oversight.
+              </p>
+            </div>
+          )}
 
           {/* Discovery Notes Card */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
@@ -693,6 +775,7 @@ export default function LeadDetailPage() {
                 firstName: lead.firstName,
                 lastName: lead.lastName || "",
                 email: lead.email || "",
+                supportEmail: lead.supportEmail || "",
                 phone: lead.phone || "",
                 companyName: lead.companyName || "",
                 jobTitle: lead.jobTitle || "",
@@ -704,6 +787,7 @@ export default function LeadDetailPage() {
                 estimatedValue: lead.estimatedValue,
                 currency: lead.currency || "USD",
                 description: lead.description || "",
+                ownerId: lead.owner?.id || lead.ownerId || undefined,
               }
             : null
         }
