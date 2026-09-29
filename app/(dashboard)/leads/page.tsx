@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download, Upload } from "lucide-react";
+import { Plus, Download, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadTable } from "@/features/leads/components/lead-table";
 import { LeadModal } from "@/features/leads/components/lead-modal";
 import { ImportModal } from "@/features/imports/components/import-modal";
+import { DataResetModal } from "@/features/settings/components/data-reset-modal";
 import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getLeadsAction,
@@ -22,7 +23,9 @@ export default function LeadsPage() {
   const [status, setStatus] = useState("ALL");
   const [rating, setRating] = useState("ALL");
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string }) | null>(null);
@@ -97,6 +100,12 @@ export default function LeadsPage() {
           (u.organizationName || "").toLowerCase().includes("techflux") ||
           (u.organizationId || "").toLowerCase().includes("techflux");
         setIsTechfluxOrg(isTf);
+        const roleUpper = u.role?.toUpperCase();
+        setIsAdmin(
+          roleUpper === "ADMIN" ||
+          roleUpper === "ADMINISTRATOR" ||
+          Boolean(u.isSuperAdmin)
+        );
       }
     });
   }, []);
@@ -187,6 +196,17 @@ export default function LeadsPage() {
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
             <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
+          {isAdmin && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsResetModalOpen(true)}
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5 text-red-500" />
+              <span>Reset Leads</span>
+            </Button>
+          )}
           <Button
             type="button"
             onClick={() => {
@@ -234,6 +254,15 @@ export default function LeadsPage() {
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => loadLeads()}
         defaultEntity="leads"
+      />
+
+      {/* Data Reset Modal */}
+      <DataResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        entity="leads"
+        count={meta.total || leads.length}
+        onSuccess={() => loadLeads(1)}
       />
     </div>
   );

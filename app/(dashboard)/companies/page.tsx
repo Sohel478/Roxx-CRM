@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download, Upload } from "lucide-react";
+import { Plus, Download, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CompanyTable } from "@/features/companies/components/company-table";
 import { CompanyModal } from "@/features/companies/components/company-modal";
 import { ImportModal } from "@/features/imports/components/import-modal";
+import { DataResetModal } from "@/features/settings/components/data-reset-modal";
 import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getCompaniesAction,
   deleteCompanyAction,
 } from "@/actions/companies";
+import { getCurrentUserAction } from "@/actions/auth";
 import type { CompanyItem, CompanyFormData } from "@/lib/validations/companies";
 
 export default function CompaniesPage() {
@@ -19,7 +21,9 @@ export default function CompaniesPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [companyToEdit, setCompanyToEdit] = useState<(CompanyFormData & { id: string }) | null>(null);
   const [, startTransition] = useTransition();
@@ -40,6 +44,19 @@ export default function CompaniesPage() {
     },
     [search, status]
   );
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        const roleUpper = u.role?.toUpperCase();
+        setIsAdmin(
+          roleUpper === "ADMIN" ||
+          roleUpper === "ADMINISTRATOR" ||
+          Boolean(u.isSuperAdmin)
+        );
+      }
+    });
+  }, []);
 
   useEffect(() => {
     loadCompanies(1, search, status);
@@ -130,6 +147,17 @@ export default function CompaniesPage() {
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
             <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
+          {isAdmin && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsResetModalOpen(true)}
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5 text-red-500" />
+              <span>Reset Companies</span>
+            </Button>
+          )}
           <Button
             type="button"
             onClick={() => {
@@ -172,6 +200,15 @@ export default function CompaniesPage() {
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => loadCompanies()}
         defaultEntity="companies"
+      />
+
+      {/* Data Reset Modal */}
+      <DataResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        entity="companies"
+        count={meta.total || companies.length}
+        onSuccess={() => loadCompanies(1)}
       />
     </div>
   );

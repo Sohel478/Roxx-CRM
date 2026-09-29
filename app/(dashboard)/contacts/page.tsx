@@ -1,23 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download, Upload } from "lucide-react";
+import { Plus, Download, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContactTable } from "@/features/contacts/components/contact-table";
 import { ContactModal } from "@/features/contacts/components/contact-modal";
 import { ImportModal } from "@/features/imports/components/import-modal";
+import { DataResetModal } from "@/features/settings/components/data-reset-modal";
 import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getContactsAction,
   deleteContactAction,
 } from "@/actions/contacts";
+import { getCurrentUserAction } from "@/actions/auth";
 import type { ContactItem, ContactFormData } from "@/lib/validations/contacts";
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [search, setSearch] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [contactToEdit, setContactToEdit] = useState<(ContactFormData & { id: string }) | null>(null);
@@ -39,6 +43,19 @@ export default function ContactsPage() {
     },
     [search]
   );
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        const roleUpper = u.role?.toUpperCase();
+        setIsAdmin(
+          roleUpper === "ADMIN" ||
+          roleUpper === "ADMINISTRATOR" ||
+          Boolean(u.isSuperAdmin)
+        );
+      }
+    });
+  }, []);
 
   useEffect(() => {
     loadContacts(1, search);
@@ -132,6 +149,17 @@ export default function ContactsPage() {
             <Download className="w-4 h-4 mr-1.5 text-slate-500" />
             <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
+          {isAdmin && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsResetModalOpen(true)}
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5 text-red-500" />
+              <span>Reset Contacts</span>
+            </Button>
+          )}
           <Button
             type="button"
             onClick={() => {
@@ -172,6 +200,15 @@ export default function ContactsPage() {
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => loadContacts()}
         defaultEntity="contacts"
+      />
+
+      {/* Data Reset Modal */}
+      <DataResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        entity="contacts"
+        count={meta.total || contacts.length}
+        onSuccess={() => loadContacts(1)}
       />
     </div>
   );

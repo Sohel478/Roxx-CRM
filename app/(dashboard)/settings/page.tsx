@@ -11,6 +11,7 @@ import {
   KeyRound,
   Target,
   Mail,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeamMembersTab } from "@/features/settings/components/team-members-tab";
@@ -21,6 +22,7 @@ import { BillingTab } from "@/features/settings/components/billing-tab";
 import { ChangePasswordTab } from "@/features/settings/components/change-password-tab";
 import { SalesTargetsTab } from "@/features/settings/components/sales-targets-tab";
 import { EmailSettingsTab } from "@/features/settings/components/email-settings-tab";
+import { DataManagementTab } from "@/features/settings/components/data-management-tab";
 import { getUsersAction, getTenantSeatUsageAction } from "@/actions/users";
 import type { UserItem, TenantSeatUsage } from "@/lib/validations/settings";
 import { getAuditLogsAction } from "@/actions/audit";
@@ -34,7 +36,7 @@ import type {
   PipelineStageItem,
 } from "@/lib/validations/settings";
 
-type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email";
+type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email" | "data";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("team");
@@ -87,7 +89,7 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as TabType;
-      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets", "email"].includes(tab)) {
+      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets", "email", "data"].includes(tab)) {
         setActiveTab(tab);
       }
     }
@@ -238,6 +240,19 @@ export default function SettingsPage() {
           <KeyRound className="w-4 h-4" />
           <span>Security &amp; Password</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("data")}
+          className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+            activeTab === "data"
+              ? "border-red-600 text-red-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Trash2 className="w-4 h-4 text-red-500" />
+          <span>Data Reset</span>
+        </button>
       </div>
 
       {/* Tab Panels */}
@@ -256,6 +271,10 @@ export default function SettingsPage() {
 
         {activeTab === "email" && (
           <EmailSettingsTab />
+        )}
+
+        {activeTab === "data" && (
+          <DataManagementTab />
         )}
 
         {activeTab === "audit" && (
