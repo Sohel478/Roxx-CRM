@@ -12,9 +12,13 @@ import {
   getLeadsAction,
   deleteLeadAction,
   pickLeadAction,
+  bulkAssignLeadsAction,
+  bulkDeleteLeadsAction,
 } from "@/actions/leads";
 import { getCurrentUserAction } from "@/actions/auth";
+import { getUsersAction } from "@/actions/users";
 import type { LeadItem, LeadFormData } from "@/lib/validations/leads";
+import type { UserItem } from "@/lib/validations/settings";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<LeadItem[]>([]);
@@ -24,6 +28,11 @@ export default function LeadsPage() {
   const [rating, setRating] = useState("ALL");
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isManager, setIsManager] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -101,11 +110,21 @@ export default function LeadsPage() {
           (u.organizationId || "").toLowerCase().includes("techflux");
         setIsTechfluxOrg(isTf);
         const roleUpper = u.role?.toUpperCase();
-        setIsAdmin(
+        const admin =
           roleUpper === "ADMIN" ||
           roleUpper === "ADMINISTRATOR" ||
-          Boolean(u.isSuperAdmin)
-        );
+          Boolean(u.isSuperAdmin);
+        const manager = roleUpper === "MANAGER";
+        setIsAdmin(admin);
+        setIsManager(manager);
+
+        if (admin || manager) {
+          getUsersAction().then((res) => {
+            if (res.success && res.data) {
+              setTeamMembers(res.data.filter((member) => member.isActive));
+            }
+          });
+        }
       }
     });
   }, []);
@@ -122,6 +141,63 @@ export default function LeadsPage() {
     window.addEventListener("leadCreated", handleLeadCreated);
     return () => window.removeEventListener("leadCreated", handleLeadCreated);
   }, [loadLeads, search, status, rating]);
+
+  const handleToggleSelectLead = (id: string) => {
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    const pageIds = leads.map((l) => l.id);
+    const allSelected =
+      pageIds.length > 0 && pageIds.every((id) => selectedLeadIds.includes(id));
+    if (allSelected) {
+      setSelectedLeadIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+    } else {
+      setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedLeadIds([]);
+  };
+
+  const handleBulkAssign = async (ownerId: string) => {
+    if (selectedLeadIds.length === 0) return;
+    setIsBulkAssigning(true);
+    try {
+      const res = await bulkAssignLeadsAction(selectedLeadIds, ownerId);
+      if (res.success) {
+        setSelectedLeadIds([]);
+        loadLeads();
+      } else {
+        alert(res.error || "Failed to bulk assign leads");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to bulk assign leads");
+    } finally {
+      setIsBulkAssigning(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLeadIds.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await bulkDeleteLeadsAction(selectedLeadIds);
+      if (res.success) {
+        setSelectedLeadIds([]);
+        loadLeads();
+      } else {
+        alert(res.error || "Failed to bulk delete leads");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to bulk delete leads");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
   const handlePickLead = (id: string) => {
     startTransition(async () => {
@@ -163,6 +239,7 @@ export default function LeadsPage() {
     startTransition(async () => {
       try {
         await deleteLeadAction(id);
+        setSelectedLeadIds((prev) => prev.filter((i) => i !== id));
         loadLeads();
       } catch (err) {
         console.error("Failed to delete lead:", err);
@@ -229,13 +306,32 @@ export default function LeadsPage() {
         selectedStatus={status}
         selectedRating={rating}
         isTechfluxOrg={isTechfluxOrg}
-        onSearchChange={(q) => setSearch(q)}
-        onStatusChange={(s) => setStatus(s)}
-        onRatingChange={(r) => setRating(r)}
+        selectedLeadIds={selectedLeadIds}
+        isAdminOrManager={isAdmin || isManager}
+        teamMembers={teamMembers}
+        isBulkAssigning={isBulkAssigning}
+        isBulkDeleting={isBulkDeleting}
+        onSearchChange={(q) => {
+          setSelectedLeadIds([]);
+          setSearch(q);
+        }}
+        onStatusChange={(s) => {
+          setSelectedLeadIds([]);
+          setStatus(s);
+        }}
+        onRatingChange={(r) => {
+          setSelectedLeadIds([]);
+          setRating(r);
+        }}
         onPageChange={(p) => loadLeads(p)}
         onEdit={handleEdit}
         onDelete={handleDelete}
         onPickLead={handlePickLead}
+        onToggleSelectLead={handleToggleSelectLead}
+        onToggleSelectAll={handleToggleSelectAll}
+        onBulkAssign={handleBulkAssign}
+        onBulkDelete={handleBulkDelete}
+        onClearSelection={handleClearSelection}
       />
 
       {/* Modal Dialog */}

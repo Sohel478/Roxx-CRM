@@ -928,3 +928,166 @@ export async function deleteLeadAction(id: string) {
     return { success: true };
   }
 }
+
+/**
+ * Bulk assign leads to a specific owner (Admin/Manager only)
+ */
+export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) {
+  try {
+    const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
+
+    if (!isAdminOrManager) {
+      return { success: false, error: "Unauthorized: Only Admins and Managers can reassign leads" };
+    }
+
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return { success: false, error: "No leads selected for assignment" };
+    }
+
+    if (!ownerId || typeof ownerId !== "string") {
+      return { success: false, error: "Invalid target owner" };
+    }
+
+    const { organizationId, userId } = await resolveTenantContext(session);
+
+    let updatedCount = 0;
+    try {
+      const result = await prisma.lead.updateMany({
+        where: {
+          id: { in: leadIds },
+          organizationId,
+          deletedAt: null,
+        },
+        data: {
+          ownerId,
+          assignedAt: new Date(),
+        },
+      });
+      updatedCount = result.count;
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId,
+            userId,
+            action: "LEADS_BULK_ASSIGNED",
+            entityType: "Lead",
+            entityId: leadIds[0] || "bulk",
+            newValues: { leadIds, ownerId, count: updatedCount },
+          },
+        });
+      } catch {}
+    } catch (dbErr) {
+      console.warn("[bulkAssignLeadsAction] Database updateMany error, falling back to mock store:", dbErr);
+    }
+
+    // Update mockLeadsStore as well
+    const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
+    const assignedName = assignedUser ? assignedUser.name : "Assigned User";
+    let mockUpdatedCount = 0;
+    for (const lead of mockLeadsStore) {
+      if (leadIds.includes(lead.id) && lead.organizationId === organizationId) {
+        lead.ownerId = ownerId;
+        lead.ownerName = assignedName;
+        mockUpdatedCount++;
+      }
+    }
+
+    const finalCount = updatedCount || mockUpdatedCount;
+
+    revalidatePath("/leads");
+    revalidatePath("/dashboard");
+    return { success: true, count: finalCount };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to bulk assign leads" };
+  }
+}
+
+/**
+ * Bulk soft-delete leads
+ */
+export async function bulkDeleteLeadsAction(leadIds: string[]) {
+  try {
+    const session = await requirePermission("lead:delete");
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return { success: false, error: "No leads selected for deletion" };
+    }
+
+    const { organizationId, userId } = await resolveTenantContext(session);
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
+
+    // If not admin/manager, sales rep can only delete leads they own or created
+    const scopedFilter = isAdminOrManager
+      ? { id: { in: leadIds }, organizationId, deletedAt: null }
+      : {
+          id: { in: leadIds },
+          organizationId,
+          deletedAt: null,
+          OR: [{ ownerId: userId }, { createdById: userId }],
+        };
+
+    let deletedCount = 0;
+    try {
+      const result = await prisma.lead.updateMany({
+        where: scopedFilter,
+        data: {
+          deletedAt: new Date(),
+        },
+      });
+      deletedCount = result.count;
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            organizationId,
+            userId,
+            action: "LEADS_BULK_DELETED",
+            entityType: "Lead",
+            entityId: leadIds[0] || "bulk",
+            newValues: { leadIds, count: deletedCount },
+          },
+        });
+      } catch {}
+    } catch (dbErr) {
+      console.warn("[bulkDeleteLeadsAction] Database error, falling back to mock store:", dbErr);
+    }
+
+    // Mock store deletion
+    let mockDeletedCount = 0;
+    for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
+      const l = mockLeadsStore[i];
+      if (leadIds.includes(l.id) && l.organizationId === organizationId) {
+        if (isAdminOrManager || l.ownerId === userId || l.createdById === userId) {
+          mockLeadsStore.splice(i, 1);
+          mockDeletedCount++;
+        }
+      }
+    }
+
+    const finalCount = deletedCount || mockDeletedCount;
+
+    revalidatePath("/leads");
+    revalidatePath("/dashboard");
+    return { success: true, count: finalCount };
+  } catch (err: any) {
+    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
+    return { success: false, error: err?.message || "Failed to bulk delete leads" };
+  }
+}
+

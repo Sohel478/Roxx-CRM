@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Users2,
@@ -15,6 +16,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Play,
+  UserCheck,
+  X,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import type { LeadItem } from "@/lib/validations/leads";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +36,11 @@ interface LeadTableProps {
   selectedStatus: string;
   selectedRating: string;
   isTechfluxOrg?: boolean;
+  selectedLeadIds?: string[];
+  isAdminOrManager?: boolean;
+  teamMembers?: { id: string; name: string; email: string; role: string }[];
+  isBulkAssigning?: boolean;
+  isBulkDeleting?: boolean;
   onPageChange: (page: number) => void;
   onSearchChange: (search: string) => void;
   onStatusChange: (status: string) => void;
@@ -38,6 +48,11 @@ interface LeadTableProps {
   onEdit: (lead: LeadItem) => void;
   onDelete: (id: string) => void;
   onPickLead?: (id: string) => void;
+  onToggleSelectLead?: (id: string) => void;
+  onToggleSelectAll?: () => void;
+  onBulkAssign?: (ownerId: string) => void;
+  onBulkDelete?: () => void;
+  onClearSelection?: () => void;
 }
 
 export function LeadTable({
@@ -46,6 +61,11 @@ export function LeadTable({
   selectedStatus,
   selectedRating,
   isTechfluxOrg = false,
+  selectedLeadIds = [],
+  isAdminOrManager = false,
+  teamMembers = [],
+  isBulkAssigning = false,
+  isBulkDeleting = false,
   onPageChange,
   onSearchChange,
   onStatusChange,
@@ -53,7 +73,28 @@ export function LeadTable({
   onEdit,
   onDelete,
   onPickLead,
+  onToggleSelectLead,
+  onToggleSelectAll,
+  onBulkAssign,
+  onBulkDelete,
+  onClearSelection,
 }: LeadTableProps) {
+  const [bulkTargetOwner, setBulkTargetOwner] = useState("");
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const pageIds = leads.map((l) => l.id);
+  const isAllSelected =
+    pageIds.length > 0 && pageIds.every((id) => selectedLeadIds.includes(id));
+  const isSomeSelected =
+    pageIds.some((id) => selectedLeadIds.includes(id)) && !isAllSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = isSomeSelected;
+    }
+  }, [isSomeSelected]);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Scraped":
@@ -163,6 +204,16 @@ export function LeadTable({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-3.5 w-10 text-center">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={onToggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600 align-middle"
+                    title="Select all on this page"
+                  />
+                </th>
                 <th className="py-3 px-4">Lead</th>
                 <th className="py-3 px-4">Company &amp; Title</th>
                 <th className="py-3 px-4">Status</th>
@@ -175,7 +226,7 @@ export function LeadTable({
             <tbody className="divide-y divide-slate-100 text-sm">
               {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Users2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-700">No leads found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -184,10 +235,28 @@ export function LeadTable({
                   </td>
                 </tr>
               ) : (
-                leads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
-                    {/* Lead Name & Number */}
-                    <td className="py-3.5 px-4">
+                leads.map((lead) => {
+                  const isSelected = selectedLeadIds.includes(lead.id);
+                  return (
+                    <tr
+                      key={lead.id}
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isSelected ? "bg-blue-50/50" : ""
+                      }`}
+                    >
+                      {/* Selection Checkbox */}
+                      <td className="py-3.5 px-3.5 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => onToggleSelectLead?.(lead.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600 align-middle"
+                          title={`Select ${lead.fullName}`}
+                        />
+                      </td>
+
+                      {/* Lead Name & Number */}
+                      <td className="py-3.5 px-4">
                       <div className="flex items-center gap-1.5">
                         <div className="flex flex-col font-semibold text-slate-900 min-w-0">
                           <Link
@@ -317,9 +386,10 @@ export function LeadTable({
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
+                );
+              })
+            )}
+          </tbody>
           </table>
         </div>
 
@@ -355,6 +425,139 @@ export function LeadTable({
           </div>
         </div>
       </div>
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedLeadIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 px-4 py-2.5 flex items-center gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-2 pr-3 border-r border-slate-700">
+            <span className="flex items-center justify-center bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              {selectedLeadIds.length}
+            </span>
+            <span className="text-xs font-semibold text-slate-200 hidden sm:inline">
+              {selectedLeadIds.length === 1 ? "lead selected" : "leads selected"}
+            </span>
+          </div>
+
+          {isAdminOrManager && teamMembers && teamMembers.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={bulkTargetOwner}
+                onChange={(e) => setBulkTargetOwner(e.target.value)}
+                className="text-xs bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Assign To...</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.role.replace("_", " ")})
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!bulkTargetOwner || isBulkAssigning}
+                onClick={() => {
+                  if (bulkTargetOwner && onBulkAssign) {
+                    onBulkAssign(bulkTargetOwner);
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 h-8 shadow-xs"
+              >
+                {isBulkAssigning ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                ) : (
+                  <UserCheck className="w-3.5 h-3.5 mr-1" />
+                )}
+                <span>Assign</span>
+              </Button>
+            </div>
+          )}
+
+          {onBulkDelete && (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={isBulkDeleting}
+              onClick={() => setIsConfirmDeleteOpen(true)}
+              className="text-xs px-3 h-8 shadow-xs bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+              )}
+              <span>Delete ({selectedLeadIds.length})</span>
+            </Button>
+          )}
+
+          {onClearSelection && (
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors ml-1"
+              title="Clear selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Confirmation Modal for Bulk Delete */}
+      {isConfirmDeleteOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Delete {selectedLeadIds.length} {selectedLeadIds.length === 1 ? "Lead" : "Leads"}?
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  This will soft-delete the selected leads from active lists.
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 mb-6 bg-slate-50 p-3 rounded-lg border border-slate-200">
+              Are you sure you want to proceed? This will remove <strong>{selectedLeadIds.length}</strong> leads from active pipelines and tables.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isBulkDeleting}
+                onClick={() => setIsConfirmDeleteOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={isBulkDeleting}
+                onClick={async () => {
+                  if (onBulkDelete) {
+                    await onBulkDelete();
+                  }
+                  setIsConfirmDeleteOpen(false);
+                }}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isBulkDeleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                )}
+                <span>Confirm Delete</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

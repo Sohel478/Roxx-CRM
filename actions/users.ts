@@ -17,6 +17,8 @@ import {
 } from "@/lib/validations/settings";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
 
+export type { UserItem, UserRole };
+
 
 /**
  * Fetch tenant subscription and seat usage details
