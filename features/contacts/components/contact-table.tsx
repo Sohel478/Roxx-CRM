@@ -63,6 +63,7 @@ export function ContactTable({
                 <th className="py-3 px-4">Contact</th>
                 <th className="py-3 px-4">Job Title &amp; Dept</th>
                 <th className="py-3 px-4">Company</th>
+                <th className="py-3 px-4">Assigned To</th>
                 <th className="py-3 px-4">Email</th>
                 <th className="py-3 px-4">Phone</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -71,7 +72,7 @@ export function ContactTable({
             <tbody className="divide-y divide-slate-100 text-sm">
               {contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <UserSquare2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-700">No contacts found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -116,6 +117,18 @@ export function ContactTable({
                         </Link>
                       ) : (
                         <span className="text-slate-400 italic">No Company</span>
+                      )}
+                    </td>
+
+                    {/* Assigned To */}
+                    <td className="py-3.5 px-4 text-xs text-slate-600">
+                      {contact.ownerName ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          <span className="truncate max-w-[120px]">{contact.ownerName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Unassigned</span>
                       )}
                     </td>
 

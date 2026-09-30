@@ -228,14 +228,40 @@ export async function importCsvAction(
           });
         }
       } else if (entityType === "contacts") {
+        let firstName = (
+          rowObj["firstname"] ||
+          rowObj["first_name"] ||
+          rowObj["first name"] ||
+          ""
+        ).trim();
+        let lastName = (
+          rowObj["lastname"] ||
+          rowObj["last_name"] ||
+          rowObj["last name"] ||
+          ""
+        ).trim() || null;
+
+        const fullName = (
+          rowObj["name"] ||
+          rowObj["fullname"] ||
+          rowObj["full name"] ||
+          ""
+        ).trim();
+
+        if (!firstName && fullName) {
+          const parts = fullName.split(/\s+/);
+          firstName = parts[0] || "";
+          lastName = parts.length > 1 ? parts.slice(1).join(" ") : null;
+        }
+
         const parsed = contactImportRowSchema.safeParse({
-          firstName: rowObj["firstname"] || rowObj["first_name"] || "",
-          lastName: rowObj["lastname"] || rowObj["last_name"] || null,
+          firstName,
+          lastName,
           email: rowObj["email"] || null,
-          phone: rowObj["phone"] || null,
-          jobTitle: rowObj["jobtitle"] || rowObj["job_title"] || null,
+          phone: rowObj["phone"] || rowObj["contact"] || rowObj["mobile"] || null,
+          jobTitle: rowObj["jobtitle"] || rowObj["job_title"] || rowObj["job title"] || null,
           department: rowObj["department"] || null,
-          companyName: rowObj["companyname"] || rowObj["company_name"] || null,
+          companyName: rowObj["companyname"] || rowObj["company_name"] || rowObj["company name"] || rowObj["company"] || null,
         });
 
         if (parsed.success) {
@@ -315,6 +341,26 @@ export async function importCsvAction(
         mockLeadsStore.unshift(newLead);
         importedCount++;
       } else if (entityType === "companies") {
+        try {
+          await prisma.company.create({
+            data: {
+              organizationId: session.organizationId,
+              name: rec.name,
+              industry: rec.industry || null,
+              website: rec.website || null,
+              email: rec.email || null,
+              phone: rec.phone || null,
+              city: rec.city || null,
+              country: rec.country || null,
+              status: rec.status || "Prospect",
+              description: rec.description || null,
+              ownerId: session.id,
+            },
+          });
+        } catch (dbErr) {
+          console.warn("[importCsvAction] Prisma company create error:", dbErr);
+        }
+
         const newComp = {
           id: `comp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           organizationId: session.organizationId,
@@ -329,10 +375,29 @@ export async function importCsvAction(
           createdAt: now,
           contactCount: 0,
           description: rec.description || null,
+          ownerId: session.id,
+          ownerName: session.name || "Sales Rep",
         };
         mockCompaniesStore.unshift(newComp);
         importedCount++;
       } else if (entityType === "contacts") {
+        try {
+          await prisma.contact.create({
+            data: {
+              organizationId: session.organizationId,
+              firstName: rec.firstName,
+              lastName: rec.lastName || null,
+              email: rec.email || null,
+              phone: rec.phone || null,
+              jobTitle: rec.jobTitle || null,
+              department: rec.department || null,
+              ownerId: session.id,
+            },
+          });
+        } catch (dbErr) {
+          console.warn("[importCsvAction] Prisma contact create error:", dbErr);
+        }
+
         const newContact = {
           id: `cont_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           organizationId: session.organizationId,
@@ -346,6 +411,8 @@ export async function importCsvAction(
           companyId: null,
           companyName: rec.companyName || null,
           createdAt: now,
+          ownerId: session.id,
+          ownerName: session.name || "Sales Rep",
         };
         mockContactsStore.unshift(newContact);
         importedCount++;

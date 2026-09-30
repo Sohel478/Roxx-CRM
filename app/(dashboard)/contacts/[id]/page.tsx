@@ -13,10 +13,19 @@ import {
   Activity,
   Trash2,
   Edit2,
+  UserCheck,
 } from "lucide-react";
-import { getContactByIdAction, deleteContactAction } from "@/actions/contacts";
+import {
+  getContactByIdAction,
+  deleteContactAction,
+  assignContactAction,
+} from "@/actions/contacts";
+import { getCurrentUserAction } from "@/actions/auth";
+import { getUsersAction } from "@/actions/users";
 import { ContactModal } from "@/features/contacts/components/contact-modal";
 import { Button } from "@/components/ui/button";
+import type { SessionUser } from "@/lib/auth/session";
+import type { UserItem } from "@/lib/validations/settings";
 
 interface ContactDetailData {
   id: string;
@@ -33,6 +42,8 @@ interface ContactDetailData {
   companyName?: string | null;
   company?: { id: string; name: string; industry?: string | null } | null;
   address?: string | null;
+  ownerId?: string | null;
+  ownerName?: string | null;
 }
 
 export default function ContactDetailPage() {
@@ -40,15 +51,49 @@ export default function ContactDetailPage() {
   const router = useRouter();
   const id = params?.id as string;
   const [contact, setContact] = useState<ContactDetailData | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(currentUser?.isSuperAdmin);
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        setCurrentUser(u);
+        const rUpper = u.role?.toUpperCase();
+        if (
+          rUpper === "ADMIN" ||
+          rUpper === "ADMINISTRATOR" ||
+          rUpper === "MANAGER" ||
+          u.isSuperAdmin
+        ) {
+          getUsersAction().then((res) => {
+            if (res.success && res.data) {
+              setTeamMembers(res.data.filter((m) => m.isActive));
+            }
+          });
+        }
+      }
+    });
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
     const res = await getContactByIdAction(id);
     if (res.success && res.data) {
       setContact(res.data as unknown as ContactDetailData);
+      setErrorMsg(null);
+    } else {
+      setErrorMsg(res.error || "Contact not found");
     }
     setIsLoading(false);
   }, [id]);
@@ -56,6 +101,16 @@ export default function ContactDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleAssignContact = (newOwnerId: string) => {
+    if (!newOwnerId) return;
+    startTransition(async () => {
+      const res = await assignContactAction(id, newOwnerId);
+      if (res.success) {
+        await load();
+      }
+    });
+  };
 
   if (isLoading) {
     return (
@@ -68,7 +123,14 @@ export default function ContactDetailPage() {
   if (!contact) {
     return (
       <div className="py-20 text-center space-y-3">
-        <p className="text-base font-bold text-slate-800">Contact Not Found</p>
+        <p className="text-base font-bold text-slate-800">
+          {errorMsg || "Contact Not Found"}
+        </p>
+        <p className="text-xs text-slate-500">
+          {errorMsg?.includes("Unauthorized")
+            ? "You do not have permission to view this contact because it is assigned to another sales representative."
+            : "The requested contact does not exist or has been removed."}
+        </p>
         <Button variant="outline" onClick={() => router.push("/contacts")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Contacts
@@ -268,6 +330,54 @@ export default function ContactDetailPage() {
                     <Instagram className="w-3 h-3" />
                     <span>View Profile</span>
                   </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Assigned Owner Card */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4 text-blue-600" />
+                <span>Assigned Owner</span>
+              </h2>
+              {isAdminOrManager && (
+                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded">
+                  Admin / Manager
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-400 font-medium">Current Owner</span>
+                <span className="font-semibold text-slate-800">
+                  {contact.ownerName || "Unassigned"}
+                </span>
+              </div>
+
+              {isAdminOrManager && (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">
+                    Reassign Contact
+                  </label>
+                  <select
+                    value={contact.ownerId || ""}
+                    disabled={isPending}
+                    onChange={(e) => handleAssignContact(e.target.value)}
+                    className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <option value="">Choose Sales Rep / Manager</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.role.replace(/_/g, " ")})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 leading-normal">
+                    Reassigning updates ownership and visibility for sales reps immediately.
+                  </p>
                 </div>
               )}
             </div>

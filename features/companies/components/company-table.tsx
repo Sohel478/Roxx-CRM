@@ -99,6 +99,7 @@ export function CompanyTable({
                 <th className="py-3 px-4">Company Name</th>
                 <th className="py-3 px-4">Industry</th>
                 <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">Assigned To</th>
                 <th className="py-3 px-4">Contact Info</th>
                 <th className="py-3 px-4">Location</th>
                 <th className="py-3 px-4 text-center">Contacts</th>
@@ -108,7 +109,7 @@ export function CompanyTable({
             <tbody className="divide-y divide-slate-100 text-sm">
               {companies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Building2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-700">No companies found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -139,6 +140,18 @@ export function CompanyTable({
 
                     {/* Status */}
                     <td className="py-3.5 px-4">{getStatusBadge(company.status)}</td>
+
+                    {/* Assigned To */}
+                    <td className="py-3.5 px-4 text-xs text-slate-600">
+                      {company.ownerName ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                          <span className="truncate max-w-[120px]">{company.ownerName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Unassigned</span>
+                      )}
+                    </td>
 
                     {/* Contact Info */}
                     <td className="py-3.5 px-4 text-xs text-slate-500">

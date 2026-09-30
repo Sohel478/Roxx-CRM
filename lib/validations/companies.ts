@@ -12,6 +12,7 @@ export const companySchema = z.object({
   country: z.string().optional(),
   status: z.enum(["Active", "Prospect", "Customer", "Inactive"]).default("Active"),
   description: z.string().optional(),
+  ownerId: z.string().optional(),
 });
 
 export type CompanyFormData = z.infer<typeof companySchema>;
@@ -29,4 +30,6 @@ export interface CompanyItem {
   description?: string | null;
   createdAt: string;
   contactCount: number;
+  ownerId?: string | null;
+  ownerName?: string | null;
 }

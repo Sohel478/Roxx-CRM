@@ -14,6 +14,7 @@ export const contactSchema = z.object({
   newCompanyName: z.string().optional(),
   newCompanyWebsite: z.string().optional(),
   address: z.string().optional(),
+  ownerId: z.string().optional(),
 });
 
 export type ContactFormData = z.infer<typeof contactSchema>;
@@ -34,4 +35,6 @@ export interface ContactItem {
   companyName: string | null;
   address?: string | null;
   createdAt: string;
+  ownerId?: string | null;
+  ownerName?: string | null;
 }

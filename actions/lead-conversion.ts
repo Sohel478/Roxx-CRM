@@ -69,7 +69,7 @@ export async function convertLeadAction(
           data: {
             organizationId,
             name: data.companyName!.trim(),
-            ownerId: userId,
+            ownerId: lead.ownerId || userId,
             status: "Prospect",
             phone: data.contactPhone || null,
             email: data.contactEmail || null,
@@ -104,7 +104,7 @@ export async function convertLeadAction(
           phone: data.contactPhone?.trim() || null,
           jobTitle: data.contactJobTitle?.trim() || null,
           linkedinUrl: lead.customerLinkedin || null,
-          ownerId: userId,
+          ownerId: lead.ownerId || userId,
         },
       });
 
@@ -171,7 +171,7 @@ export async function convertLeadAction(
             name: data.opportunityName!.trim(),
             pipelineId: pipeline.id,
             stageId: stageId,
-            ownerId: userId || session.id,
+            ownerId: lead.ownerId || userId || session.id,
             amount: data.opportunityAmount,
             expectedCloseDate: data.expectedCloseDate ? new Date(data.expectedCloseDate) : null,
             status: "OPEN",
@@ -253,6 +253,9 @@ export async function convertLeadAction(
     let resolvedCompanyId: string;
     let resolvedCompanyName: string;
 
+    const finalLeadOwnerId = lead.ownerId || session.id;
+    const finalLeadOwnerName = lead.ownerName || session.name;
+
     if (data.companyMode === "NEW") {
       resolvedCompanyId = `comp_${Date.now()}`;
       resolvedCompanyName = data.companyName!.trim();
@@ -270,6 +273,8 @@ export async function convertLeadAction(
         phone: data.contactPhone || null,
         email: data.contactEmail || null,
         description: `Account created via conversion from lead ${lead.leadNumber}`,
+        ownerId: finalLeadOwnerId,
+        ownerName: finalLeadOwnerName,
       };
       mockCompaniesStore.unshift(newCompany);
     } else {
@@ -298,6 +303,8 @@ export async function convertLeadAction(
       department: null,
       linkedinUrl: lead.customerLinkedin || null,
       createdAt: new Date().toISOString(),
+      ownerId: finalLeadOwnerId,
+      ownerName: finalLeadOwnerName,
     };
     mockContactsStore.unshift(newContact);
 
@@ -322,8 +329,8 @@ export async function convertLeadAction(
         stageId: `stage_${data.opportunityStage.toLowerCase()}`,
         stageName: data.opportunityStage,
         probability: 25,
-        ownerId: session.id,
-        ownerName: session.name,
+        ownerId: finalLeadOwnerId,
+        ownerName: finalLeadOwnerName,
         status: "OPEN",
         lossReason: null,
         description: null,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockCompaniesStore } from "@/lib/db/mock-store";
+import { mockCompaniesStore, mockUsersStore } from "@/lib/db/mock-store";
 import {
   companySchema,
   CompanyFormData,
@@ -23,6 +23,13 @@ export async function getCompaniesAction(params: {
 }) {
   const session = await requireAuth();
   const { organizationId } = await resolveTenantContext(session);
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
+
   const page = Math.max(1, params.page || 1);
   const limit = Math.min(100, Math.max(1, params.limit || 10));
   const skip = (page - 1) * limit;
@@ -32,6 +39,10 @@ export async function getCompaniesAction(params: {
       organizationId,
       deletedAt: null,
     };
+
+    if (!isAdminOrManager) {
+      where.ownerId = session.id;
+    }
 
     if (params.status && params.status !== "ALL") {
       where.status = params.status;
@@ -54,6 +65,7 @@ export async function getCompaniesAction(params: {
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
+          owner: { select: { id: true, name: true } },
           _count: {
             select: { contacts: true },
           },
@@ -77,6 +89,8 @@ export async function getCompaniesAction(params: {
           description: c.description,
           createdAt: c.createdAt.toISOString(),
           contactCount: c._count.contacts,
+          ownerId: c.ownerId,
+          ownerName: c.owner?.name || null,
         })),
         meta: {
           page,
@@ -89,6 +103,8 @@ export async function getCompaniesAction(params: {
   } catch {
     // Fallback in-memory search for development preview
     let filtered = mockCompaniesStore.filter((c) => {
+      if (c.organizationId && c.organizationId !== organizationId) return false;
+      if (!isAdminOrManager && c.ownerId && c.ownerId !== session.id) return false;
       const matchesSearch =
         !params.search ||
         c.name.toLowerCase().includes(params.search.toLowerCase()) ||
@@ -119,15 +135,23 @@ export async function getCompaniesAction(params: {
  * Get company detail by ID
  */
 export async function getCompanyByIdAction(id: string) {
-  await requireAuth();
+  const session = await requireAuth();
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
 
   try {
     const company = await prisma.company.findFirst({
       where: {
         id,
+        organizationId: session.organizationId,
         deletedAt: null,
       },
       include: {
+        owner: { select: { id: true, name: true, email: true } },
         contacts: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
@@ -146,8 +170,13 @@ export async function getCompanyByIdAction(id: string) {
 
     if (!company) {
       // Check mock store
-      const mock = mockCompaniesStore.find((c) => c.id === id);
+      const mock = mockCompaniesStore.find(
+        (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
+      );
       if (mock) {
+        if (!isAdminOrManager && mock.ownerId && mock.ownerId !== session.id) {
+          return { success: false, error: "Unauthorized: You can only view companies assigned to you" };
+        }
         return {
           success: true,
           data: {
@@ -161,10 +190,26 @@ export async function getCompanyByIdAction(id: string) {
       return { success: false, error: "Company not found" };
     }
 
-    return { success: true, data: company };
+    if (!isAdminOrManager && company.ownerId && company.ownerId !== session.id) {
+      return { success: false, error: "Unauthorized: You can only view companies assigned to you" };
+    }
+
+    return {
+      success: true,
+      data: {
+        ...company,
+        ownerId: company.ownerId,
+        ownerName: company.owner?.name || null,
+      },
+    };
   } catch {
-    const mock = mockCompaniesStore.find((c) => c.id === id);
+    const mock = mockCompaniesStore.find(
+      (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
+    );
     if (mock) {
+      if (!isAdminOrManager && mock.ownerId && mock.ownerId !== session.id) {
+        return { success: false, error: "Unauthorized: You can only view companies assigned to you" };
+      }
       return {
         success: true,
         data: {
@@ -198,6 +243,17 @@ export async function createCompanyAction(data: CompanyFormData) {
       return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
     }
 
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
+
+    const finalOwnerId = isAdminOrManager && parsed.data.ownerId ? parsed.data.ownerId : userId;
+    const assignedUser = mockUsersStore.find((u) => u.id === finalOwnerId);
+    const assignedOwnerName = assignedUser ? assignedUser.name : (finalOwnerId === userId ? session.name : "Sales Rep");
+
     const { name, industry, website, email, phone, address, city, state, country, status, description } =
       parsed.data;
 
@@ -216,7 +272,7 @@ export async function createCompanyAction(data: CompanyFormData) {
           country: country?.trim() || null,
           status,
           description: description?.trim() || null,
-          ownerId: userId,
+          ownerId: finalOwnerId,
         },
       });
 
@@ -252,6 +308,8 @@ export async function createCompanyAction(data: CompanyFormData) {
         createdAt: new Date().toISOString(),
         contactCount: 0,
         description: description?.trim() || undefined,
+        ownerId: finalOwnerId,
+        ownerName: assignedOwnerName,
       };
       mockCompaniesStore.unshift(newComp);
       revalidatePath("/companies");
@@ -273,6 +331,12 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
   try {
     const session = await requirePermission("company:update");
     const { userId } = await resolveTenantContext(session);
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
 
     const updatePayload: Record<string, any> = {};
     if (data.name !== undefined) updatePayload.name = data.name.trim();
@@ -286,14 +350,21 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
     if (data.country !== undefined) updatePayload.country = data.country?.trim() || null;
     if (data.status !== undefined) updatePayload.status = data.status;
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
+    if (isAdminOrManager && data.ownerId !== undefined) {
+      updatePayload.ownerId = data.ownerId || null;
+    }
 
     try {
       const existing = await prisma.company.findUnique({
         where: { id },
-        select: { id: true, organizationId: true },
+        select: { id: true, organizationId: true, ownerId: true },
       });
 
       if (existing) {
+        if (!isAdminOrManager && existing.ownerId && existing.ownerId !== userId) {
+          return { success: false, error: "Unauthorized: You can only update companies assigned to you" };
+        }
+
         const updated = await prisma.company.update({
           where: { id },
           data: updatePayload,
@@ -323,6 +394,9 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
 
     const index = mockCompaniesStore.findIndex((c) => c.id === id);
     if (index !== -1) {
+      if (!isAdminOrManager && mockCompaniesStore[index].ownerId && mockCompaniesStore[index].ownerId !== userId) {
+        return { success: false, error: "Unauthorized: You can only update companies assigned to you" };
+      }
       mockCompaniesStore[index] = {
         ...mockCompaniesStore[index],
         ...updatePayload,
@@ -348,14 +422,24 @@ export async function deleteCompanyAction(id: string) {
   try {
     const session = await requirePermission("company:delete");
     const { userId } = await resolveTenantContext(session);
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
 
     try {
       const comp = await prisma.company.findUnique({
         where: { id },
-        select: { id: true, organizationId: true },
+        select: { id: true, organizationId: true, ownerId: true },
       });
 
       if (comp) {
+        if (!isAdminOrManager && comp.ownerId && comp.ownerId !== userId) {
+          return { success: false, error: "Unauthorized: You can only delete companies assigned to you" };
+        }
+
         await prisma.company.update({
           where: { id },
           data: {
@@ -377,6 +461,9 @@ export async function deleteCompanyAction(id: string) {
       } else {
         const idx = mockCompaniesStore.findIndex((c) => c.id === id);
         if (idx !== -1) {
+          if (!isAdminOrManager && mockCompaniesStore[idx].ownerId && mockCompaniesStore[idx].ownerId !== userId) {
+            return { success: false, error: "Unauthorized: You can only delete companies assigned to you" };
+          }
           mockCompaniesStore.splice(idx, 1);
         }
       }
@@ -388,6 +475,9 @@ export async function deleteCompanyAction(id: string) {
       console.error("[deleteCompanyAction] Error deleting company:", err);
       const idx = mockCompaniesStore.findIndex((c) => c.id === id);
       if (idx !== -1) {
+        if (!isAdminOrManager && mockCompaniesStore[idx].ownerId && mockCompaniesStore[idx].ownerId !== userId) {
+          return { success: false, error: "Unauthorized: You can only delete companies assigned to you" };
+        }
         mockCompaniesStore.splice(idx, 1);
       }
       revalidatePath("/companies");
@@ -399,5 +489,65 @@ export async function deleteCompanyAction(id: string) {
       throw err;
     }
     return { success: false, error: err?.message || "Failed to delete company" };
+  }
+}
+
+/**
+ * Assign company to an owner (Admin/Manager only)
+ */
+export async function assignCompanyAction(id: string, ownerId: string) {
+  const session = await requireAuth();
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
+
+  if (!isAdminOrManager) {
+    return { success: false, error: "Unauthorized: Only Admins and Managers can reassign companies" };
+  }
+
+  try {
+    const updated = await prisma.company.update({
+      where: {
+        id,
+        organizationId: session.organizationId,
+      },
+      data: {
+        ownerId,
+      },
+      include: {
+        owner: { select: { name: true } },
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          organizationId: session.organizationId,
+          userId: session.id,
+          action: "COMPANY_ASSIGNED",
+          entityType: "Company",
+          entityId: id,
+          newValues: { ownerId },
+        },
+      });
+    } catch {}
+
+    revalidatePath("/companies");
+    revalidatePath(`/companies/${id}`);
+    return { success: true, data: updated };
+  } catch {
+    const idx = mockCompaniesStore.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
+      mockCompaniesStore[idx].ownerId = ownerId;
+      mockCompaniesStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
+      revalidatePath("/companies");
+      revalidatePath(`/companies/${id}`);
+      return { success: true, data: mockCompaniesStore[idx] };
+    }
+    return { success: false, error: "Company not found" };
   }
 }

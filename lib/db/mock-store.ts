@@ -15,6 +15,8 @@ export interface MockCompany {
   createdAt: string;
   contactCount: number;
   description?: string | null;
+  ownerId?: string | null;
+  ownerName?: string | null;
 }
 
 export interface MockContact {
@@ -34,6 +36,8 @@ export interface MockContact {
   companyName: string | null;
   address?: string | null;
   createdAt: string;
+  ownerId?: string | null;
+  ownerName?: string | null;
 }
 
 export interface MockOpportunity {

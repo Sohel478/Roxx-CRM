@@ -14,11 +14,20 @@ import {
   MapPin,
   Trash2,
   Edit2,
+  UserCheck,
 } from "lucide-react";
-import { getCompanyByIdAction, deleteCompanyAction } from "@/actions/companies";
+import {
+  getCompanyByIdAction,
+  deleteCompanyAction,
+  assignCompanyAction,
+} from "@/actions/companies";
+import { getCurrentUserAction } from "@/actions/auth";
+import { getUsersAction } from "@/actions/users";
 import { CompanyModal } from "@/features/companies/components/company-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type { SessionUser } from "@/lib/auth/session";
+import type { UserItem } from "@/lib/validations/settings";
 
 interface CompanyContact {
   id: string;
@@ -42,6 +51,8 @@ interface CompanyDetailData {
   status: string;
   description?: string | null;
   createdAt: string;
+  ownerId?: string | null;
+  ownerName?: string | null;
   contacts?: CompanyContact[];
 }
 
@@ -50,15 +61,49 @@ export default function CompanyDetailPage() {
   const router = useRouter();
   const id = params?.id as string;
   const [company, setCompany] = useState<CompanyDetailData | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(currentUser?.isSuperAdmin);
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) {
+        setCurrentUser(u);
+        const rUpper = u.role?.toUpperCase();
+        if (
+          rUpper === "ADMIN" ||
+          rUpper === "ADMINISTRATOR" ||
+          rUpper === "MANAGER" ||
+          u.isSuperAdmin
+        ) {
+          getUsersAction().then((res) => {
+            if (res.success && res.data) {
+              setTeamMembers(res.data.filter((m) => m.isActive));
+            }
+          });
+        }
+      }
+    });
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
     const res = await getCompanyByIdAction(id);
     if (res.success && res.data) {
       setCompany(res.data as unknown as CompanyDetailData);
+      setErrorMsg(null);
+    } else {
+      setErrorMsg(res.error || "Company not found");
     }
     setIsLoading(false);
   }, [id]);
@@ -66,6 +111,16 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleAssignCompany = (newOwnerId: string) => {
+    if (!newOwnerId) return;
+    startTransition(async () => {
+      const res = await assignCompanyAction(id, newOwnerId);
+      if (res.success) {
+        await load();
+      }
+    });
+  };
 
   if (isLoading) {
     return (
@@ -78,7 +133,14 @@ export default function CompanyDetailPage() {
   if (!company) {
     return (
       <div className="py-20 text-center space-y-3">
-        <p className="text-base font-bold text-slate-800">Company Not Found</p>
+        <p className="text-base font-bold text-slate-800">
+          {errorMsg || "Company Not Found"}
+        </p>
+        <p className="text-xs text-slate-500">
+          {errorMsg?.includes("Unauthorized")
+            ? "You do not have permission to view this company because it is assigned to another sales representative."
+            : "The requested company does not exist or has been removed."}
+        </p>
         <Button variant="outline" onClick={() => router.push("/companies")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Companies
@@ -212,6 +274,54 @@ export default function CompanyDetailPage() {
                   {company.description || "No description provided."}
                 </p>
               </div>
+            </div>
+          </div>
+
+          {/* Assigned Owner Card */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4 text-blue-600" />
+                <span>Assigned Owner</span>
+              </h2>
+              {isAdminOrManager && (
+                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded">
+                  Admin / Manager
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-400 font-medium">Current Owner</span>
+                <span className="font-semibold text-slate-800">
+                  {company.ownerName || "Unassigned"}
+                </span>
+              </div>
+
+              {isAdminOrManager && (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">
+                    Reassign Company
+                  </label>
+                  <select
+                    value={company.ownerId || ""}
+                    disabled={isPending}
+                    onChange={(e) => handleAssignCompany(e.target.value)}
+                    className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <option value="">Choose Sales Rep / Manager</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.role.replace(/_/g, " ")})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 leading-normal">
+                    Reassigning updates ownership and visibility for sales reps immediately.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
