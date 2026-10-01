@@ -111,6 +111,7 @@ export const inboxEmailSchema = z.object({
   isRead: z.boolean().default(false),
   leadId: z.string().optional(),
   leadName: z.string().optional(),
+  assignedToName: z.string().nullable().optional(),
   contactId: z.string().optional(),
   inReplyTo: z.string().optional(),
 });

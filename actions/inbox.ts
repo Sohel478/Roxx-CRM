@@ -9,6 +9,7 @@ import {
   mockSmtpStore,
   mockLeadsStore,
   mockContactsStore,
+  mockUsersStore,
   MockInboxEmail,
   MockImapConfig,
   MockSmtpConfig,
@@ -25,8 +26,9 @@ import {
 } from "@/lib/validations/email";
 
 export interface GetInboxParams {
-  filter?: "all" | "replies" | "unread";
+  filter?: "all" | "replies" | "unread" | "my_clients";
   search?: string;
+  assignedTo?: string; // Optional: filter by sales rep ID/name or "my_clients"
 }
 
 export interface InboxAccountStatus {
@@ -35,6 +37,8 @@ export interface InboxAccountStatus {
   provider: string;
   host: string;
   lastSyncedAt?: string;
+  userRole?: string;
+  isAdminOrManager?: boolean;
 }
 
 /**
@@ -152,6 +156,13 @@ export async function getInboxAccountStatusAction(): Promise<{
       provider = "Zoho Mail";
     }
 
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
+
     return {
       success: true,
       data: {
@@ -160,12 +171,14 @@ export async function getInboxAccountStatusAction(): Promise<{
         provider,
         host,
         lastSyncedAt: imapConfig?.lastSyncedAt || smtpConfig?.updatedAt,
+        userRole: session.role || "SALES_USER",
+        isAdminOrManager,
       },
     };
   } catch (error: unknown) {
     return {
       success: false,
-      data: { isConfigured: false, connectedEmail: "", provider: "", host: "" },
+      data: { isConfigured: false, connectedEmail: "", provider: "", host: "", userRole: "SALES_USER", isAdminOrManager: false },
       error: (error as Error)?.message || "Failed to load account status.",
     };
   }
@@ -179,6 +192,9 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
   data: InboxEmailItem[];
   unreadCount: number;
   connectedEmail: string;
+  userRole?: string;
+  isAdminOrManager?: boolean;
+  salesReps?: Array<{ id: string; name: string }>;
   error?: string;
 }> {
   try {
@@ -197,6 +213,21 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
 
     const activeRecipient = connectedEmail || session.email || "infotflux@gmail.com";
 
+    const roleUpper = session.role?.toUpperCase();
+    const isAdminOrManager =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      roleUpper === "MANAGER" ||
+      Boolean(session.isSuperAdmin);
+
+    // Active sales reps list for Admin/Manager filtering
+    const salesReps: Array<{ id: string; name: string }> = [];
+    if (isAdminOrManager) {
+      mockUsersStore
+        .filter((u) => u.organizationId === organizationId && u.isActive)
+        .forEach((u) => salesReps.push({ id: u.id, name: u.name }));
+    }
+
     const isDemoEmail = (e: MockInboxEmail) => {
       const subject = (e.subject || "").toLowerCase();
       const fromName = (e.fromName || "").toLowerCase();
@@ -208,7 +239,8 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
         id === "inbox_msg_1" ||
         id === "inbox_msg_2" ||
         id === "inbox_msg_3" ||
-        /^inbox_.*_[123]$/.test(id) ||
+        id.startsWith("inbox_demo_") ||
+        id.startsWith("demo_msg_") ||
         fromName.includes("elena rostova") ||
         fromName.includes("marcus vance") ||
         fromName.includes("cloudscale") ||
@@ -258,20 +290,131 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
             .trim()
             .slice(0, 120) || e.snippet;
       }
+
+      // Enrich with lead/contact details
+      if (e.leadId) {
+        const lead = mockLeadsStore.find((l) => l.id === e.leadId);
+        if (lead) {
+          e.leadName = lead.fullName;
+          e.assignedToName = lead.ownerName || null;
+        }
+      } else if (e.fromEmail) {
+        const lead = mockLeadsStore.find(
+          (l) => l.organizationId === organizationId && l.email?.toLowerCase().trim() === e.fromEmail.toLowerCase().trim()
+        );
+        if (lead) {
+          e.leadId = lead.id;
+          e.leadName = lead.fullName;
+          e.assignedToName = lead.ownerName || null;
+        }
+      }
     });
 
-    // Filter by role visibility for leads
-    if (session.role === "SALES_RESP") {
+    // Helper to get client IDs and emails assigned to a specific user
+    const getClientOwnership = (userId: string, userName?: string) => {
+      const ownedLeadIds = new Set<string>();
+      const ownedContactIds = new Set<string>();
+      const clientEmails = new Set<string>();
+      const normName = userName?.toLowerCase().trim();
+
+      mockLeadsStore
+        .filter((l) => {
+          if (l.organizationId !== organizationId) return false;
+          const ownerName = l.ownerName?.toLowerCase().trim();
+          return (
+            l.ownerId === userId ||
+            l.createdById === userId ||
+            (normName && ownerName === normName)
+          );
+        })
+        .forEach((l) => {
+          ownedLeadIds.add(l.id);
+          if (l.email) clientEmails.add(l.email.toLowerCase().trim());
+          if (l.supportEmail) clientEmails.add(l.supportEmail.toLowerCase().trim());
+        });
+
+      mockContactsStore
+        .filter((c) => {
+          if (c.organizationId !== organizationId) return false;
+          const ownerName = c.ownerName?.toLowerCase().trim();
+          return (
+            c.ownerId === userId ||
+            (normName && ownerName === normName)
+          );
+        })
+        .forEach((c) => {
+          ownedContactIds.add(c.id);
+          if (c.email) clientEmails.add(c.email.toLowerCase().trim());
+        });
+
+      return { ownedLeadIds, ownedContactIds, clientEmails };
+    };
+
+    // Scoping Rule:
+    // Admin and Manager can see ALL emails.
+    // Sales Reps can see ONLY their own assigned client emails.
+    if (!isAdminOrManager) {
+      const { ownedLeadIds, ownedContactIds, clientEmails } = getClientOwnership(
+        session.id,
+        session.name
+      );
+      const userEmailNorm = session.email?.toLowerCase().trim();
+
       emails = emails.filter((e) => {
-        if (!e.leadId) return true;
-        const lead = mockLeadsStore.find((l) => l.id === e.leadId);
-        if (!lead) return true;
-        return (
-          lead.ownerName === session.name ||
-          lead.ownerName?.toLowerCase() === session.name.toLowerCase() ||
-          lead.email?.toLowerCase() === session.email.toLowerCase()
-        );
+        if (e.leadId && ownedLeadIds.has(e.leadId)) return true;
+        if (e.contactId && ownedContactIds.has(e.contactId)) return true;
+        const sender = e.fromEmail?.toLowerCase().trim();
+        if (sender && clientEmails.has(sender)) return true;
+        const recipient = e.toEmail?.toLowerCase().trim();
+        if (userEmailNorm && recipient === userEmailNorm) return true;
+
+        // Hide emails that do not belong to this sales rep's clients
+        return false;
       });
+    } else {
+      // Optional Admin / Manager filtering
+      if (params?.assignedTo && params.assignedTo !== "all") {
+        if (params.assignedTo === "my_clients") {
+          const { ownedLeadIds, ownedContactIds, clientEmails } = getClientOwnership(
+            session.id,
+            session.name
+          );
+          emails = emails.filter((e) => {
+            if (e.leadId && ownedLeadIds.has(e.leadId)) return true;
+            if (e.contactId && ownedContactIds.has(e.contactId)) return true;
+            const sender = e.fromEmail?.toLowerCase().trim();
+            if (sender && clientEmails.has(sender)) return true;
+            return false;
+          });
+        } else {
+          const targetRep = mockUsersStore.find(
+            (u) => u.id === params.assignedTo || u.name === params.assignedTo
+          );
+          const { ownedLeadIds, ownedContactIds, clientEmails } = getClientOwnership(
+            params.assignedTo,
+            targetRep?.name
+          );
+          emails = emails.filter((e) => {
+            if (e.leadId && ownedLeadIds.has(e.leadId)) return true;
+            if (e.contactId && ownedContactIds.has(e.contactId)) return true;
+            const sender = e.fromEmail?.toLowerCase().trim();
+            if (sender && clientEmails.has(sender)) return true;
+            return false;
+          });
+        }
+      } else if (params?.filter === "my_clients") {
+        const { ownedLeadIds, ownedContactIds, clientEmails } = getClientOwnership(
+          session.id,
+          session.name
+        );
+        emails = emails.filter((e) => {
+          if (e.leadId && ownedLeadIds.has(e.leadId)) return true;
+          if (e.contactId && ownedContactIds.has(e.contactId)) return true;
+          const sender = e.fromEmail?.toLowerCase().trim();
+          if (sender && clientEmails.has(sender)) return true;
+          return false;
+        });
+      }
     }
 
     const unreadCount = emails.filter((e) => !e.isRead).length;
@@ -293,7 +436,8 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
           e.fromName.toLowerCase().includes(search) ||
           e.subject.toLowerCase().includes(search) ||
           e.snippet.toLowerCase().includes(search) ||
-          (e.leadName && e.leadName.toLowerCase().includes(search))
+          (e.leadName && e.leadName.toLowerCase().includes(search)) ||
+          (e.assignedToName && e.assignedToName.toLowerCase().includes(search))
       );
     }
 
@@ -305,6 +449,9 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
       data: emails,
       unreadCount,
       connectedEmail: activeRecipient,
+      userRole: session.role || "SALES_USER",
+      isAdminOrManager,
+      salesReps,
     };
   } catch (error: unknown) {
     return {

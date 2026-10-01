@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   parseEmailAddress,
   decodeMimeHeader,
@@ -355,6 +355,174 @@ Content-Type: text/html; charset="UTF-8"
     // Clean up
     const idx = mockInboxStore.findIndex((e) => e.id === dirtyEmailId);
     if (idx !== -1) mockInboxStore.splice(idx, 1);
+  });
+});
+
+describe("Role-Based Inbox Scoping & Manager Team Filtering", () => {
+  const repLeadId = "lead_sarah_client_1";
+  const otherLeadId = "lead_john_client_2";
+  const repEmailId = "inbox_msg_rep_scoped_1";
+  const otherEmailId = "inbox_msg_other_scoped_2";
+
+  beforeEach(() => {
+    // Clean mock leads and inbox for scoping tests
+    mockLeadsStore.push(
+      {
+        id: repLeadId,
+        organizationId: "demo-org-123",
+        leadNumber: "LEAD-991",
+        firstName: "Alice",
+        lastName: "Client",
+        fullName: "Alice Client",
+        email: "alice@repclient.com",
+        phone: null,
+        companyName: "Alice Corp",
+        jobTitle: "CTO",
+        sourceId: "src_1",
+        sourceName: "Website",
+        statusId: "st_1",
+        statusName: "New",
+        ownerId: "usr_sarah",
+        ownerName: "Sarah Miller",
+        score: 50,
+        tags: [],
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: otherLeadId,
+        organizationId: "demo-org-123",
+        leadNumber: "LEAD-992",
+        firstName: "Bob",
+        lastName: "Client",
+        fullName: "Bob Client",
+        email: "bob@otherclient.com",
+        phone: null,
+        companyName: "Bob Corp",
+        jobTitle: "CEO",
+        sourceId: "src_1",
+        sourceName: "Website",
+        statusId: "st_1",
+        statusName: "New",
+        ownerId: "usr_john",
+        ownerName: "John Rep",
+        score: 50,
+        tags: [],
+        createdAt: new Date().toISOString(),
+      }
+    );
+
+    mockInboxStore.push(
+      {
+        id: repEmailId,
+        organizationId: "demo-org-123",
+        messageId: "<sarah-client-msg@mail.com>",
+        fromEmail: "alice@repclient.com",
+        fromName: "Alice Client",
+        toEmail: "sales@roxx.local",
+        subject: "Question about our proposal",
+        snippet: "Hi Sarah, wanted to follow up.",
+        bodyText: "Hi Sarah, wanted to follow up on the proposal.",
+        date: new Date().toISOString(),
+        isRead: false,
+        leadId: repLeadId,
+      },
+      {
+        id: otherEmailId,
+        organizationId: "demo-org-123",
+        messageId: "<other-client-msg@mail.com>",
+        fromEmail: "bob@otherclient.com",
+        fromName: "Bob Client",
+        toEmail: "sales@roxx.local",
+        subject: "Contract questions",
+        snippet: "Hi John, review complete.",
+        bodyText: "Hi John, review complete for Bob Corp.",
+        date: new Date().toISOString(),
+        isRead: false,
+        leadId: otherLeadId,
+      }
+    );
+  });
+
+  afterEach(() => {
+    const lIdx1 = mockLeadsStore.findIndex((l) => l.id === repLeadId);
+    if (lIdx1 !== -1) mockLeadsStore.splice(lIdx1, 1);
+    const lIdx2 = mockLeadsStore.findIndex((l) => l.id === otherLeadId);
+    if (lIdx2 !== -1) mockLeadsStore.splice(lIdx2, 1);
+
+    const eIdx1 = mockInboxStore.findIndex((e) => e.id === repEmailId);
+    if (eIdx1 !== -1) mockInboxStore.splice(eIdx1, 1);
+    const eIdx2 = mockInboxStore.findIndex((e) => e.id === otherEmailId);
+    if (eIdx2 !== -1) mockInboxStore.splice(eIdx2, 1);
+  });
+
+  it("allows Admin and Manager to view all company client emails with enriched rep info", async () => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      id: "usr_admin",
+      organizationId: "demo-org-123",
+      organizationName: "Demo Company",
+      email: "admin@roxx-crm.local",
+      name: "Admin User",
+      role: "ADMIN",
+      permissions: ["leads:read"],
+      expiresAt: Date.now() + 3600000,
+    });
+
+    const res = await getInboxEmailsAction({ filter: "all" });
+    expect(res.success).toBe(true);
+
+    const emailIds = res.data.map((e) => e.id);
+    expect(emailIds).toContain(repEmailId);
+    expect(emailIds).toContain(otherEmailId);
+
+    const repEmail = res.data.find((e) => e.id === repEmailId);
+    expect(repEmail?.assignedToName).toBe("Sarah Miller");
+    expect(repEmail?.leadName).toBe("Alice Client");
+
+    const otherEmail = res.data.find((e) => e.id === otherEmailId);
+    expect(otherEmail?.assignedToName).toBe("John Rep");
+  });
+
+  it("strictly scopes Sales Reps to only their own assigned clients", async () => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      id: "usr_sarah",
+      organizationId: "demo-org-123",
+      organizationName: "Demo Company",
+      email: "sarah@roxx-crm.local",
+      name: "Sarah Miller",
+      role: "SALES_USER",
+      permissions: ["leads:read"],
+      expiresAt: Date.now() + 3600000,
+    });
+
+    const res = await getInboxEmailsAction({ filter: "all" });
+    expect(res.success).toBe(true);
+
+    const emailIds = res.data.map((e) => e.id);
+    // MUST contain Sarah's client email
+    expect(emailIds).toContain(repEmailId);
+    // MUST NOT contain John's client email
+    expect(emailIds).not.toContain(otherEmailId);
+  });
+
+  it("allows Admin to filter inbox by specific sales rep assignee", async () => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      id: "usr_admin",
+      organizationId: "demo-org-123",
+      organizationName: "Demo Company",
+      email: "admin@roxx-crm.local",
+      name: "Admin User",
+      role: "MANAGER",
+      permissions: ["leads:read"],
+      expiresAt: Date.now() + 3600000,
+    });
+
+    // Filter by Sarah Miller
+    const res = await getInboxEmailsAction({ assignedTo: "usr_sarah" });
+    expect(res.success).toBe(true);
+
+    const emailIds = res.data.map((e) => e.id);
+    expect(emailIds).toContain(repEmailId);
+    expect(emailIds).not.toContain(otherEmailId);
   });
 });
 

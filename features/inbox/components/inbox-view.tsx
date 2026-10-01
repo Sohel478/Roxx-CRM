@@ -21,6 +21,8 @@ import {
   ExternalLink,
   Tag,
   Check,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,7 +106,9 @@ function isClientDemoEmail(email: InboxEmailItem): boolean {
 export function InboxView() {
   const [emails, setEmails] = useState<InboxEmailItem[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmailItem | null>(null);
-  const [filter, setFilter] = useState<"all" | "replies" | "unread">("all");
+  const [filter, setFilter] = useState<"all" | "replies" | "unread" | "my_clients">("all");
+  const [selectedRep, setSelectedRep] = useState<string>("all");
+  const [salesReps, setSalesReps] = useState<Array<{ id: string; name: string }>>([]);
   const [search, setSearch] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -126,13 +130,18 @@ export function InboxView() {
 
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
-  const loadData = async (targetFilter = filter, targetSearch = search) => {
+  const loadData = async (
+    targetFilter = filter,
+    targetSearch = search,
+    targetRep = selectedRep
+  ) => {
     setIsLoading(true);
     try {
       const [emailRes, statusRes] = await Promise.all([
         getInboxEmailsAction({
           filter: targetFilter,
           search: targetSearch,
+          assignedTo: targetRep,
         }),
         getInboxAccountStatusAction(),
       ]);
@@ -142,6 +151,9 @@ export function InboxView() {
       }
 
       if (emailRes.success) {
+        if (emailRes.salesReps) {
+          setSalesReps(emailRes.salesReps);
+        }
         const genuineEmails = emailRes.data.filter((e) => !isClientDemoEmail(e));
         setEmails(genuineEmails);
         setUnreadCount(genuineEmails.filter((e) => !e.isRead).length);
@@ -162,12 +174,12 @@ export function InboxView() {
   };
 
   useEffect(() => {
-    loadData(filter, search);
-  }, [filter]);
+    loadData(filter, search, selectedRep);
+  }, [filter, selectedRep]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadData(filter, search);
+    loadData(filter, search, selectedRep);
   };
 
   const handleSync = async () => {
@@ -180,11 +192,11 @@ export function InboxView() {
           type: "success",
           text: res.message || "Inbox synchronized successfully.",
         });
-        await loadData(filter, search);
+        await loadData(filter, search, selectedRep);
       } else {
         setSyncFeedback({
           type: "error",
-          text: res.error || "Failed to synchronize incoming mail.",
+          text: res.error || "Failed to synchronize inbox.",
         });
       }
     } finally {
@@ -395,12 +407,42 @@ export function InboxView() {
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <Input
                 type="text"
-                placeholder="Search sender, subject, lead..."
+                placeholder="Search sender, subject, lead, or rep..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-9 text-xs bg-white"
               />
             </form>
+
+            {/* Sales Rep Scoping Indicator or Admin Rep Selector */}
+            {!accountStatus?.isAdminOrManager ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50/80 border border-blue-200/80 text-blue-800 rounded-lg text-xs font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>Showing your assigned client emails only</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold">
+                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">
+                    Filter by Rep:
+                  </span>
+                </div>
+                <select
+                  value={selectedRep}
+                  onChange={(e) => setSelectedRep(e.target.value)}
+                  className="text-xs h-7 px-2.5 bg-white border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium cursor-pointer shadow-2xs hover:border-slate-300 transition-colors"
+                >
+                  <option value="all">All Team Members</option>
+                  <option value="my_clients">Assigned to Me</option>
+                  {salesReps.map((rep) => (
+                    <option key={rep.id} value={rep.id}>
+                      {rep.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Filter Tags */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
@@ -415,6 +457,21 @@ export function InboxView() {
               >
                 All Messages
               </button>
+
+              {accountStatus?.isAdminOrManager && (
+                <button
+                  type="button"
+                  onClick={() => setFilter("my_clients")}
+                  className={`px-3 py-1 rounded-lg font-bold transition-all text-xs whitespace-nowrap flex items-center gap-1.5 ${
+                    filter === "my_clients"
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <User className="w-3 h-3" />
+                  <span>My Clients</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -462,9 +519,15 @@ export function InboxView() {
             ) : emails.length === 0 ? (
               <div className="p-12 text-center text-slate-400 space-y-3">
                 <MailOpen className="w-8 h-8 mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-700">No client replies yet</p>
+                <p className="text-xs font-bold text-slate-700">
+                  {accountStatus?.isAdminOrManager
+                    ? "No emails found matching this filter"
+                    : "No client replies yet for your assigned clients"}
+                </p>
                 <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                  Connected to <strong className="text-slate-700 font-mono">{activeConnectedEmail}</strong>. Incoming replies from clients will automatically appear here.
+                  {accountStatus?.isAdminOrManager
+                    ? `Connected to ${activeConnectedEmail}. You have team-wide visibility across all client conversations.`
+                    : `Connected to ${activeConnectedEmail}. Incoming replies from leads and contacts assigned to you will automatically appear here.`}
                 </p>
                 <Button
                   type="button"
@@ -516,16 +579,28 @@ export function InboxView() {
                     </p>
 
                     <div className="flex items-center justify-between gap-2">
-                      {email.leadName ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                          <User className="w-3 h-3" />
-                          <span>Lead: {email.leadName}</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 truncate font-mono">
-                          {email.fromEmail}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        {email.leadName ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                            <User className="w-3 h-3" />
+                            <span>Lead: {email.leadName}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 truncate font-mono">
+                            {email.fromEmail}
+                          </span>
+                        )}
+
+                        {accountStatus?.isAdminOrManager && email.assignedToName && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200"
+                            title={`Assigned Sales Rep: ${email.assignedToName}`}
+                          >
+                            <Users className="w-3 h-3 text-slate-400" />
+                            <span className="truncate max-w-[110px]">{email.assignedToName}</span>
+                          </span>
+                        )}
+                      </div>
 
                       <button
                         type="button"
@@ -612,11 +687,22 @@ export function InboxView() {
 
                 {/* Lead Connection Banner */}
                 <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="text-slate-600">
-                      Received: {new Date(selectedEmail.date).toLocaleString()}
-                    </span>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-slate-600">
+                        Received: {new Date(selectedEmail.date).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {accountStatus?.isAdminOrManager && selectedEmail.assignedToName && (
+                      <div className="flex items-center gap-1.5 text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        <Users className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="font-medium text-[11px]">
+                          Assigned Rep: <strong className="text-slate-800">{selectedEmail.assignedToName}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {selectedEmail.leadId && (

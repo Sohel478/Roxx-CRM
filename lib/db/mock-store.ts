@@ -1247,6 +1247,7 @@ export interface MockInboxEmail {
   isRead: boolean;
   leadId?: string;
   leadName?: string;
+  assignedToName?: string | null;
   contactId?: string;
   inReplyTo?: string;
   createdAt: string;
