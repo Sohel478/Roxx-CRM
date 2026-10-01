@@ -197,22 +197,44 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
 
     const activeRecipient = connectedEmail || session.email || "infotflux@gmail.com";
 
+    const isDemoEmail = (e: MockInboxEmail) => {
+      const subject = (e.subject || "").toLowerCase();
+      const fromName = (e.fromName || "").toLowerCase();
+      const fromEmail = (e.fromEmail || "").toLowerCase();
+      const messageId = (e.messageId || "").toLowerCase();
+      const id = e.id || "";
+
+      return (
+        id === "inbox_msg_1" ||
+        id === "inbox_msg_2" ||
+        id === "inbox_msg_3" ||
+        /^inbox_.*_[123]$/.test(id) ||
+        fromName.includes("elena rostova") ||
+        fromName.includes("marcus vance") ||
+        fromName.includes("cloudscale") ||
+        fromEmail.includes("cyberdynesys") ||
+        fromEmail.includes("vanguardsec") ||
+        fromEmail.includes("cloudscale") ||
+        fromEmail.includes("roxx-demo") ||
+        messageId.includes("cyberdyne") ||
+        messageId.includes("vanguard") ||
+        messageId.includes("cloudscale") ||
+        subject.includes("enterprise demo & implementation timeline") ||
+        subject.includes("security evaluation") ||
+        subject.includes("partner inquiry: multi-region")
+      );
+    };
+
     // Purge any lingering legacy demo emails from memory
-    const demoEmailIds = new Set(["inbox_msg_1", "inbox_msg_2", "inbox_msg_3"]);
-    const demoDomains = ["cyberdynesys.local", "vanguardsec.local", "cloudscale-solutions.com", "roxx-demo.com"];
     for (let i = mockInboxStore.length - 1; i >= 0; i--) {
-      const item = mockInboxStore[i];
-      if (
-        demoEmailIds.has(item.id) ||
-        demoDomains.some((d) => item.fromEmail?.toLowerCase().includes(d) || item.messageId?.toLowerCase().includes(d))
-      ) {
+      if (isDemoEmail(mockInboxStore[i])) {
         mockInboxStore.splice(i, 1);
       }
     }
 
-    // Retrieve emails for this organization - keeping only genuine inbox emails
+    // Retrieve emails for this organization - strictly keeping genuine inbox emails
     let emails: MockInboxEmail[] = mockInboxStore.filter(
-      (e) => e.organizationId === organizationId
+      (e) => e.organizationId === organizationId && !isDemoEmail(e)
     );
 
     // Sanitize subjects, sender names, and body text across all loaded emails

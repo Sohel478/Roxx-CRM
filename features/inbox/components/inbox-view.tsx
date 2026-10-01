@@ -77,6 +77,30 @@ function cleanDisplayBody(body: string): string {
   return text.trim();
 }
 
+function isClientDemoEmail(email: InboxEmailItem): boolean {
+  const subject = (email.subject || "").toLowerCase();
+  const fromName = (email.fromName || "").toLowerCase();
+  const fromEmail = (email.fromEmail || "").toLowerCase();
+  const id = email.id || "";
+
+  return (
+    id === "inbox_msg_1" ||
+    id === "inbox_msg_2" ||
+    id === "inbox_msg_3" ||
+    /^inbox_.*_[123]$/.test(id) ||
+    fromName.includes("elena rostova") ||
+    fromName.includes("marcus vance") ||
+    fromName.includes("cloudscale") ||
+    fromEmail.includes("cyberdynesys") ||
+    fromEmail.includes("vanguardsec") ||
+    fromEmail.includes("cloudscale") ||
+    fromEmail.includes("roxx-demo") ||
+    subject.includes("enterprise demo & implementation timeline") ||
+    subject.includes("security evaluation") ||
+    subject.includes("partner inquiry: multi-region")
+  );
+}
+
 export function InboxView() {
   const [emails, setEmails] = useState<InboxEmailItem[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmailItem | null>(null);
@@ -118,15 +142,18 @@ export function InboxView() {
       }
 
       if (emailRes.success) {
-        setEmails(emailRes.data);
-        setUnreadCount(emailRes.unreadCount);
-        // If an email is selected, update its reference in the list
+        const genuineEmails = emailRes.data.filter((e) => !isClientDemoEmail(e));
+        setEmails(genuineEmails);
+        setUnreadCount(genuineEmails.filter((e) => !e.isRead).length);
+
         if (selectedEmail) {
-          const updated = emailRes.data.find((e) => e.id === selectedEmail.id);
-          if (updated) setSelectedEmail(updated);
-        } else if (emailRes.data.length > 0 && typeof window !== "undefined" && window.innerWidth >= 1024) {
+          const updated = genuineEmails.find((e) => e.id === selectedEmail.id);
+          setSelectedEmail(updated || (genuineEmails.length > 0 ? genuineEmails[0] : null));
+        } else if (genuineEmails.length > 0 && typeof window !== "undefined" && window.innerWidth >= 1024) {
           // Auto-select first email on desktop
-          setSelectedEmail(emailRes.data[0]);
+          setSelectedEmail(genuineEmails[0]);
+        } else {
+          setSelectedEmail(null);
         }
       }
     } finally {
