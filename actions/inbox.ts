@@ -197,71 +197,23 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
 
     const activeRecipient = connectedEmail || session.email || "infotflux@gmail.com";
 
-    // Retrieve emails for this organization
+    // Purge any lingering legacy demo emails from memory
+    const demoEmailIds = new Set(["inbox_msg_1", "inbox_msg_2", "inbox_msg_3"]);
+    const demoDomains = ["cyberdynesys.local", "vanguardsec.local", "cloudscale-solutions.com", "roxx-demo.com"];
+    for (let i = mockInboxStore.length - 1; i >= 0; i--) {
+      const item = mockInboxStore[i];
+      if (
+        demoEmailIds.has(item.id) ||
+        demoDomains.some((d) => item.fromEmail?.toLowerCase().includes(d) || item.messageId?.toLowerCase().includes(d))
+      ) {
+        mockInboxStore.splice(i, 1);
+      }
+    }
+
+    // Retrieve emails for this organization - keeping only genuine inbox emails
     let emails: MockInboxEmail[] = mockInboxStore.filter(
       (e) => e.organizationId === organizationId
     );
-
-    // If no emails exist yet for this org, seed realistic replies from existing demo leads
-    if (emails.length === 0) {
-      const elenaLead = mockLeadsStore.find((l) => l.organizationId === organizationId) || mockLeadsStore[0];
-      const marcusLead = mockLeadsStore.find((l) => l.organizationId === organizationId && l.id !== elenaLead?.id) || mockLeadsStore[1];
-
-      const defaultSeeds: MockInboxEmail[] = [
-        {
-          id: `inbox_${organizationId}_1`,
-          organizationId,
-          messageId: `<reply-1001-cyberdyne@${elenaLead?.email ? elenaLead.email.split("@")[1] : "cyberdynesys.local"}>`,
-          fromEmail: elenaLead?.email || "elena.rostova@cyberdynesys.local",
-          fromName: elenaLead?.fullName || "Elena Rostova",
-          toEmail: activeRecipient,
-          subject: "Re: Roxx CRM Enterprise Demo & Implementation Timeline",
-          snippet: "Hi there, thanks for the demo yesterday. Our VP of Engineering reviewed the proposal and wants to move forward with the pilot...",
-          bodyText: `Hi there,\n\nThanks for the thorough demo yesterday. Our VP of Engineering reviewed the proposal and architecture doc, and we want to move forward with the pilot for our 50-person sales team.\n\nCould you send over the updated MSA and contract with the annual discount included?\n\nBest regards,\n${elenaLead?.fullName || "Elena Rostova"}\nDirector of IT Operations\n${elenaLead?.companyName || "Cyberdyne Systems"}`,
-          bodyHtml: `<p>Hi there,</p><p>Thanks for the thorough demo yesterday. Our VP of Engineering reviewed the proposal and architecture doc, and we want to move forward with the pilot for our 50-person sales team.</p><p>Could you send over the updated MSA and contract with the annual discount included?</p><p>Best regards,<br><strong>${elenaLead?.fullName || "Elena Rostova"}</strong><br>Director of IT Operations<br>${elenaLead?.companyName || "Cyberdyne Systems"}</p>`,
-          date: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-          isRead: false,
-          leadId: elenaLead?.id,
-          leadName: elenaLead?.fullName,
-          createdAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-        },
-        {
-          id: `inbox_${organizationId}_2`,
-          organizationId,
-          messageId: `<reply-1002-vanguard@${marcusLead?.email ? marcusLead.email.split("@")[1] : "vanguardsec.local"}>`,
-          fromEmail: marcusLead?.email || "mvance@vanguardsec.local",
-          fromName: marcusLead?.fullName || "Marcus Vance",
-          toEmail: activeRecipient,
-          subject: "Re: Follow up regarding Security Evaluation & Contract Call",
-          snippet: "Hello, our compliance team completed the SOC2 review and everything looks solid. We're ready for the contract review call this Thursday...",
-          bodyText: `Hello,\n\nOur compliance team completed the SOC2 review and everything looks solid. We're ready for the contract review call this Thursday at 2 PM EST if your team is available.\n\nPlease let me know if that time works.\n\n${marcusLead?.fullName || "Marcus Vance"}\nVP Sales & Partnerships\n${marcusLead?.companyName || "Vanguard Security"}`,
-          bodyHtml: `<p>Hello,</p><p>Our compliance team completed the SOC2 review and everything looks solid. We're ready for the contract review call this Thursday at 2 PM EST if your team is available.</p><p>Please let me know if that time works.</p><p>${marcusLead?.fullName || "Marcus Vance"}<br>VP Sales & Partnerships</p>`,
-          date: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-          isRead: true,
-          leadId: marcusLead?.id,
-          leadName: marcusLead?.fullName,
-          createdAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-        },
-        {
-          id: `inbox_${organizationId}_3`,
-          organizationId,
-          messageId: `<inquiry-1003@cloudscale-solutions.com>`,
-          fromEmail: "support@cloudscale-solutions.com",
-          fromName: "CloudScale Inbound",
-          toEmail: activeRecipient,
-          subject: "Partner inquiry: Multi-region CRM deployment requirements",
-          snippet: "Good morning, we saw your enterprise features and would like to know if multi-region data residency is supported...",
-          bodyText: "Good morning,\n\nWe saw your enterprise features and would like to know if multi-region data residency is supported out of the box in the EU and US regions.\n\nLooking forward to hearing from you.\n\nBest,\nCloudScale Solutions Team",
-          date: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-          isRead: false,
-          createdAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-        },
-      ];
-
-      for (const item of defaultSeeds) {
-        mockInboxStore.unshift(item);
-      }
-    }
 
     // Sanitize subjects, sender names, and body text across all loaded emails
     emails.forEach((e) => {
@@ -673,3 +625,96 @@ export async function replyToClientAction(
     };
   }
 }
+
+/**
+ * Permanently deletes an email from the inbox.
+ */
+export async function deleteInboxEmailAction(emailId: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return { success: false, error: "Authentication required" };
+    }
+    const { organizationId } = await resolveTenantContext(session);
+
+    const index = mockInboxStore.findIndex(
+      (e) => e.id === emailId && e.organizationId === organizationId
+    );
+    if (index !== -1) {
+      mockInboxStore.splice(index, 1);
+    }
+
+    try {
+      revalidatePath("/inbox");
+    } catch {
+      // Ignore during test executions
+    }
+
+    return {
+      success: true,
+      message: "Email deleted from inbox.",
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: (error as Error)?.message || "Failed to delete email.",
+    };
+  }
+}
+
+/**
+ * Explicitly purges all demo and sample emails, keeping only genuine incoming mailbox emails.
+ */
+export async function clearDemoEmailsAction(): Promise<{
+  success: boolean;
+  purgedCount: number;
+  message?: string;
+}> {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return { success: false, purgedCount: 0 };
+    }
+    const { organizationId } = await resolveTenantContext(session);
+
+    const demoEmailIds = new Set(["inbox_msg_1", "inbox_msg_2", "inbox_msg_3"]);
+    const demoDomains = ["cyberdynesys.local", "vanguardsec.local", "cloudscale-solutions.com", "roxx-demo.com"];
+
+    let purgedCount = 0;
+    for (let i = mockInboxStore.length - 1; i >= 0; i--) {
+      const item = mockInboxStore[i];
+      if (
+        item.organizationId === organizationId &&
+        (demoEmailIds.has(item.id) ||
+          demoDomains.some(
+            (d) => item.fromEmail?.toLowerCase().includes(d) || item.messageId?.toLowerCase().includes(d)
+          ))
+      ) {
+        mockInboxStore.splice(i, 1);
+        purgedCount++;
+      }
+    }
+
+    try {
+      revalidatePath("/inbox");
+    } catch {
+      // Ignore during tests
+    }
+
+    return {
+      success: true,
+      purgedCount,
+      message: `Cleaned ${purgedCount} demo emails. Only genuine inbox emails remain.`,
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      purgedCount: 0,
+    };
+  }
+}
+

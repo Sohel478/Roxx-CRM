@@ -17,6 +17,7 @@ import {
   markEmailAsReadAction,
   syncInboxAction,
   replyToClientAction,
+  deleteInboxEmailAction,
 } from "@/actions/inbox";
 import {
   mockImapStore,
@@ -137,6 +138,42 @@ describe("IMAP Client & Incoming Mail Configuration", () => {
 });
 
 describe("CRM Inbox Actions & Lead Reply Synchronization", () => {
+  beforeEach(() => {
+    mockInboxStore.length = 0;
+    mockInboxStore.push(
+      {
+        id: "test_msg_1",
+        organizationId: "demo-org-123",
+        messageId: "<reply-1001@customer.com>",
+        fromEmail: "elena.customer@customer.com",
+        fromName: "Elena Customer",
+        toEmail: "infotflux@gmail.com",
+        subject: "Re: Enterprise Demo & Implementation Timeline",
+        snippet: "Hi Alex, thanks for the demo yesterday...",
+        bodyText: "Hi Alex,\n\nThanks for the demo yesterday.",
+        date: new Date().toISOString(),
+        isRead: false,
+        leadId: "lead_1",
+        leadName: "Elena Customer",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "test_msg_2",
+        organizationId: "demo-org-123",
+        messageId: "<inquiry-1002@buyer.com>",
+        fromEmail: "marcus@buyer.com",
+        fromName: "Marcus Buyer",
+        toEmail: "infotflux@gmail.com",
+        subject: "Security Evaluation Follow Up",
+        snippet: "Hello, our compliance team completed the review...",
+        bodyText: "Hello, our compliance team completed the review.",
+        date: new Date(Date.now() - 3600000).toISOString(),
+        isRead: true,
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+      }
+    );
+  });
+
   it("lists organization emails and filters correctly", async () => {
     const listRes = await getInboxEmailsAction({ filter: "all" });
     expect(listRes.success).toBe(true);
@@ -179,6 +216,12 @@ describe("CRM Inbox Actions & Lead Reply Synchronization", () => {
     expect(markUnreadRes.success).toBe(true);
     const itemAfterUnread = mockInboxStore.find((e) => e.id === targetEmail.id);
     expect(itemAfterUnread?.isRead).toBe(false);
+  });
+
+  it("deletes an email from the inbox using deleteInboxEmailAction", async () => {
+    const res = await deleteInboxEmailAction("test_msg_1");
+    expect(res.success).toBe(true);
+    expect(mockInboxStore.some((e) => e.id === "test_msg_1")).toBe(false);
   });
 
   it("syncs incoming emails and triggers timeline activity logging", async () => {

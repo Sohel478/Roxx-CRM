@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Settings,
   Reply,
+  Trash2,
   ExternalLink,
   Tag,
   Check,
@@ -30,6 +31,7 @@ import {
   syncInboxAction,
   markEmailAsReadAction,
   replyToClientAction,
+  deleteInboxEmailAction,
   InboxAccountStatus,
 } from "@/actions/inbox";
 import type { InboxEmailItem } from "@/lib/validations/email";
@@ -234,6 +236,15 @@ export function InboxView() {
       setIsSendingReply(false);
       setTimeout(() => setReplyFeedback(null), 6000);
     }
+  };
+
+  const handleDeleteEmail = async (emailId: string) => {
+    setEmails((prev) => prev.filter((e) => e.id !== emailId));
+    if (selectedEmail?.id === emailId) {
+      setSelectedEmail(null);
+      setMobileShowDetail(false);
+    }
+    await deleteInboxEmailAction(emailId);
   };
 
   const formatEmailDate = (dateString: string) => {
@@ -553,10 +564,21 @@ export function InboxView() {
                       type="button"
                       size="sm"
                       onClick={() => setIsReplying(true)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold gap-1.5 h-8"
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold gap-1.5 h-8 shadow-2xs"
                     >
                       <Reply className="w-3.5 h-3.5" />
                       <span>Reply</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteEmail(selectedEmail.id)}
+                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold gap-1.5 h-8"
+                      title="Delete email from inbox"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Delete</span>
                     </Button>
                   </div>
                 </div>
