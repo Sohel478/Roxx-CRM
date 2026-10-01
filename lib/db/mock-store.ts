@@ -1219,3 +1219,87 @@ export interface MockSmtpConfig {
 
 export const mockSmtpStore: Record<string, MockSmtpConfig> = {};
 
+export interface MockImapConfig {
+  organizationId: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  username: string;
+  encryptedPassword?: string;
+  lastSyncedAt?: string;
+  updatedAt: string;
+}
+
+export const mockImapStore: Record<string, MockImapConfig> = {};
+
+export interface MockInboxEmail {
+  id: string;
+  organizationId: string;
+  messageId: string;
+  fromEmail: string;
+  fromName: string;
+  toEmail: string;
+  subject: string;
+  snippet: string;
+  bodyText: string;
+  bodyHtml?: string;
+  date: string;
+  isRead: boolean;
+  leadId?: string;
+  leadName?: string;
+  contactId?: string;
+  inReplyTo?: string;
+  createdAt: string;
+}
+
+export const mockInboxStore: MockInboxEmail[] = [
+  {
+    id: "inbox_msg_1",
+    organizationId: "demo-org-123",
+    messageId: "<reply-1001-cyberdyne@cyberdynesys.local>",
+    fromEmail: "elena.rostova@cyberdynesys.local",
+    fromName: "Elena Rostova",
+    toEmail: "sales@roxx-demo.com",
+    subject: "Re: Roxx CRM Enterprise Demo & Implementation Timeline",
+    snippet: "Hi Alex, thanks for the demo yesterday. Our VP of Engineering reviewed the proposal and wants to move forward...",
+    bodyText: "Hi Alex,\n\nThanks for the thorough demo yesterday. Our VP of Engineering reviewed the proposal and architecture doc, and we want to move forward with the pilot for our 50-person sales team.\n\nCould you send over the updated MSA and contract with the annual discount included?\n\nBest regards,\nElena Rostova\nDirector of IT Operations\nCyberdyne Systems",
+    bodyHtml: "<p>Hi Alex,</p><p>Thanks for the thorough demo yesterday. Our VP of Engineering reviewed the proposal and architecture doc, and we want to move forward with the pilot for our 50-person sales team.</p><p>Could you send over the updated MSA and contract with the annual discount included?</p><p>Best regards,<br><strong>Elena Rostova</strong><br>Director of IT Operations<br>Cyberdyne Systems</p>",
+    date: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    isRead: false,
+    leadId: "lead_1",
+    leadName: "Elena Rostova",
+    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "inbox_msg_2",
+    organizationId: "demo-org-123",
+    messageId: "<reply-1002-vanguard@vanguardsec.local>",
+    fromEmail: "mvance@vanguardsec.local",
+    fromName: "Marcus Vance",
+    toEmail: "sales@roxx-demo.com",
+    subject: "Re: Follow up regarding Security Evaluation",
+    snippet: "Hello Sarah, our compliance team completed the SOC2 review and we're ready for the contract review call...",
+    bodyText: "Hello Sarah,\n\nOur compliance team completed the SOC2 review and everything looks solid. We're ready for the contract review call this Thursday at 2 PM EST if your team is available.\n\nPlease let me know if that time works.\n\nMarcus Vance\nVP Sales & Partnerships",
+    bodyHtml: "<p>Hello Sarah,</p><p>Our compliance team completed the SOC2 review and everything looks solid. We're ready for the contract review call this Thursday at 2 PM EST if your team is available.</p><p>Please let me know if that time works.</p><p>Marcus Vance<br>VP Sales & Partnerships</p>",
+    date: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    isRead: true,
+    leadId: "lead_2",
+    leadName: "Marcus Vance",
+    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+  },
+  {
+    id: "inbox_msg_3",
+    organizationId: "demo-org-123",
+    messageId: "<inquiry-1003@cloudscale-solutions.com>",
+    fromEmail: "support@cloudscale-solutions.com",
+    fromName: "CloudScale Inbound",
+    toEmail: "sales@roxx-demo.com",
+    subject: "Partner inquiry: Multi-region CRM deployment requirements",
+    snippet: "Good morning, we saw your enterprise features and would like to know if multi-region data residency is supported...",
+    bodyText: "Good morning,\n\nWe saw your enterprise features and would like to know if multi-region data residency is supported out of the box in the EU and US regions.\n\nLooking forward to hearing from you.\n\nBest,\nCloudScale Solutions Team",
+    date: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+    isRead: false,
+    createdAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+  },
+];
+

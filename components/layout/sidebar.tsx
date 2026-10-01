@@ -14,11 +14,13 @@ import {
   Settings,
   Flame,
   Crown,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Inbox", href: "/inbox", icon: Mail },
   { name: "Leads", href: "/leads", icon: Users2 },
   { name: "Companies", href: "/companies", icon: Building2 },
   { name: "Contacts", href: "/contacts", icon: UserSquare2 },

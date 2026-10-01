@@ -14,6 +14,8 @@ export interface SendMailOptions {
   body: string;
   fromName?: string;
   fromEmail?: string;
+  inReplyTo?: string;
+  references?: string;
 }
 
 /**
@@ -56,7 +58,8 @@ export async function verifySmtp(
 }
 
 /**
- * Dispatches an email via the tenant's own SMTP connection.
+ * Dispatches an email via the tenant's own SMTP connection with RFC-compliant headers
+ * to maximize inbox deliverability and prevent spam classification.
  */
 export async function sendSmtpEmail(
   connection: SmtpConnectionOptions,
@@ -65,31 +68,58 @@ export async function sendSmtpEmail(
   try {
     const transporter = createTransporter(connection);
 
+    const senderEmail = mail.fromEmail || connection.username;
     const fromAddress = mail.fromName
-      ? `"${mail.fromName}" <${mail.fromEmail || connection.username}>`
-      : mail.fromEmail || connection.username;
+      ? `"${mail.fromName}" <${senderEmail}>`
+      : senderEmail;
 
-    // Convert plain text newlines into formatted HTML paragraphs
-    const formattedHtml = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">
-        ${mail.body
-          .split("\n\n")
-          .map((p) => `<p style="margin: 0 0 14px 0;">${p.replace(/\n/g, "<br/>")}</p>`)
-          .join("")}
-      </div>
-    `.trim();
+    // Extract domain for RFC-compliant Message-ID alignment
+    let domain = "roxx-crm.com";
+    if (senderEmail.includes("@")) {
+      domain = senderEmail.split("@")[1].trim().toLowerCase();
+    }
+
+    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${domain}>`;
+
+    // Convert plain text newlines into formatted, responsive HTML5 document
+    const paragraphsHtml = mail.body
+      .split("\n\n")
+      .map((p) => `<p style="margin: 0 0 16px 0; line-height: 1.6;">${p.replace(/\n/g, "<br/>")}</p>`)
+      .join("");
+
+    const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${mail.subject}</title>
+</head>
+<body style="margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; color: #1e293b; background-color: #ffffff; -webkit-font-smoothing: antialiased;">
+  <div style="max-width: 600px; margin: 0 auto;">
+    ${paragraphsHtml}
+  </div>
+</body>
+</html>`.trim();
 
     const info = await transporter.sendMail({
       from: fromAddress,
       to: mail.to,
       subject: mail.subject,
       text: mail.body,
-      html: formattedHtml,
+      html: fullHtml,
+      replyTo: senderEmail,
+      messageId,
+      date: new Date(),
+      headers: {
+        "X-Mailer": "Roxx CRM Mailer (Enterprise Communication)",
+        ...(mail.inReplyTo ? { "In-Reply-To": mail.inReplyTo } : {}),
+        ...(mail.references ? { "References": mail.references } : {}),
+      },
     });
 
     return {
       success: true,
-      messageId: info.messageId,
+      messageId: info.messageId || messageId,
     };
   } catch (error: unknown) {
     console.error("Nodemailer send error:", error);
