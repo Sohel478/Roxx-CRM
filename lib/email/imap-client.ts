@@ -23,12 +23,190 @@ export interface FetchedImapMessage {
 }
 
 /**
+ * Decodes RFC 2047 MIME encoded-words (=?charset?encoding?encoded_text?=).
+ * Handles both Q-encoding (quoted-printable) and B-encoding (base64),
+ * multiline header unfolding, and adjacent encoded-word whitespace removal.
+ */
+export function decodeMimeHeader(raw: string): string {
+  if (!raw) return "";
+
+  // 1. Unfold multiline headers (CRLF or LF followed by whitespace is a continuation line)
+  let text = raw.replace(/\r?\n[ \t]+/g, " ").trim();
+
+  // 2. RFC 2047: whitespace between adjacent encoded-words MUST be ignored
+  text = text.replace(
+    /(=\?[^?]+\?[BbQq]\?[^?]*\?=)\s+(?==\?[^?]+\?[BbQq]\?[^?]*\?=)/g,
+    "$1"
+  );
+
+  // 3. Decode encoded-words: =?charset?encoding?encoded_text?=
+  // Also tolerate loose trailing '=' or missing closing '?=' in malformed headers
+  const encodedWordRegex = /=\?([^?]+)\?([BbQq])\?([^?]*?)(?:\?=|\?|$)/g;
+
+  let decoded = text.replace(encodedWordRegex, (fullMatch, charset, encoding, payload) => {
+    try {
+      const enc = encoding.toUpperCase();
+      if (enc === "B") {
+        return Buffer.from(payload, "base64").toString("utf8");
+      } else if (enc === "Q") {
+        // In Q encoding: '_' represents space (0x20), '=XX' is a hex byte
+        const normalized = payload.replace(/_/g, " ");
+        const bytes: number[] = [];
+        for (let i = 0; i < normalized.length; i++) {
+          if (normalized[i] === "=" && i + 2 < normalized.length) {
+            const hex = normalized.slice(i + 1, i + 3);
+            if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+              bytes.push(parseInt(hex, 16));
+              i += 2;
+              continue;
+            }
+          }
+          bytes.push(normalized.charCodeAt(i));
+        }
+        return Buffer.from(bytes).toString("utf8");
+      }
+    } catch {
+      return fullMatch;
+    }
+    return fullMatch;
+  });
+
+  // Clean any leftover orphan delimiters like trailing '=' or '?='
+  decoded = decoded.replace(/\s*=\s*$/, "").trim();
+
+  return decoded;
+}
+
+/**
+ * Decodes quoted-printable string into clean UTF-8 text.
+ */
+export function decodeQuotedPrintable(input: string): string {
+  if (!input) return "";
+
+  // 1. Remove soft line breaks: '=' followed by optional '\r' and '\n'
+  const withoutSoftBreaks = input.replace(/=\r?\n/g, "");
+
+  // 2. Decode =XX hex byte sequences into proper UTF-8 string
+  const bytes: number[] = [];
+  for (let i = 0; i < withoutSoftBreaks.length; i++) {
+    if (withoutSoftBreaks[i] === "=" && i + 2 < withoutSoftBreaks.length) {
+      const hex = withoutSoftBreaks.slice(i + 1, i + 3);
+      if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+        bytes.push(parseInt(hex, 16));
+        i += 2;
+        continue;
+      }
+    }
+    bytes.push(withoutSoftBreaks.charCodeAt(i));
+  }
+
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/**
+ * Cleans raw MIME bodies by stripping boundary markers, MIME subheaders,
+ * and decoding quoted-printable or base64 payloads to plain text.
+ */
+export function cleanMimeBody(raw: string): { cleanText: string; cleanHtml?: string } {
+  if (!raw) return { cleanText: "" };
+
+  let text = raw.trim();
+
+  // Check for multipart boundary pattern, e.g. --0000000000009d53d3065cc458b1
+  const boundaryMatch = text.match(/^--([a-zA-Z0-9_\-=.]+)/m);
+
+  if (boundaryMatch) {
+    const boundary = boundaryMatch[1];
+    // Split on boundary delimiter
+    const parts = text.split(new RegExp(`--${boundary}(?:--)?`));
+
+    let extractedPlain = "";
+    let extractedHtml = "";
+
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (!trimmedPart) continue;
+
+      // Separate headers from payload at first blank line
+      const headerBodySplit = trimmedPart.split(/\r?\n\r?\n/);
+      const partHeaders = headerBodySplit[0] || "";
+      const partBody = headerBodySplit.slice(1).join("\n\n").trim();
+
+      const isHtml = /Content-Type:\s*text\/html/i.test(partHeaders);
+      const isPlain = /Content-Type:\s*text\/plain/i.test(partHeaders) || (!isHtml && partBody.length > 0);
+      const isBase64 = /Content-Transfer-Encoding:\s*base64/i.test(partHeaders);
+      const isQP = /Content-Transfer-Encoding:\s*quoted-printable/i.test(partHeaders);
+
+      let decodedPayload = partBody;
+      if (isBase64) {
+        try {
+          decodedPayload = Buffer.from(partBody.replace(/\s+/g, ""), "base64").toString("utf8");
+        } catch {
+          decodedPayload = partBody;
+        }
+      } else if (isQP || decodedPayload.includes("=")) {
+        decodedPayload = decodeQuotedPrintable(decodedPayload);
+      }
+
+      if (isPlain && !extractedPlain) {
+        extractedPlain = decodedPayload;
+      } else if (isHtml && !extractedHtml) {
+        extractedHtml = decodedPayload;
+      }
+    }
+
+    if (extractedPlain) {
+      return {
+        cleanText: extractedPlain.trim(),
+        cleanHtml: extractedHtml.trim() || undefined,
+      };
+    } else if (extractedHtml) {
+      // Fallback: convert HTML to text
+      const stripped = extractedHtml
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\n\s+\n/g, "\n\n")
+        .trim();
+      return {
+        cleanText: stripped,
+        cleanHtml: extractedHtml.trim(),
+      };
+    }
+  }
+
+  // If not multipart or fallback:
+  // 1. Strip boundary lines if any
+  text = text.replace(/^--[a-zA-Z0-9_\-=.]+(?:--)?\s*$/gm, "");
+
+  // 2. Strip inline MIME header blocks (Content-Type:, Content-Transfer-Encoding:, etc.)
+  text = text.replace(/^(?:Content-Type|Content-Transfer-Encoding|Content-Disposition|charset):[^\n]*\n?/gim, "");
+
+  // 3. Decode quoted-printable if present
+  if (text.includes("=") && (/=[0-9A-Fa-f]{2}/.test(text) || /=\r?\n/.test(text))) {
+    text = decodeQuotedPrintable(text);
+  }
+
+  // 4. Strip any leading blank lines or residual boundary artifacts
+  text = text.replace(/^--[a-zA-Z0-9_\-=.]+\s*/g, "").trim();
+
+  return { cleanText: text };
+}
+
+/**
  * Cleanly parse an email header line (e.g. From: "John Doe" <john@example.com>)
+ * and decodes any RFC 2047 encoded names.
  */
 export function parseEmailAddress(raw: string): { name: string; email: string } {
   if (!raw) return { name: "", email: "" };
-  const trimmed = raw.trim();
-  const match = trimmed.match(/^(?:"?([^"]*)"?\s*)?<([^>]+)>$/);
+  const decodedRaw = decodeMimeHeader(raw.trim());
+  const match = decodedRaw.match(/^(?:"?([^"]*)"?\s*)?<([^>]+)>$/);
   if (match) {
     return {
       name: (match[1] || "").trim() || match[2].trim(),
@@ -36,8 +214,8 @@ export function parseEmailAddress(raw: string): { name: string; email: string } 
     };
   }
   return {
-    name: trimmed.split("@")[0] || trimmed,
-    email: trimmed.toLowerCase(),
+    name: decodedRaw.split("@")[0] || decodedRaw,
+    email: decodedRaw.toLowerCase(),
   };
 }
 
@@ -92,7 +270,7 @@ export async function verifyImap(
     const socketOptions = {
       host: options.host,
       port: options.port || 993,
-      rejectUnauthorized: false, // Permit self-signed or enterprise proxy certs
+      rejectUnauthorized: false,
     };
 
     let socket: net.Socket;
@@ -132,7 +310,6 @@ export async function verifyImap(
         if (buffer.includes("* OK") || buffer.includes("* PREAUTH")) {
           step = "LOGIN";
           buffer = "";
-          // Escape quotes in credentials
           const safeUser = options.username.replace(/"/g, '\\"');
           const safePass = (options.password || "").replace(/"/g, '\\"');
           socket.write(`A001 LOGIN "${safeUser}" "${safePass}"\r\n`);
@@ -179,7 +356,7 @@ export async function verifyImap(
 
 /**
  * Fetch recent incoming messages from an IMAP mailbox.
- * Returns an array of parsed messages.
+ * Returns an array of parsed messages with clean headers and bodies.
  */
 export async function fetchImapInbox(
   options: ImapConnectionOptions,
@@ -306,7 +483,7 @@ export async function fetchImapInbox(
           buffer = "";
           const start = Math.max(1, count - limit + 1);
           // Fetch headers and body text
-          socket.write(`A003 FETCH ${start}:${count} (BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODY.PEEK[TEXT]<0.1500>)\r\n`);
+          socket.write(`A003 FETCH ${start}:${count} (BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES)] BODY.PEEK[TEXT]<0.4000>)\r\n`);
         } else if (buffer.includes("A002 NO") || buffer.includes("A002 BAD")) {
           clearTimeout(timeout);
           done({
@@ -317,7 +494,6 @@ export async function fetchImapInbox(
         }
       } else if (step === "FETCH") {
         if (buffer.includes("A003 OK") || buffer.includes("A003 NO")) {
-          // Parse fetched message chunks
           const parsed = parseImapFetchResponse(buffer);
           messages.push(...parsed);
           step = "LOGOUT";
@@ -338,7 +514,8 @@ export async function fetchImapInbox(
 }
 
 /**
- * Quick parser for IMAP fetch response text
+ * Parser for IMAP fetch response text with RFC 2047 header decoding
+ * and clean MIME body extraction.
  */
 function parseImapFetchResponse(raw: string): FetchedImapMessage[] {
   const results: FetchedImapMessage[] = [];
@@ -346,9 +523,9 @@ function parseImapFetchResponse(raw: string): FetchedImapMessage[] {
 
   for (const chunk of chunks) {
     const getHeader = (name: string): string => {
-      const regex = new RegExp(`^${name}:\\s*(.+)$`, "mi");
+      const regex = new RegExp(`^${name}:[ \t]*([\\s\\S]*?)(?=\\r?\\n[a-zA-Z0-9_-]+:|$|\\r?\\n\\r?\\n)`, "mi");
       const match = chunk.match(regex);
-      return match ? match[1].trim() : "";
+      return match ? decodeMimeHeader(match[1]) : "";
     };
 
     const fromRaw = getHeader("From");
@@ -363,19 +540,22 @@ function parseImapFetchResponse(raw: string): FetchedImapMessage[] {
 
     if (!parsedFrom.email) continue;
 
-    // Extract text snippet
-    let bodyText = "";
+    // Extract raw body chunk
+    let rawBody = "";
     const bodyMatch = chunk.match(/BODY\[TEXT\](?:<\d+>)?\s+\{\d+\}\r?\n([\s\S]*?)(?=\r?\n\s*\)|$)/i);
     if (bodyMatch) {
-      bodyText = bodyMatch[1].trim();
+      rawBody = bodyMatch[1].trim();
     } else {
       // Fallback: lines after headers
       const lines = chunk.split("\n");
       const textLines = lines.filter((l) => !l.includes(":") && l.length > 0);
-      bodyText = textLines.slice(0, 5).join(" ").trim();
+      rawBody = textLines.slice(0, 10).join("\n").trim();
     }
 
-    const snippet = bodyText
+    // Clean body and strip multipart boundaries
+    const { cleanText, cleanHtml } = cleanMimeBody(rawBody);
+
+    const snippet = cleanText
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim()
@@ -393,10 +573,11 @@ function parseImapFetchResponse(raw: string): FetchedImapMessage[] {
       messageId,
       fromEmail: parsedFrom.email,
       fromName: parsedFrom.name || parsedFrom.email,
-      toEmail: parsedTo.email || "support@roxx.local",
-      subject,
-      snippet: snippet || "(No message preview available)",
-      bodyText: bodyText || snippet,
+      toEmail: parsedTo.email || "infotflux@gmail.com",
+      subject: decodeMimeHeader(subject),
+      snippet: snippet || "(No preview available)",
+      bodyText: cleanText || snippet,
+      bodyHtml: cleanHtml,
       date: parsedDate,
       inReplyTo: inReplyTo || undefined,
     });

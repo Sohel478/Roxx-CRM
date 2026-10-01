@@ -15,7 +15,7 @@ import {
 } from "@/lib/db/mock-store";
 import { prisma } from "@/lib/db/prisma";
 import { decryptSecret } from "@/lib/crypto/encryption";
-import { fetchImapInbox } from "@/lib/email/imap-client";
+import { fetchImapInbox, decodeMimeHeader, cleanMimeBody } from "@/lib/email/imap-client";
 import { sendSmtpEmail } from "@/lib/email/mailer";
 import { logActivityAction } from "@/actions/activities";
 import {
@@ -261,15 +261,30 @@ export async function getInboxEmailsAction(params?: GetInboxParams): Promise<{
       for (const item of defaultSeeds) {
         mockInboxStore.unshift(item);
       }
-      emails = mockInboxStore.filter((e) => e.organizationId === organizationId);
-    } else {
-      // Keep recipient updated to connected email
-      emails.forEach((e) => {
-        if (!e.toEmail || e.toEmail === "sales@roxx-demo.com" || e.toEmail === "support@roxx.local") {
-          e.toEmail = activeRecipient;
-        }
-      });
     }
+
+    // Sanitize subjects, sender names, and body text across all loaded emails
+    emails.forEach((e) => {
+      if (!e.toEmail || e.toEmail === "sales@roxx-demo.com" || e.toEmail === "support@roxx.local") {
+        e.toEmail = activeRecipient;
+      }
+      if (e.subject) {
+        e.subject = decodeMimeHeader(e.subject);
+      }
+      if (e.fromName) {
+        e.fromName = decodeMimeHeader(e.fromName);
+      }
+      if (e.bodyText) {
+        const { cleanText } = cleanMimeBody(e.bodyText);
+        e.bodyText = cleanText || e.bodyText;
+        e.snippet =
+          cleanText
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120) || e.snippet;
+      }
+    });
 
     // Filter by role visibility for leads
     if (session.role === "SALES_RESP") {
@@ -410,17 +425,26 @@ export async function syncInboxAction(): Promise<{
         (c) => c.organizationId === organizationId && c.email?.toLowerCase() === sender
       );
 
+      const cleanSubject = decodeMimeHeader(msg.subject);
+      const cleanFromName = decodeMimeHeader(msg.fromName || msg.fromEmail);
+      const { cleanText, cleanHtml } = cleanMimeBody(msg.bodyText || msg.snippet);
+      const cleanSnippet = cleanText
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 120);
+
       const inboxEntry: MockInboxEmail = {
         id: `inbox_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         organizationId,
         messageId: msg.messageId,
         fromEmail: msg.fromEmail,
-        fromName: msg.fromName || msg.fromEmail,
+        fromName: cleanFromName,
         toEmail: activeEmail,
-        subject: msg.subject,
-        snippet: msg.snippet,
-        bodyText: msg.bodyText,
-        bodyHtml: msg.bodyHtml,
+        subject: cleanSubject,
+        snippet: cleanSnippet || "(No preview available)",
+        bodyText: cleanText || cleanSnippet,
+        bodyHtml: cleanHtml,
         date: msg.date,
         isRead: false,
         leadId: matchedLead?.id,
@@ -439,8 +463,8 @@ export async function syncInboxAction(): Promise<{
         try {
           await logActivityAction({
             type: "EMAIL",
-            subject: `Client Reply: ${msg.subject}`,
-            description: `From: ${msg.fromName} <${msg.fromEmail}>\nTo: ${activeEmail}\n\n${msg.bodyText || msg.snippet}`,
+            subject: `Client Reply: ${cleanSubject}`,
+            description: `From: ${cleanFromName} <${msg.fromEmail}>\nTo: ${activeEmail}\n\n${cleanText}`,
             activityAt: msg.date,
             outcome: "REPLY_RECEIVED",
             leadId: matchedLead?.id,

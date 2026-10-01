@@ -301,7 +301,7 @@ export async function saveSmtpConfigAction(
 
     return {
       success: true,
-      message: `Email account (${record.username}) connected for sending emails and syncing client replies!`,
+      message: `Email account (${record.username}) connected and encrypted at rest for sending emails and syncing client replies!`,
     };
   } catch (error: unknown) {
     return {

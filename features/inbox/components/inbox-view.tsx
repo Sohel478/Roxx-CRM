@@ -34,6 +34,47 @@ import {
 } from "@/actions/inbox";
 import type { InboxEmailItem } from "@/lib/validations/email";
 
+function cleanDisplaySubject(subject: string): string {
+  if (!subject) return "No Subject";
+  if (subject.includes("=?")) {
+    return subject
+      .replace(/=\?([^?]+)\?([BbQq])\?([^?]*?)(?:\?=|\?|$)/g, (_, charset, enc, payload) => {
+        try {
+          if (enc.toUpperCase() === "B") {
+            if (typeof window !== "undefined" && window.atob) {
+              return decodeURIComponent(escape(window.atob(payload)));
+            }
+            return payload;
+          }
+          return payload
+            .replace(/_/g, " ")
+            .replace(/=([A-Fa-f0-9]{2})/g, (_: string, h: string) =>
+              String.fromCharCode(parseInt(h, 16))
+            );
+        } catch {
+          return payload;
+        }
+      })
+      .replace(/\s*=\s*$/, "")
+      .trim();
+  }
+  return subject;
+}
+
+function cleanDisplayBody(body: string): string {
+  if (!body) return "";
+  let text = body;
+  // Strip multipart boundary delimiters like --0000000000009d53d3065cc458b1
+  text = text.replace(/^--[a-zA-Z0-9_\-=.]+(?:--)?\s*$/gm, "");
+  // Strip inline MIME headers
+  text = text.replace(/^(?:Content-Type|Content-Transfer-Encoding|Content-Disposition|charset):[^\n]*\n?/gim, "");
+  // Strip soft line breaks
+  text = text.replace(/=\r?\n/g, "");
+  // Strip residual boundary markers
+  text = text.replace(/--[0-9a-fA-F]{10,}[^\s]*/g, "");
+  return text.trim();
+}
+
 export function InboxView() {
   const [emails, setEmails] = useState<InboxEmailItem[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmailItem | null>(null);
@@ -162,9 +203,10 @@ export function InboxView() {
     setReplyFeedback(null);
 
     try {
-      const replySubject = selectedEmail.subject.startsWith("Re:")
-        ? selectedEmail.subject
-        : `Re: ${selectedEmail.subject}`;
+      const cleanSubject = cleanDisplaySubject(selectedEmail.subject);
+      const replySubject = cleanSubject.startsWith("Re:")
+        ? cleanSubject
+        : `Re: ${cleanSubject}`;
 
       const res = await replyToClientAction({
         emailId: selectedEmail.id,
@@ -419,7 +461,7 @@ export function InboxView() {
                             !email.isRead ? "font-bold text-slate-900" : "font-semibold text-slate-700"
                           }`}
                         >
-                          {email.fromName || email.fromEmail}
+                          {cleanDisplaySubject(email.fromName || email.fromEmail)}
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-400 shrink-0 font-medium">
@@ -428,11 +470,11 @@ export function InboxView() {
                     </div>
 
                     <div className="text-xs font-semibold text-slate-900 truncate mb-1">
-                      {email.subject}
+                      {cleanDisplaySubject(email.subject)}
                     </div>
 
                     <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed mb-2">
-                      {email.snippet}
+                      {cleanDisplayBody(email.snippet || email.bodyText)}
                     </p>
 
                     <div className="flex items-center justify-between gap-2">
@@ -489,11 +531,11 @@ export function InboxView() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1 min-w-0">
                     <h2 className="text-base font-bold text-slate-900 leading-snug break-words">
-                      {selectedEmail.subject}
+                      {cleanDisplaySubject(selectedEmail.subject)}
                     </h2>
                     <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
                       <span className="font-semibold text-slate-800">
-                        {selectedEmail.fromName}
+                        {cleanDisplaySubject(selectedEmail.fromName || selectedEmail.fromEmail)}
                       </span>
                       <span>&lt;{selectedEmail.fromEmail}&gt;</span>
                       <span className="text-slate-300">•</span>
@@ -543,7 +585,7 @@ export function InboxView() {
               {/* Email Content Body */}
               <div className="p-6 flex-1 overflow-y-auto space-y-4">
                 <div className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap font-sans">
-                  {selectedEmail.bodyText || selectedEmail.snippet}
+                  {cleanDisplayBody(selectedEmail.bodyText || selectedEmail.snippet)}
                 </div>
               </div>
 
@@ -554,7 +596,7 @@ export function InboxView() {
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Reply className="w-3.5 h-3.5 text-blue-600" />
                       <span>
-                        Reply to {selectedEmail.fromName} ({selectedEmail.fromEmail})
+                        Reply to {cleanDisplaySubject(selectedEmail.fromName || selectedEmail.fromEmail)} ({selectedEmail.fromEmail})
                       </span>
                     </span>
                     <button
