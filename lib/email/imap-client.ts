@@ -532,11 +532,25 @@ function parseImapFetchResponse(raw: string): FetchedImapMessage[] {
     const toRaw = getHeader("To");
     const subject = getHeader("Subject") || "No Subject";
     const dateRaw = getHeader("Date");
-    const messageId = getHeader("Message-ID") || `<msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@imap>`;
-    const inReplyTo = getHeader("In-Reply-To");
-
     const parsedFrom = parseEmailAddress(fromRaw);
     const parsedTo = parseEmailAddress(toRaw);
+
+    const rawMsgId = getHeader("Message-ID");
+    let messageId = rawMsgId ? rawMsgId.trim() : "";
+    if (!messageId) {
+      const normalizedSender = (parsedFrom.email || "").toLowerCase().trim();
+      const normalizedSubject = (subject || "").trim().toLowerCase();
+      const normalizedDate = dateRaw ? dateRaw.trim() : "";
+      const rawSeed = `${normalizedSender}|${normalizedSubject}|${normalizedDate}`;
+      let hash = 0;
+      for (let i = 0; i < rawSeed.length; i++) {
+        hash = (hash << 5) - hash + rawSeed.charCodeAt(i);
+        hash |= 0;
+      }
+      const hexHash = Math.abs(hash).toString(16).padStart(8, "0");
+      messageId = `<msg-${hexHash}-${Buffer.from(rawSeed).toString("hex").slice(0, 16)}@imap>`;
+    }
+    const inReplyTo = getHeader("In-Reply-To");
 
     if (!parsedFrom.email) continue;
 

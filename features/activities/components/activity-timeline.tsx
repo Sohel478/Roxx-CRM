@@ -15,6 +15,7 @@ import {
   Activity,
   Plus,
   Search,
+  Reply,
 } from "lucide-react";
 import { deleteActivityAction } from "@/actions/activities";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
@@ -258,9 +259,16 @@ export function ActivityTimeline({
                       ) : null}
 
                       {act.outcome && (
-                        <span className="inline-flex items-center text-[11px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
-                          Outcome: {act.outcome}
-                        </span>
+                        act.outcome === "REPLY_RECEIVED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
+                            <Reply className="w-3 h-3 text-emerald-600" />
+                            Client Reply Received
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[11px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">
+                            Outcome: {act.outcome}
+                          </span>
+                        )
                       )}
                     </div>
                   )}

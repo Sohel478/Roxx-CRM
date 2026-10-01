@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import * as imapModule from "@/lib/email/imap-client";
 import {
   parseEmailAddress,
   decodeMimeHeader,
   decodeQuotedPrintable,
   cleanMimeBody,
 } from "@/lib/email/imap-client";
+import * as mailerModule from "@/lib/email/mailer";
 import * as sessionModule from "@/lib/auth/session";
 import {
   checkDomainDeliverabilityAction,
@@ -24,6 +26,7 @@ import {
   mockSmtpStore,
   mockInboxStore,
   mockLeadsStore,
+  mockActivitiesStore,
 } from "@/lib/db/mock-store";
 import { encryptSecret, decryptSecret } from "@/lib/crypto/encryption";
 
@@ -525,4 +528,219 @@ describe("Role-Based Inbox Scoping & Manager Team Filtering", () => {
     expect(emailIds).not.toContain(otherEmailId);
   });
 });
+
+describe("Client Reply Sync, Lead Timeline Activity, Read Status & Editable Subject", () => {
+  const leadId = "lead_sakshi_99";
+  const repUserId = "usr_rushikesh";
+  const clientEmail = "sakshi@techflux.in";
+
+  beforeEach(() => {
+    mockLeadsStore.push({
+      id: leadId,
+      organizationId: "demo-org-123",
+      leadNumber: "LEAD-1099",
+      firstName: "Sakshi",
+      lastName: "Badgujar",
+      fullName: "Sakshi Badgujar",
+      email: clientEmail,
+      phone: null,
+      companyName: "Techflux Corp",
+      jobTitle: "Founder",
+      sourceId: "src_1",
+      sourceName: "Website",
+      statusId: "st_1",
+      statusName: "Contacted",
+      ownerId: repUserId,
+      ownerName: "Rushikesh",
+      score: 80,
+      tags: [],
+      createdAt: new Date().toISOString(),
+    });
+
+    mockImapStore["demo-org-123"] = {
+      organizationId: "demo-org-123",
+      host: "imap.gmail.com",
+      port: 993,
+      secure: true,
+      username: "infotflux@gmail.com",
+      encryptedPassword: encryptSecret("mock-imap-password"),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockSmtpStore["demo-org-123"] = {
+      organizationId: "demo-org-123",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      username: "infotflux@gmail.com",
+      encryptedPassword: encryptSecret("mock-smtp-password"),
+      fromName: "Techflux Team",
+      fromEmail: "infotflux@gmail.com",
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  afterEach(() => {
+    const lIdx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    if (lIdx !== -1) mockLeadsStore.splice(lIdx, 1);
+
+    const emailIndices = mockInboxStore
+      .map((e, idx) => (e.fromEmail === clientEmail ? idx : -1))
+      .filter((idx) => idx !== -1)
+      .reverse();
+    for (const idx of emailIndices) {
+      mockInboxStore.splice(idx, 1);
+    }
+
+    const actIndices = mockActivitiesStore
+      .map((a, idx) => (a.leadId === leadId ? idx : -1))
+      .filter((idx) => idx !== -1)
+      .reverse();
+    for (const idx of actIndices) {
+      mockActivitiesStore.splice(idx, 1);
+    }
+  });
+
+  it("links incoming client reply to Lead and logs Activity with outcome REPLY_RECEIVED on the lead timeline", async () => {
+    vi.spyOn(imapModule, "fetchImapInbox").mockResolvedValue({
+      success: true,
+      messages: [
+        {
+          messageId: "<sakshi-reply-001@techflux.in>",
+          fromRaw: "Sakshi Badgujar <sakshi@techflux.in>",
+          fromName: "Sakshi Badgujar",
+          fromEmail: clientEmail,
+          toEmail: "infotflux@gmail.com",
+          subject: "Re: Roxx CRM Implementation",
+          snippet: "Hello Rushikesh, we are interested in moving forward.",
+          bodyText: "Hello Rushikesh,\n\nWe are interested in moving forward with Roxx CRM.",
+          date: "2026-10-01T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const syncRes = await syncInboxAction();
+    expect(syncRes.success).toBe(true);
+    expect(syncRes.syncedReplies).toBe(1);
+
+    // 1. Verify email in inbox is linked to lead and assigned to Rushikesh
+    const inboxEmail = mockInboxStore.find(
+      (e) => e.organizationId === "demo-org-123" && e.fromEmail === clientEmail
+    );
+    expect(inboxEmail).toBeDefined();
+    expect(inboxEmail?.leadId).toBe(leadId);
+    expect(inboxEmail?.leadName).toBe("Sakshi Badgujar");
+    expect(inboxEmail?.assignedToName).toBe("Rushikesh");
+
+    // 2. Verify Activity was logged on Lead Interaction Timeline with REPLY_RECEIVED
+    const activity = mockActivitiesStore.find(
+      (a) => a.leadId === leadId && a.outcome === "REPLY_RECEIVED"
+    );
+    expect(activity).toBeDefined();
+    expect(activity?.type).toBe("EMAIL");
+    expect(activity?.subject).toContain("Re: Roxx CRM Implementation");
+    expect(activity?.description).toContain("From: Sakshi Badgujar <sakshi@techflux.in>");
+
+    // 3. Verify Sales Rep Rushikesh can see this client reply in their scoped inbox
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      id: repUserId,
+      organizationId: "demo-org-123",
+      organizationName: "Demo Company",
+      email: "rushikesh@roxx-crm.local",
+      name: "Rushikesh",
+      role: "SALES_USER",
+      permissions: ["leads:read"],
+      expiresAt: Date.now() + 3600000,
+    });
+
+    const repInboxRes = await getInboxEmailsAction({ filter: "all" });
+    expect(repInboxRes.success).toBe(true);
+    expect(repInboxRes.data.some((e) => e.fromEmail === clientEmail)).toBe(true);
+  });
+
+  it("preserves read state on mailbox sync and prevents duplicate email rows", async () => {
+    vi.spyOn(imapModule, "fetchImapInbox").mockResolvedValue({
+      success: true,
+      messages: [
+        {
+          messageId: "<sakshi-reply-002@techflux.in>",
+          fromRaw: "Sakshi Badgujar <sakshi@techflux.in>",
+          fromName: "Sakshi Badgujar",
+          fromEmail: clientEmail,
+          toEmail: "infotflux@gmail.com",
+          subject: "Re: Quotation",
+          snippet: "Let's proceed.",
+          bodyText: "Let's proceed.",
+          date: "2026-10-01T11:00:00.000Z",
+        },
+      ],
+    });
+
+    // First sync
+    const firstSync = await syncInboxAction();
+    expect(firstSync.success).toBe(true);
+
+    const email = mockInboxStore.find((e) => e.messageId === "<sakshi-reply-002@techflux.in>");
+    expect(email).toBeDefined();
+    expect(email?.isRead).toBe(false);
+
+    // Mark as read
+    const markRes = await markEmailAsReadAction(email!.id, true);
+    expect(markRes.success).toBe(true);
+    expect(email?.isRead).toBe(true);
+
+    // Second sync with identical message from IMAP server
+    const secondSync = await syncInboxAction();
+    expect(secondSync.success).toBe(true);
+
+    // Verify no duplicates created
+    const matchingEmails = mockInboxStore.filter(
+      (e) => e.messageId === "<sakshi-reply-002@techflux.in>"
+    );
+    expect(matchingEmails.length).toBe(1);
+
+    // CRITICAL REQUIREMENT: isRead MUST remain true and NOT reset to unread!
+    expect(matchingEmails[0].isRead).toBe(true);
+  });
+
+  it("allows custom editable subject line when sending a reply", async () => {
+    const emailId = "inbox_sakshi_reply_test";
+    mockInboxStore.push({
+      id: emailId,
+      organizationId: "demo-org-123",
+      messageId: "<sakshi-origin@techflux.in>",
+      fromEmail: clientEmail,
+      fromName: "Sakshi Badgujar",
+      toEmail: "infotflux@gmail.com",
+      subject: "Inquiry",
+      snippet: "Can you send the pricing?",
+      bodyText: "Can you send the pricing?",
+      date: new Date().toISOString(),
+      isRead: true,
+      leadId,
+    });
+
+    const sendSmtpSpy = vi.spyOn(mailerModule, "sendSmtpEmail").mockResolvedValue({
+      success: true,
+      messageId: "<reply-sent-999@roxx>",
+    });
+
+    const customSubject = "Customized Quote & Timeline for Techflux Team";
+    const replyRes = await replyToClientAction({
+      emailId,
+      to: clientEmail,
+      subject: customSubject,
+      body: "Here is our updated quote and deployment roadmap.",
+      leadId,
+      inReplyTo: "<sakshi-origin@techflux.in>",
+    });
+
+    expect(replyRes.error).toBeUndefined();
+    expect(replyRes.success).toBe(true);
+    expect(sendSmtpSpy).toHaveBeenCalled();
+    const callArgs = sendSmtpSpy.mock.calls[0][1];
+    expect(callArgs.subject).toBe(customSubject);
+  });
+});
+
 

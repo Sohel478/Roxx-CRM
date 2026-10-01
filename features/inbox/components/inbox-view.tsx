@@ -121,6 +121,7 @@ export function InboxView() {
 
   // Reply Form State
   const [isReplying, setIsReplying] = useState(false);
+  const [replySubject, setReplySubject] = useState("");
   const [replyBody, setReplyBody] = useState("");
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [replyFeedback, setReplyFeedback] = useState<{
@@ -129,6 +130,16 @@ export function InboxView() {
   } | null>(null);
 
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
+
+  const handleStartReplying = () => {
+    if (selectedEmail) {
+      const cleanSub = cleanDisplaySubject(selectedEmail.subject);
+      const defaultSub = cleanSub.startsWith("Re:") ? cleanSub : `Re: ${cleanSub}`;
+      setReplySubject(defaultSub);
+    }
+    setIsReplying(true);
+    setReplyFeedback(null);
+  };
 
   const loadData = async (
     targetFilter = filter,
@@ -210,6 +221,8 @@ export function InboxView() {
     setMobileShowDetail(true);
     setIsReplying(false);
     setReplyBody("");
+    const cleanSub = cleanDisplaySubject(email.subject);
+    setReplySubject(cleanSub.startsWith("Re:") ? cleanSub : `Re: ${cleanSub}`);
     setReplyFeedback(null);
 
     // If unread, mark as read
@@ -244,15 +257,14 @@ export function InboxView() {
     setReplyFeedback(null);
 
     try {
-      const cleanSubject = cleanDisplaySubject(selectedEmail.subject);
-      const replySubject = cleanSubject.startsWith("Re:")
-        ? cleanSubject
-        : `Re: ${cleanSubject}`;
+      const cleanSub = cleanDisplaySubject(selectedEmail.subject);
+      const defaultSub = cleanSub.startsWith("Re:") ? cleanSub : `Re: ${cleanSub}`;
+      const finalSubject = replySubject.trim() || defaultSub;
 
       const res = await replyToClientAction({
         emailId: selectedEmail.id,
         to: selectedEmail.fromEmail,
-        subject: replySubject,
+        subject: finalSubject,
         body: replyBody.trim(),
         leadId: selectedEmail.leadId,
         inReplyTo: selectedEmail.messageId,
@@ -665,7 +677,7 @@ export function InboxView() {
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => setIsReplying(true)}
+                      onClick={handleStartReplying}
                       className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold gap-1.5 h-8 shadow-2xs"
                     >
                       <Reply className="w-3.5 h-3.5" />
@@ -753,13 +765,32 @@ export function InboxView() {
                     </strong>
                   </div>
 
-                  <textarea
-                    rows={4}
-                    value={replyBody}
-                    onChange={(e) => setReplyBody(e.target.value)}
-                    placeholder="Type your response to the client here..."
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans leading-relaxed"
-                  />
+                  {/* Editable Subject Line */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700">Subject</label>
+                      <span className="text-[10px] text-slate-400 font-normal">Editable subject line</span>
+                    </div>
+                    <Input
+                      type="text"
+                      value={replySubject}
+                      onChange={(e) => setReplySubject(e.target.value)}
+                      placeholder="Enter email subject line..."
+                      className="text-xs h-8 bg-white font-medium border-slate-200 focus:border-blue-500"
+                    />
+                  </div>
+
+                  {/* Message Body */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700">Message</label>
+                    <textarea
+                      rows={4}
+                      value={replyBody}
+                      onChange={(e) => setReplyBody(e.target.value)}
+                      placeholder="Type your response to the client here..."
+                      className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans leading-relaxed"
+                    />
+                  </div>
 
                   {replyFeedback && (
                     <div
@@ -807,7 +838,7 @@ export function InboxView() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setIsReplying(true)}
+                    onClick={handleStartReplying}
                     className="text-xs font-semibold gap-1.5 h-8"
                   >
                     <Reply className="w-3.5 h-3.5 text-blue-600" />

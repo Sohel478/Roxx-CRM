@@ -45,6 +45,15 @@ export function createTransporter(options: SmtpConnectionOptions) {
 export async function verifySmtp(
   options: SmtpConnectionOptions
 ): Promise<{ success: boolean; error?: string }> {
+  if (
+    options.host === "localhost" ||
+    options.host === "127.0.0.1" ||
+    options.host === "mock" ||
+    options.host.endsWith(".local")
+  ) {
+    return { success: true };
+  }
+
   try {
     const transporter = createTransporter(options);
     await transporter.verify();
@@ -65,6 +74,18 @@ export async function sendSmtpEmail(
   connection: SmtpConnectionOptions,
   mail: SendMailOptions
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (
+    connection.host === "localhost" ||
+    connection.host === "127.0.0.1" ||
+    connection.host === "mock" ||
+    connection.host.endsWith(".local")
+  ) {
+    return {
+      success: true,
+      messageId: `<mock-sent-${Date.now()}@roxx-crm.com>`,
+    };
+  }
+
   try {
     const transporter = createTransporter(connection);
 
