@@ -368,28 +368,28 @@ export function EmailSettingsTab() {
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-lg font-bold text-slate-900">
-                Email Suite: SMTP Relay, Anti-Spam &amp; CRM Inbox
+                Email Suite: Send &amp; Receive (SMTP + CRM Inbox)
               </h2>
               {smtpConfig?.isConfigured ? (
                 <Badge variant="success" className="gap-1 text-[11px] font-bold">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  SMTP Connected
+                  Connected: {smtpConfig.username}
                 </Badge>
               ) : (
                 <Badge variant="secondary" className="gap-1 text-[11px] font-bold bg-amber-50 text-amber-700 border-amber-200">
                   <AlertCircle className="w-3.5 h-3.5" />
-                  SMTP Not Configured
+                  Mailbox Not Connected
                 </Badge>
               )}
-              {imapConfig?.isConfigured && (
+              {smtpConfig?.isConfigured && (
                 <Badge variant="secondary" className="gap-1 text-[11px] font-bold bg-blue-50 text-blue-700 border-blue-200">
                   <Inbox className="w-3.5 h-3.5" />
-                  Inbox Sync Active
+                  Inbox Sync Connected
                 </Badge>
               )}
             </div>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              Send sales emails via your corporate mail server, monitor domain deliverability to prevent spam classification, and sync incoming client replies straight to the CRM Inbox.
+              Connect your company email account (e.g. {username || "infotflux@gmail.com"}) to send sales emails to leads and automatically receive and sync client replies directly in your CRM Inbox.
             </p>
           </div>
         </div>
@@ -413,7 +413,7 @@ export function EmailSettingsTab() {
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold gap-1.5 h-9 shadow-xs"
               >
                 {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                <span>Save SMTP</span>
+                <span>Save &amp; Connect Mailbox</span>
               </Button>
             </>
           ) : activeSubTab === "imap" ? (

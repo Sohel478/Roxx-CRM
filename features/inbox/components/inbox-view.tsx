@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Inbox,
@@ -19,16 +19,18 @@ import {
   Reply,
   ExternalLink,
   Tag,
-  Filter,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   getInboxEmailsAction,
+  getInboxAccountStatusAction,
   syncInboxAction,
   markEmailAsReadAction,
   replyToClientAction,
+  InboxAccountStatus,
 } from "@/actions/inbox";
 import type { InboxEmailItem } from "@/lib/validations/email";
 
@@ -40,6 +42,7 @@ export function InboxView() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<InboxAccountStatus | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<{
     type: "success" | "error";
     text: string;
@@ -56,23 +59,31 @@ export function InboxView() {
 
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
-  const loadEmails = async (targetFilter = filter, targetSearch = search) => {
+  const loadData = async (targetFilter = filter, targetSearch = search) => {
     setIsLoading(true);
     try {
-      const res = await getInboxEmailsAction({
-        filter: targetFilter,
-        search: targetSearch,
-      });
-      if (res.success) {
-        setEmails(res.data);
-        setUnreadCount(res.unreadCount);
+      const [emailRes, statusRes] = await Promise.all([
+        getInboxEmailsAction({
+          filter: targetFilter,
+          search: targetSearch,
+        }),
+        getInboxAccountStatusAction(),
+      ]);
+
+      if (statusRes.success && statusRes.data) {
+        setAccountStatus(statusRes.data);
+      }
+
+      if (emailRes.success) {
+        setEmails(emailRes.data);
+        setUnreadCount(emailRes.unreadCount);
         // If an email is selected, update its reference in the list
         if (selectedEmail) {
-          const updated = res.data.find((e) => e.id === selectedEmail.id);
+          const updated = emailRes.data.find((e) => e.id === selectedEmail.id);
           if (updated) setSelectedEmail(updated);
-        } else if (res.data.length > 0 && typeof window !== "undefined" && window.innerWidth >= 1024) {
+        } else if (emailRes.data.length > 0 && typeof window !== "undefined" && window.innerWidth >= 1024) {
           // Auto-select first email on desktop
-          setSelectedEmail(res.data[0]);
+          setSelectedEmail(emailRes.data[0]);
         }
       }
     } finally {
@@ -81,12 +92,12 @@ export function InboxView() {
   };
 
   useEffect(() => {
-    loadEmails(filter, search);
+    loadData(filter, search);
   }, [filter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadEmails(filter, search);
+    loadData(filter, search);
   };
 
   const handleSync = async () => {
@@ -99,7 +110,7 @@ export function InboxView() {
           type: "success",
           text: res.message || "Inbox synchronized successfully.",
         });
-        await loadEmails(filter, search);
+        await loadData(filter, search);
       } else {
         setSyncFeedback({
           type: "error",
@@ -197,11 +208,14 @@ export function InboxView() {
     }
   };
 
+  const activeConnectedEmail =
+    accountStatus?.connectedEmail || "infotflux@gmail.com";
+
   return (
     <div className="space-y-4">
       {/* Top Header Card */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
             <Inbox className="w-5 h-5" />
           </div>
@@ -214,9 +228,30 @@ export function InboxView() {
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Review inbound client responses, auto-match replies to Leads, and reply directly via your SMTP relay.
-            </p>
+
+            {/* Connected Mailbox Pill */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {accountStatus?.isConfigured ? (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span className="text-slate-600 font-medium">Connected Mailbox:</span>
+                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300 text-[11px]">
+                    {activeConnectedEmail}
+                  </span>
+                  <span className="text-emerald-700 font-semibold text-[11px] hidden sm:inline">
+                    • Synced to Outbound Relay
+                  </span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>No email account connected yet.</span>
+                  <Link href="/settings" className="font-bold underline text-amber-900">
+                    Connect Email in Settings &rarr;
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -241,7 +276,7 @@ export function InboxView() {
               className="text-xs font-semibold gap-1.5 h-9 text-slate-600 hover:text-slate-900"
             >
               <Settings className="w-3.5 h-3.5 text-slate-500" />
-              <span>Configure IMAP</span>
+              <span>Email Settings</span>
             </Button>
           </Link>
         </div>
@@ -345,14 +380,23 @@ export function InboxView() {
                 <p className="text-xs font-semibold">Loading messages...</p>
               </div>
             ) : emails.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 space-y-2">
+              <div className="p-12 text-center text-slate-400 space-y-3">
                 <MailOpen className="w-8 h-8 mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-700">No emails found</p>
+                <p className="text-xs font-bold text-slate-700">No client replies yet</p>
                 <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
-                  {search
-                    ? "No messages matched your search term."
-                    : "Configure your IMAP settings in Settings > Email to automatically pull incoming client replies."}
+                  Connected to <strong className="text-slate-700 font-mono">{activeConnectedEmail}</strong>. Incoming replies from clients will automatically appear here.
                 </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className="text-xs font-semibold gap-1.5 h-8"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSyncing ? "animate-spin" : ""}`} />
+                  <span>Sync Now</span>
+                </Button>
               </div>
             ) : (
               emails.map((email) => {
@@ -398,7 +442,7 @@ export function InboxView() {
                           <span>Lead: {email.leadName}</span>
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-400 truncate">
+                        <span className="text-[10px] text-slate-400 truncate font-mono">
                           {email.fromEmail}
                         </span>
                       )}
@@ -453,7 +497,12 @@ export function InboxView() {
                       </span>
                       <span>&lt;{selectedEmail.fromEmail}&gt;</span>
                       <span className="text-slate-300">•</span>
-                      <span>To: {selectedEmail.toEmail}</span>
+                      <span>
+                        Received by:{" "}
+                        <strong className="font-mono text-slate-700">
+                          {selectedEmail.toEmail || activeConnectedEmail}
+                        </strong>
+                      </span>
                     </div>
                   </div>
 
@@ -504,7 +553,9 @@ export function InboxView() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Reply className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Reply to {selectedEmail.fromName} ({selectedEmail.fromEmail})</span>
+                      <span>
+                        Reply to {selectedEmail.fromName} ({selectedEmail.fromEmail})
+                      </span>
                     </span>
                     <button
                       type="button"
@@ -516,6 +567,13 @@ export function InboxView() {
                     >
                       Cancel
                     </button>
+                  </div>
+
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Sending response from:{" "}
+                    <strong className="font-mono text-slate-800">
+                      {activeConnectedEmail}
+                    </strong>
                   </div>
 
                   <textarea

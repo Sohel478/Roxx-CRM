@@ -8,6 +8,7 @@ import {
 } from "@/actions/email";
 import {
   getInboxEmailsAction,
+  getInboxAccountStatusAction,
   markEmailAsReadAction,
   syncInboxAction,
   replyToClientAction,
@@ -178,6 +179,27 @@ describe("CRM Inbox Actions & Lead Reply Synchronization", () => {
   it("syncs incoming emails and triggers timeline activity logging", async () => {
     const syncRes = await syncInboxAction();
     expect(syncRes.success).toBe(true);
+    expect(syncRes.connectedEmail).toBeDefined();
+  });
+
+  it("returns connected account status linked to outbound email address", async () => {
+    mockSmtpStore["demo-org-123"] = {
+      organizationId: "demo-org-123",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      username: "infotflux@gmail.com",
+      encryptedPassword: encryptSecret("mock-app-password"),
+      fromName: "Techflux Solutions",
+      fromEmail: "infotflux@gmail.com",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const statusRes = await getInboxAccountStatusAction();
+    expect(statusRes.success).toBe(true);
+    expect(statusRes.data.isConfigured).toBe(true);
+    expect(statusRes.data.connectedEmail).toBe("infotflux@gmail.com");
+    expect(statusRes.data.provider).toContain("Gmail");
   });
 
   it("validates reply input parameters before dispatching", async () => {

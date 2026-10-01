@@ -243,8 +243,57 @@ export async function saveSmtpConfigAction(
     // Update in-memory fallback store
     mockSmtpStore[organizationId] = record;
 
+    // Automatically connect IMAP incoming mail sync with the exact same connected email credentials
+    let derivedImapHost = "imap.gmail.com";
+    if (record.host.includes("gmail") || record.host.includes("google")) {
+      derivedImapHost = "imap.gmail.com";
+    } else if (record.host.includes("office365") || record.host.includes("outlook")) {
+      derivedImapHost = "outlook.office365.com";
+    } else if (record.host.includes("zoho")) {
+      derivedImapHost = "imappro.zoho.com";
+    } else if (record.host.startsWith("smtp.")) {
+      derivedImapHost = record.host.replace(/^smtp\./, "imap.");
+    } else {
+      derivedImapHost = record.host;
+    }
+
+    const imapRecord: MockImapConfig = {
+      organizationId,
+      host: derivedImapHost,
+      port: 993,
+      secure: true,
+      username: record.username,
+      encryptedPassword: record.encryptedPassword,
+      lastSyncedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await prisma.systemSetting.upsert({
+        where: {
+          organizationId_key: {
+            organizationId,
+            key: "imap_config",
+          },
+        },
+        create: {
+          organizationId,
+          key: "imap_config",
+          value: JSON.stringify(imapRecord),
+        },
+        update: {
+          value: JSON.stringify(imapRecord),
+        },
+      });
+    } catch {
+      // In-memory fallback
+    }
+
+    mockImapStore[organizationId] = imapRecord;
+
     try {
       revalidatePath("/settings");
+      revalidatePath("/inbox");
       revalidatePath("/leads");
     } catch {
       // Ignore during test executions
@@ -252,7 +301,7 @@ export async function saveSmtpConfigAction(
 
     return {
       success: true,
-      message: "SMTP configuration verified and encrypted at rest with AES-256.",
+      message: `Email account (${record.username}) connected for sending emails and syncing client replies!`,
     };
   } catch (error: unknown) {
     return {
