@@ -77,6 +77,9 @@ export interface DnsDeliverabilityResult {
   smtpUsername: string;
   alignmentStatus: "aligned" | "mismatched";
   alignmentDetails: string;
+  isGmailSender?: boolean;
+  isDomainCustom?: boolean;
+  humanDeliveryMode?: boolean;
   spf: {
     status: "valid" | "warning" | "missing";
     record: string;

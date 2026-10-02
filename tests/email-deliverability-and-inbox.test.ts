@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import nodemailer from "nodemailer";
 import * as imapModule from "@/lib/email/imap-client";
 import {
   parseEmailAddress,
@@ -91,6 +92,89 @@ describe("Email Deliverability & Spam Prevention", () => {
     expect(res.data?.alignmentStatus).toBe("mismatched");
     expect(res.data?.alignmentDetails).toContain("Warning: From address domain");
     expect(res.data?.score).toBeLessThan(80);
+  });
+
+  it("optimizes deliverability for personal @gmail.com accounts with auto-managed authentication", async () => {
+    mockSmtpStore["demo-org-123"] = {
+      organizationId: "demo-org-123",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      username: "infotflux@gmail.com",
+      encryptedPassword: encryptSecret("mock-app-password"),
+      fromName: "Techflux Support",
+      fromEmail: "infotflux@gmail.com",
+      updatedAt: new Date().toISOString(),
+    };
+
+    const res = await checkDomainDeliverabilityAction();
+    expect(res.success).toBe(true);
+    expect(res.data).toBeDefined();
+
+    if (res.data) {
+      expect(res.data.isGmailSender).toBe(true);
+      expect(res.data.humanDeliveryMode).toBe(true);
+      expect(res.data.alignmentStatus).toBe("aligned");
+      expect(res.data.spf.instructions).toContain("Google automatically authenticates SPF");
+      expect(res.data.dkim.instructions).toContain("Google automatically attaches its verified DKIM-Signature");
+      expect(res.data.score).toBe(100);
+
+      // Verify recommendations highlight anti-bot and human delivery modes
+      const recs = res.data.recommendations.join(" ");
+      expect(recs).toContain("Direct 1-on-1 Human Delivery Mode is ACTIVE");
+      expect(recs).toContain("Native Message-ID alignment is ACTIVE");
+      expect(recs).toContain("X-Mailer header is REMOVED");
+    }
+  });
+
+  it("dispatches outbound emails using human 1-on-1 formatting, without X-Mailer or synthetic Message-IDs", async () => {
+    const sendMailMock = vi.fn().mockResolvedValue({
+      messageId: "<google-canonical-id@mail.gmail.com>",
+    });
+
+    vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+      sendMail: sendMailMock,
+    } as any);
+
+    const result = await mailerModule.sendSmtpEmail(
+      {
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        username: "infotflux@gmail.com",
+        password: "mock-password",
+      },
+      {
+        to: "client@example.com",
+        subject: "Following up on our conversation",
+        body: "Hi Alex,\n\nFollowing up on our call earlier today.\n\nBest,\nTechflux Team",
+        fromName: "Techflux Support",
+        fromEmail: "infotflux@gmail.com",
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.messageId).toBe("<google-canonical-id@mail.gmail.com>");
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+
+    const mailOptions = sendMailMock.mock.calls[0][0];
+
+    // 1. Natural 1-on-1 human HTML without marketing containers or doctype
+    expect(mailOptions.html).toContain('dir="ltr"');
+    expect(mailOptions.html).not.toContain("max-width: 600px");
+    expect(mailOptions.html).not.toContain("<!DOCTYPE html>");
+
+    // 2. Anti-bot shield: X-Mailer must NOT exist
+    expect(mailOptions.headers?.["X-Mailer"]).toBeUndefined();
+
+    // 3. Native Message-ID: client must NOT inject a synthetic messageId
+    expect(mailOptions.messageId).toBeUndefined();
+
+    // 4. Sender envelope alignment
+    expect(mailOptions.envelope).toEqual({
+      from: "infotflux@gmail.com",
+      to: "client@example.com",
+    });
   });
 });
 

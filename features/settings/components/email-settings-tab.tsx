@@ -103,6 +103,7 @@ export function EmailSettingsTab() {
   const [smtpConfig, setSmtpConfig] = useState<SmtpConfigDisplay | null>(null);
   const [imapConfig, setImapConfig] = useState<ImapConfigDisplay | null>(null);
   const [deliverability, setDeliverability] = useState<DnsDeliverabilityResult | null>(null);
+  const [isDeliverabilityRefreshing, setIsDeliverabilityRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [isImapPending, startImapTransition] = useTransition();
@@ -212,6 +213,18 @@ export function EmailSettingsTab() {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleRefreshDeliverability = async () => {
+    setIsDeliverabilityRefreshing(true);
+    try {
+      const res = await checkDomainDeliverabilityAction();
+      if (res.success && res.data) {
+        setDeliverability(res.data);
+      }
+    } finally {
+      setIsDeliverabilityRefreshing(false);
+    }
   };
 
   const handleSaveSmtp = () => {
@@ -757,6 +770,138 @@ export function EmailSettingsTab() {
       {/* ============================================================== */}
       {activeSubTab === "deliverability" && (
         <div className="space-y-6">
+          {/* Primary Inbox Optimization Shield Card */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-2xl p-6 shadow-md border border-indigo-900/50 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/60 pb-5">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold px-2 py-0.5">
+                    ● ACTIVE IN DISPATCH ENGINE
+                  </Badge>
+                  <span className="text-xs text-indigo-200">Anti-Spam &amp; Primary Inbox Shield</span>
+                </div>
+                <h3 className="text-xl font-bold tracking-tight text-white flex items-center gap-2 mt-1">
+                  <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
+                  <span>Primary Inbox Delivery Optimization</span>
+                </h3>
+                <p className="text-xs text-indigo-200/90 max-w-2xl leading-relaxed">
+                  Bulk marketing footprints and automated bot signatures have been stripped from outbound emails so your messages land directly in the recipient&apos;s <strong>Primary Inbox</strong> instead of Spam or Promotional tabs.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshDeliverability}
+                disabled={isDeliverabilityRefreshing}
+                className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold gap-1.5 h-9 shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isDeliverabilityRefreshing ? "animate-spin text-emerald-300" : "text-indigo-300"}`} />
+                <span>{isDeliverabilityRefreshing ? "Scanning..." : "Re-scan Deliverability"}</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+              <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Human 1-on-1 Mode</span>
+                </div>
+                <p className="text-[11px] text-indigo-200/80 leading-relaxed">
+                  Natural conversation styling (<code className="text-white">dir=&quot;ltr&quot;</code>). No promotional HTML tables or tracking containers that trigger bulk marketing spam filters.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Authentic Message-ID</span>
+                </div>
+                <p className="text-[11px] text-indigo-200/80 leading-relaxed">
+                  Canonical Message-IDs assigned directly by your relay server (Google / Microsoft), eliminating SpamAssassin <code className="text-white">GMAIL_MSGID_BAD</code> flags.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Anti-Bot Shield</span>
+                </div>
+                <p className="text-[11px] text-indigo-200/80 leading-relaxed">
+                  Synthetic <code className="text-white">X-Mailer</code> headers removed. Emails appear as authentic human messages typed directly inside your email client.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>FQDN EHLO Handshake</span>
+                </div>
+                <p className="text-[11px] text-indigo-200/80 leading-relaxed">
+                  SMTP connection greets receiving MTAs with your verified domain identity, preventing <code className="text-white">HELO_DYNAMIC_IPADDR</code> penalties.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Google (@gmail.com) Sender Guidance */}
+          {deliverability?.isGmailSender && (
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50/40 to-blue-50 border border-emerald-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Google (@{deliverability.domain}) Managed Authentication
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Because your connected sending account is a Google account (<code className="bg-white px-1.5 py-0.5 rounded border border-emerald-200 font-mono text-[11px] text-slate-800">{deliverability.fromEmail}</code>), Google automatically signs your outbound emails with verified <strong>SPF</strong> and <strong>DKIM (RSA-2048)</strong>. You do not need to edit DNS records for gmail.com.
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-emerald-200/60 pt-3">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  3 Golden Rules to Land in Client Primary Inbox:
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2.5">
+                  <div className="bg-white p-3.5 rounded-xl border border-emerald-200/70 space-y-1.5 shadow-xs">
+                    <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] flex items-center justify-center font-bold">1</span>
+                      Match From Address
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Ensure &apos;From Email&apos; in Outbound SMTP settings is set to your exact Gmail address (<code className="text-slate-700">{deliverability.fromEmail}</code>). Mismatched sender addresses trigger spam alerts.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-emerald-200/70 space-y-1.5 shadow-xs">
+                    <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] flex items-center justify-center font-bold">2</span>
+                      Conversational Subjects
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Use natural 1-on-1 subjects (e.g. &quot;Following up on our conversation&quot;). Avoid ALL CAPS, multiple &quot;!!!&quot;, or trigger words like &quot;FREE&quot;, &quot;ACT NOW&quot;, or &quot;100% DISCOUNT&quot;.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-emerald-200/70 space-y-1.5 shadow-xs">
+                    <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 text-[11px] flex items-center justify-center font-bold">3</span>
+                      Custom Domain Option
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      If you want to send branded emails from @techflux.in, connect Google Workspace for your domain or your custom domain SMTP and publish the DNS records shown below.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Health Score Overview */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
@@ -829,10 +974,16 @@ export function EmailSettingsTab() {
             <div>
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Globe className="w-4 h-4 text-blue-600" />
-                <span>Required DNS Authentication Records for @{deliverability?.domain || "yourdomain.com"}</span>
+                <span>
+                  {deliverability?.isGmailSender
+                    ? "DNS Records for Custom Domains (e.g. @techflux.in)"
+                    : `Required DNS Authentication Records for @${deliverability?.domain || "yourdomain.com"}`}
+                </span>
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Copy and add these TXT records in your domain registrar DNS settings (GoDaddy, Cloudflare, Namecheap, Route 53, etc.) to guarantee 100% inbox deliverability.
+                {deliverability?.isGmailSender
+                  ? "Since you are currently using personal @gmail.com, Google handles authentication automatically. If you switch to your company domain, add these TXT records at your domain registrar (GoDaddy, Cloudflare, Namecheap, Route 53, etc.)."
+                  : "Copy and add these TXT records in your domain registrar DNS settings (GoDaddy, Cloudflare, Namecheap, Route 53, etc.) to guarantee 100% inbox deliverability."}
               </p>
             </div>
 

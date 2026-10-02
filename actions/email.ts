@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import { mockSmtpStore, mockImapStore, mockAuditLogsStore, MockSmtpConfig, MockImapConfig } from "@/lib/db/mock-store";
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/crypto/encryption";
-import { verifySmtp, sendSmtpEmail } from "@/lib/email/mailer";
+import * as mailer from "@/lib/email/mailer";
 import { verifyImap } from "@/lib/email/imap-client";
 import {
   smtpConfigSchema,
@@ -380,7 +380,7 @@ export async function testSmtpConnectionAction(
     }
 
     // 1. Handshake verification
-    const verifyRes = await verifySmtp({
+    const verifyRes = await mailer.verifySmtp({
       host,
       port,
       secure,
@@ -396,7 +396,7 @@ export async function testSmtpConnectionAction(
     }
 
     // 2. Dispatch live test email
-    const sendRes = await sendSmtpEmail(
+    const sendRes = await mailer.sendSmtpEmail(
       { host, port, secure, username, password },
       {
         to: parsed.data.recipientEmail,
@@ -489,7 +489,7 @@ export async function sendLeadEmailAction(
     }
 
     // Send email via nodemailer
-    const sendRes = await sendSmtpEmail(
+    const sendRes = await mailer.sendSmtpEmail(
       {
         host: config.host,
         port: config.port,
@@ -893,10 +893,16 @@ export async function checkDomainDeliverabilityAction(): Promise<{
       }
     }
 
+    const isGmailSender = domain === "gmail.com" || domain === "googlemail.com";
+    const isDomainCustom = !isGmailSender && domain !== "example.com";
+
     // Determine provider-optimized SPF record
     let spfRecord = `v=spf1 include:${host} ~all`;
     let spfInstructions = `Add a TXT record for hostname '@' (or '${domain}') in your DNS provider.`;
-    if (host.includes("google") || host.includes("gmail")) {
+    if (isGmailSender) {
+      spfRecord = "v=spf1 include:_spf.google.com ~all (Managed by Google)";
+      spfInstructions = "Google automatically authenticates SPF on all outgoing mail sent via smtp.gmail.com.";
+    } else if (host.includes("google") || host.includes("gmail")) {
       spfRecord = "v=spf1 include:_spf.google.com ~all";
       spfInstructions = "Add a TXT record for host '@' with this Google Workspace SPF value.";
     } else if (host.includes("outlook") || host.includes("office365")) {
@@ -912,7 +918,11 @@ export async function checkDomainDeliverabilityAction(): Promise<{
     let dkimRecord = `v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC3...`;
     let dkimInstructions = `Generate a 2048-bit DKIM key in your email provider's admin console, then add a TXT record for '${dkimSelector}._domainkey.${domain}'.`;
 
-    if (host.includes("google") || host.includes("gmail")) {
+    if (isGmailSender) {
+      dkimSelector = "google";
+      dkimRecord = "Cryptographically signed by Google RSA-2048 key on dispatch";
+      dkimInstructions = "Google automatically attaches its verified DKIM-Signature header to all messages.";
+    } else if (host.includes("google") || host.includes("gmail")) {
       dkimSelector = "google";
       dkimRecord = "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...(Get from Google Admin Console)";
       dkimInstructions = "Go to Google Admin > Apps > Google Workspace > Gmail > Authenticate email to generate this key.";
@@ -923,8 +933,12 @@ export async function checkDomainDeliverabilityAction(): Promise<{
     }
 
     // DMARC record
-    const dmarcRecord = `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@${domain}; pct=100`;
-    const dmarcInstructions = `Add a TXT record with host name '_dmarc' (or '_dmarc.${domain}') in your DNS manager.`;
+    let dmarcRecord = `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@${domain}; pct=100`;
+    let dmarcInstructions = `Add a TXT record with host name '_dmarc' (or '_dmarc.${domain}') in your DNS manager.`;
+    if (isGmailSender) {
+      dmarcRecord = "v=DMARC1; p=reject; rua=mailto:mailauth-reports@google.com";
+      dmarcInstructions = "Protected globally by Google's global DMARC policy.";
+    }
 
     const recommendations: string[] = [];
     let score = 100;
@@ -939,15 +953,35 @@ export async function checkDomainDeliverabilityAction(): Promise<{
           `Change 'From Email' to match your SMTP authenticated account or use an email on @${domain} to satisfy DMARC alignment.`
         );
       }
+
       recommendations.push(
-        `Ensure the SPF TXT record '${spfRecord}' is published at your DNS registrar (GoDaddy, Cloudflare, Namecheap, etc.).`
+        "Direct 1-on-1 Human Delivery Mode is ACTIVE: Emails are dispatched without promotional newsletter wrappers or tracking containers, preventing Bayesian spam/promotions categorization."
       );
       recommendations.push(
-        `Publish the DKIM TXT record at '${dkimSelector}._domainkey.${domain}' so outbound emails are cryptographically signed.`
+        "Native Message-ID alignment is ACTIVE: Relay assigns canonical Message-IDs, eliminating SpamAssassin GMAIL_MSGID_BAD flags."
       );
       recommendations.push(
-        `Publish a DMARC policy record at '_dmarc.${domain}' with 'p=quarantine' or 'p=reject' to protect your domain reputation.`
+        "X-Mailer header is REMOVED: Emails appear as native messages from your email account, bypassing bot/automation detection."
       );
+
+      if (isGmailSender) {
+        recommendations.push(
+          "Subject Line Best Practice: Use natural, conversational subjects. Avoid ALL CAPS, multiple exclamation marks, or spam trigger keywords ('FREE', '$$$', 'Urgent Request')."
+        );
+        recommendations.push(
+          "Sending via Company Domain: If you want to send as @yourcompany.com, connect Google Workspace or your custom domain SMTP and publish your registrar's SPF/DKIM DNS records."
+        );
+      } else {
+        recommendations.push(
+          `Ensure the SPF TXT record '${spfRecord}' is published at your DNS registrar (GoDaddy, Cloudflare, Namecheap, etc.).`
+        );
+        recommendations.push(
+          `Publish the DKIM TXT record at '${dkimSelector}._domainkey.${domain}' so outbound emails are cryptographically signed.`
+        );
+        recommendations.push(
+          `Publish a DMARC policy record at '_dmarc.${domain}' with 'p=quarantine' or 'p=reject' to protect your domain reputation.`
+        );
+      }
     }
 
     return {
@@ -958,6 +992,9 @@ export async function checkDomainDeliverabilityAction(): Promise<{
         smtpUsername,
         alignmentStatus,
         alignmentDetails,
+        isGmailSender,
+        isDomainCustom,
+        humanDeliveryMode: true,
         spf: {
           status: smtp ? "valid" : "missing",
           record: spfRecord,
