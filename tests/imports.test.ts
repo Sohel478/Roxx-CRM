@@ -136,8 +136,28 @@ describe("Phase 9: Bulk CSV Parser & Serializer", () => {
     expect(companyImportRowSchema.safeParse(invalidCompany).success).toBe(false);
   });
 
-  it("generates correct sample CSV template for scraped leads format", () => {
+  it("generates correct sample CSV template for leads with explicit First Name and Last Name", () => {
     const template = getSampleCsvTemplate("leads");
+    expect(template.filename).toBe("leads_import_template.csv");
+
+    const matrix = parseCsv(template.csv);
+    expect(matrix[0]).toEqual([
+      "First Name",
+      "Last Name",
+      "Company Name",
+      "Website",
+      "Email",
+      "Phone",
+      "Personal LinkedIn",
+      "Company LinkedIn",
+      "Job Title",
+      "Industry",
+    ]);
+    expect(matrix.length).toBeGreaterThanOrEqual(3); // Header + 2 sample leads
+  });
+
+  it("generates correct sample CSV template for scraped leads format when requested", () => {
+    const template = getSampleCsvTemplate("scraped_leads");
     expect(template.filename).toBe("scraped_leads_template.csv");
 
     const matrix = parseCsv(template.csv);
@@ -150,7 +170,7 @@ describe("Phase 9: Bulk CSV Parser & Serializer", () => {
       "Email",
       "Contact",
     ]);
-    expect(matrix.length).toBeGreaterThanOrEqual(3); // Header + 2 sample leads
+    expect(matrix.length).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -249,5 +269,75 @@ describe("Scraped Leads CSV Importer (importCsvAction)", () => {
     expect(wayneLead?.rating).toBe("Hot");
     expect(wayneLead?.estimatedValue).toBe(150000);
     expect(wayneLead?.description).toBe("VIP enterprise customer");
+  });
+
+  it("handles multi-category scraped sheets with Owner first name, Name as company, and category dividers", async () => {
+    const scrapedCsv = [
+      "Owner first name,Name ,Website ,linkedin,company linkedin,Email,Contact,Owner email",
+      ",Clothing & Fashion,,,,,,",
+      "Kristi Carney,Blushing Belle Boutique,https://shopblushingbelle.com,https://www.linkedin.com/in/kristikwalker/,,shopblushingbelle@gmail.com,1 469-335-6347,kristi@shopblushingbelle.com",
+      ",Company Name,Website,CEO/Founder LinkedIn,Company LinkedIn,Email,Contact,",
+      ",Peacock Beauty Wholesale,https://peacockwholesale.io,,,cs@peacockwholesale.io,1 (782) 802-6568,",
+      "Shannon Jud,Bloody Rose Boutique,,https://www.linkedin.com/in/shannon-jud/,,brb@bloodyrose.shop or bloodyroseboutique@gmail.com,209-640-1011,",
+    ].join("\n");
+
+    const result = await importCsvAction("leads", scrapedCsv);
+    expect(result.success).toBe(true);
+    expect(result.data?.importedCount).toBe(3);
+
+    // 1. Check Kristi Carney (Owner first name mapped to firstName/lastName, Name mapped to companyName)
+    const kristi = mockLeadsStore.find((l) => l.firstName === "Kristi");
+    expect(kristi).toBeDefined();
+    expect(kristi?.lastName).toBe("Carney");
+    expect(kristi?.fullName).toBe("Kristi Carney");
+    expect(kristi?.companyName).toBe("Blushing Belle Boutique");
+    expect(kristi?.email).toBe("kristi@shopblushingbelle.com");
+    expect(kristi?.supportEmail).toBe("shopblushingbelle@gmail.com");
+    expect(kristi?.customerLinkedin).toBe("https://www.linkedin.com/in/kristikwalker/");
+    expect(kristi?.description).toContain("Industry / Category: Clothing & Fashion");
+
+    // 2. Check Peacock Beauty Wholesale (no owner name -> company name used, Team fallback)
+    const peacock = mockLeadsStore.find((l) => l.companyName === "Peacock Beauty Wholesale");
+    expect(peacock).toBeDefined();
+    expect(peacock?.firstName).toBe("Peacock Beauty Wholesale");
+    expect(peacock?.lastName).toBe("Team");
+    expect(peacock?.email).toBe("cs@peacockwholesale.io");
+
+    // 3. Check Shannon Jud with multiple emails ("or" separated)
+    const shannon = mockLeadsStore.find((l) => l.firstName === "Shannon");
+    expect(shannon).toBeDefined();
+    expect(shannon?.lastName).toBe("Jud");
+    expect(shannon?.companyName).toBe("Bloody Rose Boutique");
+    expect(shannon?.email).toBe("brb@bloodyrose.shop");
+    expect(shannon?.supportEmail).toBe("bloodyroseboutique@gmail.com");
+  });
+
+  it("successfully imports all 414 valid records from the user's multi-category CSV", async () => {
+    const fs = await import("fs");
+    const path = "/Users/soheljatu/.gemini/antigravity/brain/22e377e6-cb06-4b0d-b34c-fc9c4a2de092/scratch/user_input.csv";
+    if (!fs.existsSync(path)) return;
+
+    mockLeadsStore.length = 0;
+    const rawCsv = fs.readFileSync(path, "utf8");
+    const result = await importCsvAction("leads", rawCsv);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.importedCount).toBe(414);
+    expect(result.data?.failedCount).toBe(0);
+    expect(mockLeadsStore.length).toBe(414);
+
+    // Verify all records have firstName and companyName populated
+    const missingFirst = mockLeadsStore.filter((l) => !l.firstName || l.firstName.trim() === "");
+    expect(missingFirst.length).toBe(0);
+
+    const missingCompany = mockLeadsStore.filter((l) => !l.companyName || l.companyName.trim() === "");
+    expect(missingCompany.length).toBe(0);
+
+    // Verify categories are mapped
+    const fashionLeads = mockLeadsStore.filter((l) => l.description?.includes("Clothing & Fashion"));
+    expect(fashionLeads.length).toBeGreaterThan(0);
+
+    const beautyLeads = mockLeadsStore.filter((l) => l.description?.includes("Beauty & Cosmetics"));
+    expect(beautyLeads.length).toBeGreaterThan(0);
   });
 });

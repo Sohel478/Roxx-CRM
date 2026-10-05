@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
+import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockLeadsStore,
   mockCompaniesStore,
@@ -20,6 +21,42 @@ import {
   contactImportRowSchema,
 } from "@/lib/validations/imports";
 
+function cleanPersonName(raw: string) {
+  if (!raw) return { firstName: "", lastName: null };
+  const cleaned = raw
+    .trim()
+    .replace(/^["'\s]+|["'\s]+$/g, "")
+    .replace(/\.+$/, "")
+    .replace(/,\s*$/, "");
+
+  // Deduplicate repeated trailing tokens (e.g. "Jones Jones" or repeated parentheticals)
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (
+    parts.length >= 2 &&
+    parts[parts.length - 1].toLowerCase() === parts[parts.length - 2].toLowerCase()
+  ) {
+    parts.pop();
+  }
+  const dedupedStr = parts.join(" ").replace(/\(([^)]+)\)\s+([A-Za-z]+)\s+\(\1\)\s+\2/i, "($1) $2");
+  const finalParts = dedupedStr.split(/\s+/).filter(Boolean);
+
+  if (finalParts.length === 0) return { firstName: "", lastName: null };
+  const firstName = finalParts[0];
+  const lastName = finalParts.length > 1 ? finalParts.slice(1).join(" ") : null;
+  return { firstName, lastName };
+}
+
+function cleanEmails(raw1?: string | null, raw2?: string | null) {
+  const allRaw = [raw1, raw2].filter(Boolean).join(" or ");
+  const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  const matches = (allRaw.match(emailRegex) || []).map((e) => e.toLowerCase().trim());
+  const unique = Array.from(new Set(matches));
+  return {
+    primary: unique[0] || null,
+    secondary: unique[1] || null,
+  };
+}
+
 /**
  * Bulk Import entities from CSV string
  */
@@ -28,9 +65,11 @@ export async function importCsvAction(
   csvText: string
 ): Promise<{ success: boolean; data?: ImportResult; error?: string }> {
   const session = await requireAuth();
+  const { organizationId, userId } = await resolveTenantContext(session);
   const isTechflux =
     (session.organizationName || "").toLowerCase().includes("techflux") ||
-    (session.organizationId || "").toLowerCase().includes("techflux");
+    (session.organizationId || "").toLowerCase().includes("techflux") ||
+    organizationId.toLowerCase().includes("techflux");
 
   // Permission check per entity
   if (entityType === "leads") await requirePermission("lead:create");
@@ -51,31 +90,72 @@ export async function importCsvAction(
 
     const errors: RowImportError[] = [];
     const validRecords: any[] = [];
+    let currentCategory = "General";
 
     dataRows.forEach((row, idx) => {
       const rowNum = idx + 2; // Line 1 is header
-      const rowObj: Record<string, any> = {};
+      const nonEmpties = row.filter((c) => c && c.trim().length > 0);
+      if (nonEmpties.length === 0) return;
 
+      // Detect single-cell category / divider rows (e.g. ", Clothing & Fashion ,,,,,,")
+      if (nonEmpties.length === 1 && entityType === "leads") {
+        currentCategory = nonEmpties[0].trim();
+        return;
+      }
+
+      // Detect repeated sub-headers inside the CSV body
+      const rowStr = row.join(" | ").toLowerCase();
+      if (
+        (rowStr.includes("company name") && rowStr.includes("website")) ||
+        (rowStr.includes("owner first name") && rowStr.includes("contact"))
+      ) {
+        return;
+      }
+
+      const rowObj: Record<string, any> = {};
       headers.forEach((hdr, hIdx) => {
         rowObj[hdr] = row[hIdx] !== undefined ? row[hIdx] : "";
       });
 
       if (entityType === "leads") {
-        // 1. Resolve firstName and lastName (supporting both 'Name'/'Full Name' and 'firstName'/'lastName')
-        let firstName = (
+        // 1. Resolve Person Name (Owner / Contact)
+        const ownerCol = (
+          rowObj["owner first name"] ||
+          rowObj["owner name"] ||
+          rowObj["owner_first_name"] ||
+          rowObj["owner_name"] ||
+          rowObj["first name"] ||
           rowObj["firstname"] ||
           rowObj["first_name"] ||
-          rowObj["first name"] ||
+          rowObj["founder name"] ||
+          rowObj["ceo name"] ||
+          rowObj["contact person"] ||
           ""
         ).trim();
-        let lastName = (
+
+        const ownerLastCol = (
+          rowObj["last name"] ||
           rowObj["lastname"] ||
           rowObj["last_name"] ||
-          rowObj["last name"] ||
+          rowObj["owner last name"] ||
+          rowObj["owner_last_name"] ||
           ""
-        ).trim() || null;
+        ).trim();
 
-        const fullName = (
+        // Check for explicit company name column
+        const explicitCompany = (
+          rowObj["company"] ||
+          rowObj["company name"] ||
+          rowObj["companyname"] ||
+          rowObj["company_name"] ||
+          rowObj["organization"] ||
+          rowObj["business name"] ||
+          rowObj["store name"] ||
+          rowObj["brand"] ||
+          ""
+        ).trim();
+
+        const genericName = (
           rowObj["name"] ||
           rowObj["fullname"] ||
           rowObj["full name"] ||
@@ -83,14 +163,70 @@ export async function importCsvAction(
           ""
         ).trim();
 
-        if (!firstName && fullName) {
-          const parts = fullName.split(/\s+/);
-          firstName = parts[0] || "";
-          lastName = parts.length > 1 ? parts.slice(1).join(" ") : null;
+        const hasOwnerHeader = headers.some((h) =>
+          h.includes("owner") || h.includes("founder") || h.includes("ceo") || h.includes("contact person")
+        );
+
+        let firstName = "";
+        let lastName: string | null = null;
+        let companyName: string | null = explicitCompany || null;
+
+        if (hasOwnerHeader) {
+          // When sheet has an owner/founder header, genericName ("Name") is the Company/Brand Name
+          companyName = explicitCompany || genericName || null;
+          if (ownerCol) {
+            const nameParsed = cleanPersonName(ownerCol);
+            firstName = nameParsed.firstName;
+            lastName = ownerLastCol || nameParsed.lastName;
+          } else {
+            // No owner specified on this row, but company exists (e.g. Peacock Beauty Wholesale)
+            firstName = companyName || "Valued Lead";
+            lastName = "Team";
+          }
+        } else if (ownerCol) {
+          const nameParsed = cleanPersonName(ownerCol);
+          firstName = nameParsed.firstName;
+          lastName = ownerLastCol || nameParsed.lastName;
+          if (!companyName && genericName) {
+            companyName = genericName;
+          }
+        } else if (genericName && explicitCompany) {
+          const nameParsed = cleanPersonName(genericName);
+          firstName = nameParsed.firstName;
+          lastName = ownerLastCol || nameParsed.lastName;
+        } else if (genericName && !explicitCompany) {
+          const nameParsed = cleanPersonName(genericName);
+          firstName = nameParsed.firstName;
+          lastName = nameParsed.lastName;
+        } else if (companyName) {
+          firstName = companyName;
+          lastName = "Team";
         }
 
-        // 2. Resolve phone / contact
-        const phone = (
+        // Fallback if still empty
+        if (!firstName) {
+          firstName = companyName || "Valued Lead";
+        }
+
+        // 2. Resolve Emails
+        const ownerEmailRaw =
+          rowObj["owner email"] ||
+          rowObj["owner_email"] ||
+          rowObj["personal email"] ||
+          "";
+        const emailRaw =
+          rowObj["customer email"] ||
+          rowObj["customer_email"] ||
+          rowObj["customeremail"] ||
+          rowObj["email"] ||
+          rowObj["support email"] ||
+          rowObj["support_email"] ||
+          "";
+
+        const { primary: email, secondary: supportEmail } = cleanEmails(ownerEmailRaw, emailRaw);
+
+        // 3. Resolve Phone / Contact
+        let phone = (
           rowObj["contact"] ||
           rowObj["phone"] ||
           rowObj["contact number"] ||
@@ -98,76 +234,72 @@ export async function importCsvAction(
           rowObj["phone number"] ||
           ""
         ).trim() || null;
-
-        // 3. Resolve company name
-        const companyName = (
-          rowObj["company"] ||
-          rowObj["companyname"] ||
-          rowObj["company_name"] ||
-          rowObj["organization"] ||
-          ""
-        ).trim() || null;
-
-        // 4. Sanitize emails (Customer Email & Support Email)
-        let email = (
-          rowObj["customer email"] ||
-          rowObj["customer_email"] ||
-          rowObj["customeremail"] ||
-          rowObj["email"] ||
-          ""
-        ).trim() || null;
-        if (email && (!email.includes("@") || email.toLowerCase() === "n/a" || email === "-")) {
-          email = null;
+        if (phone && (phone === "—" || phone === "-" || phone.toLowerCase() === "n/a")) {
+          phone = null;
         }
 
-        let supportEmail = (
-          rowObj["support email"] ||
-          rowObj["support_email"] ||
-          rowObj["supportemail"] ||
-          ""
-        ).trim() || null;
-        if (supportEmail && (!supportEmail.includes("@") || supportEmail.toLowerCase() === "n/a" || supportEmail === "-")) {
-          supportEmail = null;
-        }
-
-        // 5. Extract Scraped metadata: Website, Company LinkedIn, Personal LinkedIn Profile
-        const website = (
+        // 4. Resolve LinkedIn & Website
+        const websiteRaw = (
           rowObj["website"] ||
           rowObj["company website"] ||
           rowObj["url"] ||
           ""
         ).trim() || null;
+        const website = websiteRaw && websiteRaw !== "—" && websiteRaw !== "-" ? websiteRaw : null;
 
-        const companyLinkedin = (
-          rowObj["linkedin"] ||
-          rowObj["company linkedin"] ||
-          rowObj["company_linkedin"] ||
-          ""
-        ).trim() || null;
-
-        const personalLinkedin = (
+        const colLinkedin1 = (
+          rowObj["ceo/founder linkedin"] ||
+          rowObj["ceo / founder linkedin"] ||
           rowObj["linkediprofile"] ||
           rowObj["linkedinprofile"] ||
           rowObj["linkedin_profile"] ||
           rowObj["personal linkedin"] ||
           rowObj["profile"] ||
           ""
-        ).trim() || null;
+        ).trim();
 
-        // Detect if row came from scraped format
+        const colLinkedin2 = (
+          rowObj["company linkedin"] ||
+          rowObj["company_linkedin"] ||
+          ""
+        ).trim();
+
+        const genericLinkedin = (rowObj["linkedin"] || "").trim();
+
+        let personalLinkedin: string | null = null;
+        let companyLinkedin: string | null = null;
+
+        [colLinkedin1, colLinkedin2, genericLinkedin].forEach((url) => {
+          if (!url || url === "—" || url === "-") return;
+          if (url.includes("/in/") || url.includes("keywords=")) {
+            if (!personalLinkedin) personalLinkedin = url;
+          } else if (url.includes("/company/")) {
+            if (!companyLinkedin) companyLinkedin = url;
+          } else if (!personalLinkedin) {
+            personalLinkedin = url;
+          }
+        });
+
+        // 5. Industry / Category
+        const industry = (rowObj["industry"] || rowObj["category"] || currentCategory || "").trim() || null;
+
+        // Detect scraped source
         const isScrapedRow = Boolean(
-          rowObj["name"] ||
-          rowObj["website"] ||
-          rowObj["linkedin"] ||
-          rowObj["linkediprofile"] ||
+          ownerCol ||
+          genericName ||
+          website ||
+          personalLinkedin ||
+          companyLinkedin ||
           rowObj["contact"]
         );
 
         // 6. Build rich structured discovery notes
         const notesList: string[] = [];
+        if (industry && industry !== "General") notesList.push(`Industry / Category: ${industry}`);
         if (website) notesList.push(`Website: ${website}`);
         if (companyLinkedin) notesList.push(`Company LinkedIn: ${companyLinkedin}`);
         if (personalLinkedin) notesList.push(`LinkedIn Profile: ${personalLinkedin}`);
+        if (supportEmail) notesList.push(`Support/Store Email: ${supportEmail}`);
 
         let description = (rowObj["description"] || "").trim() || null;
         if (notesList.length > 0) {
@@ -288,7 +420,7 @@ export async function importCsvAction(
         try {
           await prisma.lead.create({
             data: {
-              organizationId: session.organizationId,
+              organizationId,
               leadNumber: leadNum,
               firstName: rec.firstName,
               lastName: rec.lastName || null,
@@ -304,8 +436,8 @@ export async function importCsvAction(
               rating: rec.rating || "Warm",
               estimatedValue: Number(rec.estimatedValue || 0),
               currency: "INR",
-              ownerId: session.id,
-              createdById: session.id,
+              ownerId: userId || session.id,
+              createdById: userId || session.id,
               description: rec.description || null,
             },
           });
@@ -315,7 +447,7 @@ export async function importCsvAction(
 
         const newLead = {
           id: `lead_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-          organizationId: session.organizationId,
+          organizationId: organizationId || session.organizationId,
           leadNumber: leadNum,
           firstName: rec.firstName,
           lastName: rec.lastName || null,
@@ -332,8 +464,8 @@ export async function importCsvAction(
           rating: rec.rating || "Warm",
           estimatedValue: Number(rec.estimatedValue || 0),
           currency: "INR",
-          ownerId: session.id,
-          createdById: session.id,
+          ownerId: userId || session.id,
+          createdById: userId || session.id,
           ownerName: session.name || "Alex Sales",
           createdAt: now,
           description: rec.description || null,

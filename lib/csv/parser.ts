@@ -64,17 +64,29 @@ export function serializeCsv(
   return [headerLine, ...dataLines].join("\n");
 }
 
-export function getSampleCsvTemplate(entityType: "leads" | "companies" | "contacts"): {
+export function getSampleCsvTemplate(
+  entityType: "leads" | "companies" | "contacts" | "scraped_leads",
+  format?: "standard" | "scraped"
+): {
   filename: string;
   csv: string;
 } {
+  if (entityType === "scraped_leads" || format === "scraped") {
+    return {
+      filename: "scraped_leads_template.csv",
+      csv: `Name,Website,linkedin,company,linkediprofile,Email,Contact
+Jane Doe,https://techflux.in,https://linkedin.com/company/techflux,Techflux Solutions,https://linkedin.com/in/janedoe,jane.doe@techflux.in,+91 9876543210
+Robert Smith,https://acmecorp.com,https://linkedin.com/company/acmecorp,Acme Corporation,https://linkedin.com/in/robertsmith,robert@acmecorp.com,+1 555-0144`,
+    };
+  }
+
   switch (entityType) {
     case "leads":
       return {
-        filename: "scraped_leads_template.csv",
-        csv: `Name,Website,linkedin,company,linkediprofile,Email,Contact
-Jane Doe,https://techflux.in,https://linkedin.com/company/techflux,Techflux Solutions,https://linkedin.com/in/janedoe,jane.doe@techflux.in,+91 9876543210
-Robert Smith,https://acmecorp.com,https://linkedin.com/company/acmecorp,Acme Corporation,https://linkedin.com/in/robertsmith,robert@acmecorp.com,+1 555-0144`,
+        filename: "leads_import_template.csv",
+        csv: `First Name,Last Name,Company Name,Website,Email,Phone,Personal LinkedIn,Company LinkedIn,Job Title,Industry
+Jane,Doe,Techflux Solutions,https://techflux.in,jane.doe@techflux.in,+91 9876543210,https://linkedin.com/in/janedoe,https://linkedin.com/company/techflux,Founder & CEO,Information Technology
+Robert,Smith,Acme Corporation,https://acmecorp.com,robert@acmecorp.com,+1 555-0144,https://linkedin.com/in/robertsmith,https://linkedin.com/company/acmecorp,VP of Sales,Manufacturing`,
       };
     case "companies":
       return {

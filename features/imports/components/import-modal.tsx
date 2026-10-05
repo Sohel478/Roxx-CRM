@@ -140,20 +140,31 @@ export function ImportModal({
         {entityType === "leads" && (
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-slate-900">Scraped Leads Format:</span>
+              <span className="font-bold text-slate-900">Recommended Leads Format:</span>
               <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200">
-                Routed to &quot;Scraped&quot; stage
+                Routed to &quot;Scraped&quot; / &quot;New&quot; stage
               </span>
             </div>
             <div className="flex flex-wrap gap-1 font-mono text-[11px] text-slate-700">
-              {["Name", "Website", "linkedin", "company", "linkediprofile", "Email", "Contact"].map((col) => (
+              {[
+                "First Name",
+                "Last Name",
+                "Company Name",
+                "Website",
+                "Email",
+                "Phone",
+                "Personal LinkedIn",
+                "Company LinkedIn",
+                "Job Title",
+                "Industry",
+              ].map((col) => (
                 <span key={col} className="bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-semibold">
                   {col}
                 </span>
               ))}
             </div>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              <strong>Name</strong> auto-splits into First and Last name. <strong>Website</strong> and <strong>LinkedIn Profiles</strong> are attached to discovery notes. Standard CRM headers are also accepted.
+              <strong>First Name</strong> &amp; <strong>Last Name</strong> (or <strong>Owner first name</strong>), <strong>Company Name</strong> (or <strong>Name</strong>), <strong>Owner email</strong>, and personal/company <strong>LinkedIn</strong> are all automatically recognized, parsed, and mapped.
             </p>
           </div>
         )}
@@ -164,7 +175,7 @@ export function ImportModal({
             <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
             <span>
               {entityType === "leads"
-                ? "Download Scraped Leads template (Name, Website, linkedin, company...)"
+                ? "Download official Leads template (First Name, Last Name, Company Name...)"
                 : "Need sample format? Download our official CSV template."}
             </span>
           </div>
