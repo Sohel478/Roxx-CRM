@@ -219,11 +219,29 @@ export async function importCsvAction(
           rowObj["customer_email"] ||
           rowObj["customeremail"] ||
           rowObj["email"] ||
+          "";
+        const explicitSupportEmailRaw =
           rowObj["support email"] ||
           rowObj["support_email"] ||
+          rowObj["supportemail"] ||
+          rowObj["store email"] ||
+          rowObj["alternate email"] ||
+          rowObj["secondary email"] ||
           "";
 
-        const { primary: email, secondary: supportEmail } = cleanEmails(ownerEmailRaw, emailRaw);
+        let email: string | null = null;
+        let supportEmail: string | null = null;
+
+        if (explicitSupportEmailRaw) {
+          const directEmail = cleanEmails(ownerEmailRaw || emailRaw, null);
+          const directSupport = cleanEmails(explicitSupportEmailRaw, null);
+          email = directEmail.primary;
+          supportEmail = directSupport.primary;
+        } else {
+          const cleaned = cleanEmails(ownerEmailRaw, emailRaw);
+          email = cleaned.primary;
+          supportEmail = cleaned.secondary;
+        }
 
         // 3. Resolve Phone / Contact
         let phone = (
@@ -254,6 +272,7 @@ export async function importCsvAction(
           rowObj["linkedinprofile"] ||
           rowObj["linkedin_profile"] ||
           rowObj["personal linkedin"] ||
+          rowObj["customer linkedin"] ||
           rowObj["profile"] ||
           ""
         ).trim();
@@ -301,15 +320,27 @@ export async function importCsvAction(
         if (personalLinkedin) notesList.push(`LinkedIn Profile: ${personalLinkedin}`);
         if (supportEmail) notesList.push(`Support/Store Email: ${supportEmail}`);
 
-        let description = (rowObj["description"] || "").trim() || null;
+        const explicitDescription = (
+          rowObj["description"] ||
+          rowObj["notes"] ||
+          rowObj["details"] ||
+          ""
+        ).trim() || null;
+
+        let description = explicitDescription;
         if (notesList.length > 0) {
           const notesText = notesList.join("\n");
           description = description ? `${description}\n\n${notesText}` : notesText;
         }
 
         const defaultStatus = isScrapedRow || isTechflux ? "Scraped" : "New";
-        const status = (rowObj["status"] || "").trim() || defaultStatus;
-        const source = (rowObj["source"] || "").trim() || (isScrapedRow ? "Scraped Data" : "Website");
+        const status = (rowObj["status"] || rowObj["lead status"] || "").trim() || defaultStatus;
+        const source = (rowObj["source"] || rowObj["lead source"] || "").trim() || (isScrapedRow ? "Scraped Data" : "Website");
+
+        const rawRating = (rowObj["rating"] || rowObj["lead rating"] || "").trim().toLowerCase();
+        const rating = rawRating === "hot" ? "Hot" : rawRating === "cold" ? "Cold" : "Warm";
+
+        const currency = (rowObj["currency"] || "USD").trim().toUpperCase() || "USD";
 
         const parsed = leadImportRowSchema.safeParse({
           firstName,
@@ -318,13 +349,31 @@ export async function importCsvAction(
           supportEmail,
           phone,
           companyName,
-          jobTitle: (rowObj["jobtitle"] || rowObj["job_title"] || rowObj["title"] || "").trim() || null,
+          jobTitle: (
+            rowObj["job title"] ||
+            rowObj["jobtitle"] ||
+            rowObj["job_title"] ||
+            rowObj["title"] ||
+            rowObj["role"] ||
+            rowObj["designation"] ||
+            ""
+          ).trim() || null,
           companyLinkedin,
           customerLinkedin: personalLinkedin,
           source,
-          estimatedValue: rowObj["estimatedvalue"] || rowObj["estimated_value"] || rowObj["value"] || 0,
-          rating: rowObj["rating"] || "Warm",
+          estimatedValue:
+            rowObj["estimated value"] ||
+            rowObj["estimatedvalue"] ||
+            rowObj["estimated_value"] ||
+            rowObj["value"] ||
+            rowObj["deal value"] ||
+            rowObj["amount"] ||
+            0,
+          currency,
+          rating,
           status,
+          industry,
+          website,
           description,
         });
 
@@ -435,7 +484,7 @@ export async function importCsvAction(
               status: leadStatus,
               rating: rec.rating || "Warm",
               estimatedValue: Number(rec.estimatedValue || 0),
-              currency: "INR",
+              currency: rec.currency || "USD",
               ownerId: userId || session.id,
               createdById: userId || session.id,
               description: rec.description || null,
@@ -463,12 +512,14 @@ export async function importCsvAction(
           status: leadStatus,
           rating: rec.rating || "Warm",
           estimatedValue: Number(rec.estimatedValue || 0),
-          currency: "INR",
+          currency: rec.currency || "USD",
           ownerId: userId || session.id,
           createdById: userId || session.id,
           ownerName: session.name || "Alex Sales",
           createdAt: now,
           description: rec.description || null,
+          industry: rec.industry || null,
+          website: rec.website || null,
         };
         mockLeadsStore.unshift(newLead);
         importedCount++;

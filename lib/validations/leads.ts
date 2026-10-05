@@ -48,6 +48,8 @@ export interface LeadItem {
   estimatedValue: number;
   currency: string;
   description?: string | null;
+  industry?: string | null;
+  website?: string | null;
   ownerId?: string | null;
   ownerName: string | null;
   createdById?: string | null;

@@ -84,9 +84,9 @@ Robert Smith,https://acmecorp.com,https://linkedin.com/company/acmecorp,Acme Cor
     case "leads":
       return {
         filename: "leads_import_template.csv",
-        csv: `First Name,Last Name,Company Name,Website,Email,Phone,Personal LinkedIn,Company LinkedIn,Job Title,Industry
-Jane,Doe,Techflux Solutions,https://techflux.in,jane.doe@techflux.in,+91 9876543210,https://linkedin.com/in/janedoe,https://linkedin.com/company/techflux,Founder & CEO,Information Technology
-Robert,Smith,Acme Corporation,https://acmecorp.com,robert@acmecorp.com,+1 555-0144,https://linkedin.com/in/robertsmith,https://linkedin.com/company/acmecorp,VP of Sales,Manufacturing`,
+        csv: `First Name,Last Name,Company Name,Job Title,Email,Support Email,Phone,Website,Personal LinkedIn,Company LinkedIn,Industry,Source,Status,Rating,Estimated Value,Currency,Description
+Jane,Doe,Techflux Solutions,Founder & CEO,jane.doe@techflux.in,support@techflux.in,+91 9876543210,https://techflux.in,https://linkedin.com/in/janedoe,https://linkedin.com/company/techflux,Information Technology,Website,Qualified,Hot,50000,USD,"Enterprise CRM evaluation for 50+ seats; looking for Q4 deployment."
+Robert,Smith,Acme Corporation,VP of Operations,robert@acmecorp.com,help@acmecorp.com,+1 555-0144,https://acmecorp.com,https://linkedin.com/in/robertsmith,https://linkedin.com/company/acmecorp,Manufacturing,Referral,New,Warm,25000,USD,"Met at annual industry expo; requested platform demo and security review."`,
       };
     case "companies":
       return {

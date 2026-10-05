@@ -145,15 +145,52 @@ describe("Phase 9: Bulk CSV Parser & Serializer", () => {
       "First Name",
       "Last Name",
       "Company Name",
-      "Website",
+      "Job Title",
       "Email",
+      "Support Email",
       "Phone",
+      "Website",
       "Personal LinkedIn",
       "Company LinkedIn",
-      "Job Title",
       "Industry",
+      "Source",
+      "Status",
+      "Rating",
+      "Estimated Value",
+      "Currency",
+      "Description",
     ]);
     expect(matrix.length).toBeGreaterThanOrEqual(3); // Header + 2 sample leads
+  });
+
+  it("imports all 17 CRM lead columns from the template without data loss", async () => {
+    mockLeadsStore.length = 0;
+    const template = getSampleCsvTemplate("leads");
+    const result = await importCsvAction("leads", template.csv);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.importedCount).toBe(2);
+    expect(result.data?.failedCount).toBe(0);
+
+    const lead1 = mockLeadsStore.find((l) => l.fullName === "Jane Doe");
+    expect(lead1).toBeDefined();
+    expect(lead1?.firstName).toBe("Jane");
+    expect(lead1?.lastName).toBe("Doe");
+    expect(lead1?.companyName).toBe("Techflux Solutions");
+    expect(lead1?.jobTitle).toBe("Founder & CEO");
+    expect(lead1?.email).toBe("jane.doe@techflux.in");
+    expect(lead1?.supportEmail).toBe("support@techflux.in");
+    expect(lead1?.phone).toBe("+91 9876543210");
+    expect(lead1?.website).toBe("https://techflux.in");
+    expect(lead1?.customerLinkedin).toBe("https://linkedin.com/in/janedoe");
+    expect(lead1?.companyLinkedin).toBe("https://linkedin.com/company/techflux");
+    expect(lead1?.industry).toBe("Information Technology");
+    expect(lead1?.source).toBe("Website");
+    expect(lead1?.status).toBe("Qualified");
+    expect(lead1?.rating).toBe("Hot");
+    expect(lead1?.estimatedValue).toBe(50000);
+    expect(lead1?.currency).toBe("USD");
+    expect(lead1?.description).toContain("Enterprise CRM evaluation for 50+ seats");
   });
 
   it("generates correct sample CSV template for scraped leads format when requested", () => {

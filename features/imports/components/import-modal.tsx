@@ -150,13 +150,20 @@ export function ImportModal({
                 "First Name",
                 "Last Name",
                 "Company Name",
-                "Website",
+                "Job Title",
                 "Email",
+                "Support Email",
                 "Phone",
+                "Website",
                 "Personal LinkedIn",
                 "Company LinkedIn",
-                "Job Title",
                 "Industry",
+                "Source",
+                "Status",
+                "Rating",
+                "Estimated Value",
+                "Currency",
+                "Description",
               ].map((col) => (
                 <span key={col} className="bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs font-semibold">
                   {col}
@@ -164,7 +171,7 @@ export function ImportModal({
               ))}
             </div>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              <strong>First Name</strong> &amp; <strong>Last Name</strong> (or <strong>Owner first name</strong>), <strong>Company Name</strong> (or <strong>Name</strong>), <strong>Owner email</strong>, and personal/company <strong>LinkedIn</strong> are all automatically recognized, parsed, and mapped.
+              All 17 standard CRM lead fields are supported. Scraped formats (e.g. <strong>Owner first name</strong>, <strong>Name</strong> as company, <strong>Owner email</strong>, multi-category headers) are also automatically recognized and mapped.
             </p>
           </div>
         )}
@@ -175,7 +182,7 @@ export function ImportModal({
             <FileSpreadsheet className="w-4 h-4 text-blue-600 shrink-0" />
             <span>
               {entityType === "leads"
-                ? "Download official Leads template (First Name, Last Name, Company Name...)"
+                ? "Download official Leads template (all 17 columns: First & Last Name, Company, Job Title, Emails, Phone...)"
                 : "Need sample format? Download our official CSV template."}
             </span>
           </div>
