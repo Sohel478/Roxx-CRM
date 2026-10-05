@@ -1,21 +1,51 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 
-export async function GET() {
+let cachedDbResult: {
+  status: string;
+  latencyMs: number | null;
+  checkedAt: number;
+} | null = null;
+
+const DB_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function GET(request: Request) {
   const startTime = Date.now();
-  let dbStatus = "unknown";
+  let dbStatus = "connected";
   let dbLatencyMs: number | null = null;
 
-  try {
-    const dbStart = Date.now();
-    // Simple query to verify database connectivity
-    await prisma.$queryRaw`SELECT 1`;
-    dbLatencyMs = Date.now() - dbStart;
-    dbStatus = "connected";
-  } catch {
-    dbStatus = "disconnected";
-    // In local development or during builds before DB credentials are provided,
-    // we record the error rather than throwing an unhandled exception.
+  const url = new URL(request.url);
+  const forceDbCheck =
+    url.searchParams.get("checkDb") === "1" ||
+    url.searchParams.get("deep") === "true";
+
+  const now = Date.now();
+  const isCacheValid =
+    cachedDbResult && now - cachedDbResult.checkedAt < DB_HEALTH_CACHE_TTL_MS;
+
+  if (forceDbCheck || !isCacheValid) {
+    try {
+      const dbStart = Date.now();
+      // Verify database connectivity
+      await prisma.$queryRaw`SELECT 1`;
+      dbLatencyMs = Date.now() - dbStart;
+      dbStatus = "connected";
+      cachedDbResult = {
+        status: dbStatus,
+        latencyMs: dbLatencyMs,
+        checkedAt: now,
+      };
+    } catch {
+      dbStatus = "disconnected";
+      cachedDbResult = {
+        status: dbStatus,
+        latencyMs: null,
+        checkedAt: now,
+      };
+    }
+  } else {
+    dbStatus = cachedDbResult!.status;
+    dbLatencyMs = cachedDbResult!.latencyMs;
   }
 
   const isHealthy = dbStatus === "connected" || !process.env.DATABASE_URL;

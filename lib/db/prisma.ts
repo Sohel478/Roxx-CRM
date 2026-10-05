@@ -42,5 +42,6 @@ export const prisma =
         : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Ensure singleton reuse in both development and production serverless environments
+globalForPrisma.prisma = prisma;
 

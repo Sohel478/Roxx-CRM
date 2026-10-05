@@ -111,12 +111,72 @@ export function NotificationDropdown() {
     }
   };
 
+  const lastFetchTimeRef = useRef<number>(Date.now());
+  const lastUserActivityRef = useRef<number>(Date.now());
+
   useEffect(() => {
     fetchNotifications();
+    lastFetchTimeRef.current = Date.now();
 
-    // Auto-refresh every 45 seconds to catch new activities
-    const interval = setInterval(fetchNotifications, 45000);
-    return () => clearInterval(interval);
+    // Track user activity to pause polling if user is idle/away from desk
+    const handleUserActivity = () => {
+      lastUserActivityRef.current = Date.now();
+    };
+
+    window.addEventListener("mousemove", handleUserActivity, { passive: true });
+    window.addEventListener("keydown", handleUserActivity, { passive: true });
+    window.addEventListener("scroll", handleUserActivity, { passive: true });
+
+    // Poll every 5 minutes (300,000 ms) instead of 45 seconds to let Neon Postgres auto-suspend
+    const POLL_INTERVAL_MS = 5 * 60 * 1000;
+    const MAX_IDLE_MS = 10 * 60 * 1000; // 10 minutes of inactivity pauses polling
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        const isVisible = typeof document !== "undefined" && document.visibilityState === "visible";
+        const isUserActive = Date.now() - lastUserActivityRef.current < MAX_IDLE_MS;
+
+        // Only query the database if the user is actively viewing and interacting with the CRM
+        if (isVisible && isUserActive) {
+          fetchNotifications();
+          lastFetchTimeRef.current = Date.now();
+        }
+      }, POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        lastUserActivityRef.current = Date.now();
+        // If tab was backgrounded and >3 minutes have passed since last fetch, refresh once
+        if (Date.now() - lastFetchTimeRef.current > 3 * 60 * 1000) {
+          fetchNotifications();
+          lastFetchTimeRef.current = Date.now();
+        }
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    startPolling();
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("mousemove", handleUserActivity);
+      window.removeEventListener("keydown", handleUserActivity);
+      window.removeEventListener("scroll", handleUserActivity);
+    };
   }, []);
 
   // Close on click outside or Escape

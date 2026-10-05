@@ -9,7 +9,6 @@ import {
   NotificationItem,
   NotificationType,
 } from "@/lib/validations/notifications";
-import { ensureDatabaseSchema } from "@/lib/db/migrate";
 
 /**
  * Fetch notifications for the currently logged-in user in their organization.
@@ -24,8 +23,6 @@ export async function getNotificationsAction(params?: {
   const limit = params?.limit ?? 30;
 
   try {
-    await ensureDatabaseSchema();
-
     const userCondition = {
       OR: [
         { userId: currentUserId },
@@ -43,7 +40,7 @@ export async function getNotificationsAction(params?: {
       where.isRead = false;
     }
 
-    const [rawNotifications, unreadCount, totalCount] = await Promise.all([
+    const [rawNotifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({
         where,
         orderBy: { createdAt: "desc" },
@@ -56,13 +53,20 @@ export async function getNotificationsAction(params?: {
           ...userCondition,
         },
       }),
-      prisma.notification.count({
+    ]);
+
+    // Fast calculation of totalCount without redundant table scan when under limit
+    let totalCount = rawNotifications.length;
+    if (params?.unreadOnly) {
+      totalCount = unreadCount;
+    } else if (rawNotifications.length >= limit) {
+      totalCount = await prisma.notification.count({
         where: {
           organizationId,
           ...userCondition,
         },
-      }),
-    ]);
+      });
+    }
 
     const notifications: NotificationItem[] = rawNotifications.map((n) => ({
       id: n.id,

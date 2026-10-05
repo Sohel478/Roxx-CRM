@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
 import { SessionUser } from "./session";
-import { ensureDatabaseSchema } from "@/lib/db/migrate";
+
+interface CachedTenantContext {
+  organizationId: string;
+  userId: string | null;
+  expiresAt: number;
+}
+
+// In-memory cache to prevent repeated database queries on every user action
+const tenantCache = new Map<string, CachedTenantContext>();
 
 /**
  * Resolves the real database organizationId and userId for a given session.
@@ -11,6 +19,17 @@ export async function resolveTenantContext(session: SessionUser): Promise<{
   organizationId: string;
   userId: string | null;
 }> {
+  const cacheKey = `${session.organizationId}:${session.id}`;
+  const now = Date.now();
+  const cached = tenantCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    return {
+      organizationId: cached.organizationId,
+      userId: cached.userId,
+    };
+  }
+
   try {
     const isMock =
       !process.env.DATABASE_URL ||
@@ -22,8 +41,6 @@ export async function resolveTenantContext(session: SessionUser): Promise<{
         userId: session.id,
       };
     }
-
-    await ensureDatabaseSchema();
 
     // 1. Resolve Organization
     let org = await prisma.organization.findUnique({
@@ -70,10 +87,17 @@ export async function resolveTenantContext(session: SessionUser): Promise<{
       });
     }
 
-    return {
+    const resolved = {
       organizationId,
       userId: user ? user.id : null,
     };
+
+    tenantCache.set(cacheKey, {
+      ...resolved,
+      expiresAt: now + 5 * 60 * 1000, // 5 minutes TTL
+    });
+
+    return resolved;
   } catch (err) {
     console.error("[resolveTenantContext] Error resolving tenant context:", err);
     return {
