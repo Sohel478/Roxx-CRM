@@ -25,15 +25,17 @@ interface CreateBatchModalProps {
   initialSelectedLeadIds?: string[];
 }
 
+const EMPTY_LEAD_IDS: string[] = [];
+
 export function CreateBatchModal({
   isOpen,
   onClose,
   onBatchCreated,
-  initialSelectedLeadIds = [],
+  initialSelectedLeadIds = EMPTY_LEAD_IDS,
 }: CreateBatchModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedLeadIds);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [leads, setLeads] = useState<
     {
@@ -50,29 +52,41 @@ export function CreateBatchModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync initialSelectedLeadIds when modal opens
+  // Sync state and load leads ONLY when modal opens
   useEffect(() => {
-    if (isOpen) {
-      if (initialSelectedLeadIds.length > 0) {
-        setSelectedIds(initialSelectedLeadIds);
-      }
-      fetchLeads();
-    }
-  }, [isOpen, initialSelectedLeadIds]);
+    if (!isOpen) return;
 
-  const fetchLeads = async () => {
-    setIsLoadingLeads(true);
-    try {
-      const res = await getSelectableLeadsForBatchAction({ limit: 400 });
-      if (res.success && res.data) {
-        setLeads(res.data);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch leads for batch picker:", err);
-    } finally {
-      setIsLoadingLeads(false);
+    // Initialize selection
+    if (initialSelectedLeadIds && initialSelectedLeadIds.length > 0) {
+      setSelectedIds(initialSelectedLeadIds);
+    } else {
+      setSelectedIds([]);
     }
-  };
+    setError(null);
+
+    let isMounted = true;
+    setIsLoadingLeads(true);
+
+    getSelectableLeadsForBatchAction({ limit: 400 })
+      .then((res) => {
+        if (isMounted && res.success && res.data) {
+          setLeads(res.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to fetch leads for batch picker:", err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingLeads(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

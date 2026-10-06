@@ -41,9 +41,10 @@ export default function MarketingBatchDetailPage() {
     try {
       const res = await getMarketingBatchByIdAction(batchId);
       if (res.success && res.data) {
-        setBatch(res.data);
-        if (res.data.campaigns.length > 0 && !expandedCampaignId) {
-          setExpandedCampaignId(res.data.campaigns[0].id);
+        const batchData = res.data;
+        setBatch(batchData);
+        if (batchData.campaigns.length > 0) {
+          setExpandedCampaignId((prev) => prev || batchData.campaigns[0].id);
         }
       } else {
         setError(res.error || "Batch not found");
@@ -53,7 +54,7 @@ export default function MarketingBatchDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [batchId, expandedCampaignId]);
+  }, [batchId]);
 
   useEffect(() => {
     if (batchId) {
