@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockSmtpStore, mockImapStore, mockAuditLogsStore, MockSmtpConfig, MockImapConfig } from "@/lib/db/mock-store";
+import { mockSmtpStore, mockImapStore, mockAuditLogsStore, MockSmtpConfig, MockImapConfig, mockLeadsStore, mockOpportunitiesStore } from "@/lib/db/mock-store";
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/crypto/encryption";
 import * as mailer from "@/lib/email/mailer";
 import { verifyImap } from "@/lib/email/imap-client";
+import { applyMergeTags } from "@/lib/templates/email-templates";
 import {
   smtpConfigSchema,
   SmtpConfigInput,
@@ -488,6 +489,68 @@ export async function sendLeadEmailAction(
       };
     }
 
+    // Resolve entity details for merge tag interpolation if present
+    let targetFirstName = "";
+    let targetLastName = "";
+    let targetCompanyName = "";
+    let targetDealName = "";
+    let targetDealAmount: number | string | undefined = undefined;
+
+    if (entityType === "lead" && entityId) {
+      try {
+        const lead = await prisma.lead.findUnique({ where: { id: entityId } });
+        if (lead) {
+          targetFirstName = (lead.firstName || "").trim();
+          targetLastName = (lead.lastName || "").trim();
+          targetCompanyName = lead.companyName || "";
+        }
+      } catch {
+        const mockLead = mockLeadsStore.find((l) => l.id === entityId);
+        if (mockLead) {
+          targetFirstName = (mockLead.firstName || "").trim() || (mockLead.fullName ? mockLead.fullName.trim().split(/\s+/)[0] : "");
+          targetLastName = (mockLead.lastName || "").trim() || (mockLead.fullName ? mockLead.fullName.trim().split(/\s+/).slice(1).join(" ") : "");
+          targetCompanyName = mockLead.companyName || "";
+        }
+      }
+    } else if (entityType === "opportunity" && entityId) {
+      try {
+        const opp = await prisma.opportunity.findUnique({ where: { id: entityId } });
+        if (opp) {
+          targetDealName = opp.name;
+          targetDealAmount = opp.amount ? Number(opp.amount) : undefined;
+        }
+      } catch {
+        const mockOpp = mockOpportunitiesStore.find((o) => o.id === entityId);
+        if (mockOpp) {
+          targetDealName = mockOpp.name;
+          targetDealAmount = mockOpp.amount;
+        }
+      }
+    }
+
+    const fromSenderName = config.fromName || session.name || "Sales Team";
+    const fromSenderEmail = config.fromEmail || config.username;
+
+    const personalizedSubject = applyMergeTags(subject, {
+      firstName: targetFirstName || "there",
+      lastName: targetLastName || "",
+      companyName: targetCompanyName || "",
+      dealName: targetDealName || "",
+      dealAmount: targetDealAmount,
+      repName: fromSenderName,
+      email: to,
+    });
+
+    const personalizedBody = applyMergeTags(body, {
+      firstName: targetFirstName || "there",
+      lastName: targetLastName || "",
+      companyName: targetCompanyName || "",
+      dealName: targetDealName || "",
+      dealAmount: targetDealAmount,
+      repName: fromSenderName,
+      email: to,
+    });
+
     // Send email via nodemailer
     const sendRes = await mailer.sendSmtpEmail(
       {
@@ -499,10 +562,10 @@ export async function sendLeadEmailAction(
       },
       {
         to,
-        fromName: config.fromName || session.name,
-        fromEmail: config.fromEmail || config.username,
-        subject,
-        body,
+        fromName: fromSenderName,
+        fromEmail: fromSenderEmail,
+        subject: personalizedSubject,
+        body: personalizedBody,
       }
     );
 
@@ -517,8 +580,8 @@ export async function sendLeadEmailAction(
     try {
       await logActivityAction({
         type: "EMAIL",
-        subject: subject.trim(),
-        description: `To: ${to}\n\n${body.trim()}`,
+        subject: personalizedSubject.trim(),
+        description: `To: ${to}\n\n${personalizedBody.trim()}`,
         activityAt: new Date().toISOString(),
         leadId: entityType === "lead" ? entityId : undefined,
         opportunityId: entityType === "opportunity" ? entityId : undefined,

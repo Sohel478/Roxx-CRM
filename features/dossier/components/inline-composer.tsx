@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useRef } from "react";
 import {
   FileText,
   Mail,
@@ -84,6 +84,25 @@ export function InlineComposer({
   const [taskDueDate, setTaskDueDate] = useState(
     new Date(Date.now() + 86400000).toISOString().split("T")[0]
   );
+
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const insertMergeTag = (tag: string) => {
+    const formattedTag = `{{${tag}}}`;
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart ?? description.length;
+      const end = textarea.selectionEnd ?? description.length;
+      const nextVal = description.slice(0, start) + formattedTag + description.slice(end);
+      setDescription(nextVal);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + formattedTag.length, start + formattedTag.length);
+      }, 0);
+      return;
+    }
+    setDescription((prev) => `${prev} ${formattedTag}`);
+  };
 
   const handleSelectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -517,8 +536,31 @@ export function InlineComposer({
         )}
 
         {/* Text Area Description */}
-        <div>
+        <div className="space-y-1.5">
+          {activeTab === "EMAIL" && (
+            <div className="flex flex-wrap items-center gap-1.5 pb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                Tags:
+              </span>
+              {[
+                { label: "First Name", tag: "first_name" },
+                { label: "Company", tag: "company_name" },
+                { label: "Rep Name", tag: "rep_name" },
+              ].map((item) => (
+                <button
+                  key={item.tag}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertMergeTag(item.tag)}
+                  className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 border border-slate-200 text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                >
+                  +{`{{${item.tag}}}`}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
+            ref={textareaRef}
             rows={activeTab === "EMAIL" ? 5 : 3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}

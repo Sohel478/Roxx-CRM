@@ -679,7 +679,22 @@ export async function sendBatchEmailAction(
     // Dispatch loop
     for (const lead of leads) {
       const recipientEmail = lead.email?.trim() || lead.supportEmail?.trim();
-      const leadName = `${lead.firstName} ${lead.lastName || ""}`.trim();
+
+      // Safely resolve recipient names with fallback to fullName
+      let resolvedFirstName = (lead.firstName || "").trim();
+      let resolvedLastName = (lead.lastName || "").trim();
+
+      if (!resolvedFirstName && lead.fullName) {
+        const parts = lead.fullName.trim().split(/\s+/).filter(Boolean);
+        if (parts.length > 0) {
+          resolvedFirstName = parts[0];
+          if (!resolvedLastName && parts.length > 1) {
+            resolvedLastName = parts.slice(1).join(" ");
+          }
+        }
+      }
+
+      const leadName = `${resolvedFirstName} ${resolvedLastName}`.trim() || lead.companyName || "Valued Lead";
 
       if (!recipientEmail || !recipientEmail.includes("@")) {
         recipientLogs.push({
@@ -697,16 +712,16 @@ export async function sendBatchEmailAction(
 
       // Personalize subject and body using merge tags
       const personalizedSubject = applyMergeTags(subject, {
-        firstName: lead.firstName,
-        lastName: lead.lastName || "",
+        firstName: resolvedFirstName || "there",
+        lastName: resolvedLastName || "",
         companyName: lead.companyName || "",
         repName: fromSenderName,
         email: recipientEmail,
       });
 
       const personalizedBody = applyMergeTags(body, {
-        firstName: lead.firstName,
-        lastName: lead.lastName || "",
+        firstName: resolvedFirstName || "there",
+        lastName: resolvedLastName || "",
         companyName: lead.companyName || "",
         repName: fromSenderName,
         email: recipientEmail,

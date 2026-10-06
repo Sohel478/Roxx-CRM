@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X,
   Mail,
@@ -19,7 +19,10 @@ import {
   SALES_EMAIL_TEMPLATES,
   applyMergeTags,
 } from "@/lib/templates/email-templates";
-import { sendBatchEmailAction } from "@/actions/marketing";
+import {
+  sendBatchEmailAction,
+  getMarketingBatchByIdAction,
+} from "@/actions/marketing";
 import type { MarketingBatchItem } from "@/lib/validations/marketing";
 
 interface SendBatchEmailModalProps {
@@ -55,6 +58,42 @@ export function SendBatchEmailModal({
     message: string;
   } | null>(null);
 
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const subjectInputRef = useRef<HTMLInputElement | null>(null);
+  const [lastActiveField, setLastActiveField] = useState<"subject" | "body">("body");
+
+  // Sample lead state for dynamic preview
+  const [leadPreview, setLeadPreview] = useState<{
+    firstName: string;
+    lastName?: string | null;
+    companyName?: string | null;
+    email?: string | null;
+  } | null>(sampleLead || null);
+
+  useEffect(() => {
+    if (sampleLead) {
+      setLeadPreview(sampleLead);
+    } else if (isOpen && batch.id) {
+      getMarketingBatchByIdAction(batch.id)
+        .then((res) => {
+          if (res.success && res.data && res.data.leads && res.data.leads.length > 0) {
+            const first = res.data.leads[0];
+            setLeadPreview({
+              firstName:
+                (first.firstName || "").trim() ||
+                (first.fullName ? first.fullName.trim().split(/\s+/)[0] : "Sarah"),
+              lastName: first.lastName || null,
+              companyName: first.companyName || "Apex Retail Corp",
+              email: first.email || "sarah@apexretail.com",
+            });
+          }
+        })
+        .catch(() => {
+          // Keep default fallback
+        });
+    }
+  }, [isOpen, batch.id, sampleLead]);
+
   if (!isOpen) return null;
 
   const handleSelectTemplate = (templateId: string) => {
@@ -66,25 +105,60 @@ export function SendBatchEmailModal({
   };
 
   const insertMergeTag = (tag: string) => {
-    setBody((prev) => `${prev} {{${tag}}}`);
+    const formattedTag = `{{${tag}}}`;
+
+    if (lastActiveField === "subject" && subjectInputRef.current) {
+      const input = subjectInputRef.current;
+      const start = input.selectionStart ?? subject.length;
+      const end = input.selectionEnd ?? subject.length;
+      const nextVal = subject.slice(0, start) + formattedTag + subject.slice(end);
+      setSubject(nextVal);
+      setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(start + formattedTag.length, start + formattedTag.length);
+      }, 0);
+      return;
+    }
+
+    if (bodyTextareaRef.current) {
+      const textarea = bodyTextareaRef.current;
+      const start = textarea.selectionStart ?? body.length;
+      const end = textarea.selectionEnd ?? body.length;
+      const nextVal = body.slice(0, start) + formattedTag + body.slice(end);
+      setBody(nextVal);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + formattedTag.length, start + formattedTag.length);
+      }, 0);
+      return;
+    }
+
+    setBody((prev) => `${prev} ${formattedTag}`);
+  };
+
+  const resolvedPreviewLead = leadPreview || {
+    firstName: "Sarah",
+    lastName: "Jenkins",
+    companyName: "Apex Retail Corp",
+    email: "sarah@apexretail.com",
   };
 
   const previewSubject = applyMergeTags(subject || "(No Subject)", {
-    firstName: sampleLead?.firstName || "Sarah",
-    lastName: sampleLead?.lastName || "Jenkins",
-    companyName: sampleLead?.companyName || "Apex Retail Corp",
+    firstName: resolvedPreviewLead.firstName,
+    lastName: resolvedPreviewLead.lastName,
+    companyName: resolvedPreviewLead.companyName,
     repName: senderName || "Sales Rep",
-    email: sampleLead?.email || "sarah@apexretail.com",
+    email: resolvedPreviewLead.email || "sarah@apexretail.com",
   });
 
   const previewBody = applyMergeTags(
     body || "Hello {{first_name}},\n\nYour message content will appear here.",
     {
-      firstName: sampleLead?.firstName || "Sarah",
-      lastName: sampleLead?.lastName || "Jenkins",
-      companyName: sampleLead?.companyName || "Apex Retail Corp",
+      firstName: resolvedPreviewLead.firstName,
+      lastName: resolvedPreviewLead.lastName,
+      companyName: resolvedPreviewLead.companyName,
       repName: senderName || "Sales Rep",
-      email: sampleLead?.email || "sarah@apexretail.com",
+      email: resolvedPreviewLead.email || "sarah@apexretail.com",
     }
   );
 
@@ -269,9 +343,11 @@ export function SendBatchEmailModal({
                       <span className="text-[11px] text-slate-400">Supports merge tags</span>
                     </div>
                     <input
+                      ref={subjectInputRef}
                       type="text"
                       placeholder="e.g. Special Holiday Greetings for {{company_name}}!"
                       value={subject}
+                      onFocus={() => setLastActiveField("subject")}
                       onChange={(e) => setSubject(e.target.value)}
                       className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium text-slate-900"
                       required
@@ -281,7 +357,7 @@ export function SendBatchEmailModal({
                   {/* Merge Tag Pills */}
                   <div>
                     <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                      Insert Merge Tag
+                      Insert Merge Tag (Click to insert at cursor)
                     </span>
                     <div className="flex flex-wrap gap-1.5">
                       {[
@@ -294,8 +370,9 @@ export function SendBatchEmailModal({
                         <button
                           key={item.tag}
                           type="button"
+                          onMouseDown={(e) => e.preventDefault()}
                           onClick={() => insertMergeTag(item.tag)}
-                          className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-700 border border-slate-200 text-[11px] font-mono px-2 py-0.5 rounded-md transition-colors"
+                          className="bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-700 border border-slate-200 text-[11px] font-mono px-2 py-0.5 rounded-md transition-colors cursor-pointer"
                         >
                           +{`{{${item.tag}}}`}
                         </button>
@@ -309,13 +386,25 @@ export function SendBatchEmailModal({
                       Email Body <span className="text-red-500">*</span>
                     </label>
                     <textarea
+                      ref={bodyTextareaRef}
                       rows={7}
                       placeholder={`Hi {{first_name}},\n\nHappy New Year from our team! We wanted to thank you for connecting with us...\n\nBest regards,\n{{rep_name}}`}
                       value={body}
+                      onFocus={() => setLastActiveField("body")}
                       onChange={(e) => setBody(e.target.value)}
                       className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800 font-normal leading-relaxed resize-y"
                       required
                     />
+
+                    {/* Live Merge Tag Detection Indicator */}
+                    {Boolean(body.includes("{") || subject.includes("{")) && (
+                      <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-blue-50/70 border border-blue-200/80 rounded-xl text-[11px] text-blue-700">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>
+                          Dynamic tags detected. These will automatically personalize for each recipient (e.g. <strong>{resolvedPreviewLead.firstName}</strong> from <strong>{resolvedPreviewLead.companyName}</strong>). Switch to <strong>Live Preview</strong> to inspect.
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Advanced Sender Options */}
@@ -354,7 +443,7 @@ export function SendBatchEmailModal({
                     <span>
                       Previewing email as it will be rendered for sample recipient:{" "}
                       <strong>
-                        {sampleLead?.firstName || "Sarah"} ({sampleLead?.companyName || "Apex Retail Corp"})
+                        {resolvedPreviewLead.firstName} ({resolvedPreviewLead.companyName})
                       </strong>
                     </span>
                   </div>
@@ -365,7 +454,7 @@ export function SendBatchEmailModal({
                       <div>
                         <span className="text-slate-400 font-medium">To:</span>{" "}
                         <span className="text-slate-800 font-mono">
-                          {sampleLead?.email || "sarah@apexretail.com"}
+                          {resolvedPreviewLead.email}
                         </span>
                       </div>
                       <div>

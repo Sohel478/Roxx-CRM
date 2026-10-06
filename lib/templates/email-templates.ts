@@ -68,19 +68,22 @@ Best,
 ];
 
 export interface MergeContext {
-  firstName?: string;
-  lastName?: string;
-  companyName?: string;
-  dealName?: string;
-  dealAmount?: number | string;
-  repName?: string;
-  email?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  companyName?: string | null;
+  dealName?: string | null;
+  dealAmount?: number | string | null;
+  repName?: string | null;
+  email?: string | null;
 }
 
 /**
- * Replace placeholders like {{first_name}}, {{company_name}}, etc. with context values
+ * Replace placeholders like {{first_name}}, {{first_name}, {first_name}, {{company_name}}, etc.
+ * with context values. Supports flexible brackets, case insensitivity, camelCase, snake_case,
+ * and user typos (such as missing closing braces or single curly braces).
  */
 export function applyMergeTags(text: string, context: MergeContext): string {
+  if (!text) return "";
   let result = text;
 
   const formattedAmount =
@@ -88,13 +91,61 @@ export function applyMergeTags(text: string, context: MergeContext): string {
       ? `$${context.dealAmount.toLocaleString()}`
       : context.dealAmount || "$0";
 
-  result = result.replace(/\{\{first_name\}\}/gi, context.firstName || "there");
-  result = result.replace(/\{\{last_name\}\}/gi, context.lastName || "");
-  result = result.replace(/\{\{company_name\}\}/gi, context.companyName || "your company");
-  result = result.replace(/\{\{deal_name\}\}/gi, context.dealName || "our discussion");
-  result = result.replace(/\{\{deal_amount\}\}/gi, formattedAmount);
-  result = result.replace(/\{\{rep_name\}\}/gi, context.repName || "Account Representative");
-  result = result.replace(/\{\{email\}\}/gi, context.email || "");
+  const firstNameVal = (context.firstName || "").trim() || "there";
+  const lastNameVal = (context.lastName || "").trim();
+  const companyNameVal = (context.companyName || "").trim() || "your company";
+  const repNameVal = (context.repName || "").trim() || "Account Representative";
+  const emailVal = (context.email || "").trim();
+  const dealNameVal = (context.dealName || "").trim() || "our discussion";
+
+  // 1. Last Name (replace before name to avoid partial matching)
+  // Supports {{last_name}}, {{last_name}, {last_name}, {{lastname}}, {{lastName}}, {{last name}}, {{surname}}
+  result = result.replace(
+    /\{{1,2}\s*(?:last[-_ ]?name|lastname|surname|family[-_ ]?name)\s*\}*/gi,
+    lastNameVal
+  );
+
+  // 2. Company Name
+  // Supports {{company_name}}, {{company_name}, {company_name}, {{company}}, {company}, {{companyName}}, {{business_name}}
+  result = result.replace(
+    /\{{1,2}\s*(?:company[-_ ]?name|company|organization[-_ ]?name|org[-_ ]?name|business[-_ ]?name|business|account[-_ ]?name)\s*\}*/gi,
+    companyNameVal
+  );
+
+  // 3. First Name / Lead Name
+  // Supports {{first_name}}, {{first_name}, {first_name}, {{firstname}}, {{firstName}}, {{first name}}, {{lead_name}}, {{name}}
+  result = result.replace(
+    /\{{1,2}\s*(?:first[-_ ]?name|firstname|lead[-_ ]?first[-_ ]?name|lead[-_ ]?name|client[-_ ]?name|contact[-_ ]?name|name)\s*\}*/gi,
+    firstNameVal
+  );
+
+  // 4. Sales Rep / Sender Name
+  // Supports {{rep_name}}, {{rep_name}, {rep_name}, {{sender_name}}, {{my_name}}, {{owner_name}}, {{agent_name}}, {{repName}}
+  result = result.replace(
+    /\{{1,2}\s*(?:rep[-_ ]?name|rep|sender[-_ ]?name|sender|my[-_ ]?name|owner[-_ ]?name|agent[-_ ]?name|sales[-_ ]?rep)\s*\}*/gi,
+    repNameVal
+  );
+
+  // 5. Lead Email
+  // Supports {{email}}, {{email}, {email}, {{lead_email}}, {{client_email}}, {{recipient_email}}
+  result = result.replace(
+    /\{{1,2}\s*(?:email|lead[-_ ]?email|client[-_ ]?email|recipient[-_ ]?email)\s*\}*/gi,
+    emailVal
+  );
+
+  // 6. Deal Amount (process before deal name to prevent {{deal}} capturing {{deal_amount}})
+  // Supports {{deal_amount}}, {{deal_amount}, {deal_amount}, {{amount}}, {{value}}
+  result = result.replace(
+    /\{{1,2}\s*(?:deal[-_ ]?amount|deal[-_ ]?value|deal_amount|amount|value)\s*\}*/gi,
+    formattedAmount
+  );
+
+  // 7. Deal Name
+  // Supports {{deal_name}}, {{deal_name}, {deal_name}, {{deal}}, {{opportunity}}
+  result = result.replace(
+    /\{{1,2}\s*(?:deal[-_ ]?name|deal|opportunity[-_ ]?name|opportunity)\s*\}*/gi,
+    dealNameVal
+  );
 
   return result;
 }

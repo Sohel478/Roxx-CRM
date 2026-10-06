@@ -40,6 +40,32 @@ describe("Advanced CRM Features & Engines", () => {
       );
     });
 
+    it("handles typos such as missing closing braces or single brackets gracefully", () => {
+      // The exact pattern reported by the user: "Hello {{first_name},"
+      const userEmailText = "Hello {{first_name},\n\ntest 124\n\nregards";
+      const result = applyMergeTags(userEmailText, { firstName: "Kristi" });
+      expect(result).toBe("Hello Kristi,\n\ntest 124\n\nregards");
+
+      // Single brackets
+      expect(applyMergeTags("Hi {first_name}, welcome!", { firstName: "John" })).toBe(
+        "Hi John, welcome!"
+      );
+
+      // Single bracket at end or missing brace
+      expect(applyMergeTags("Hello {first_name}}, thanks!", { firstName: "Alice" })).toBe(
+        "Hello Alice, thanks!"
+      );
+
+      // Varied casing and spacing
+      expect(applyMergeTags("Dear {{firstName}} from {{company}}", { firstName: "Bob", companyName: "Acme" })).toBe(
+        "Dear Bob from Acme"
+      );
+      expect(applyMergeTags("Hey {{first name}} - {{rep_name}} here", { firstName: "Carol", repName: "Dave" })).toBe(
+        "Hey Carol - Dave here"
+      );
+      expect(applyMergeTags("Hi {{ name }}", { firstName: "Eva" })).toBe("Hi Eva");
+    });
+
     it("verifies all predefined sales templates are structurally valid", () => {
       expect(SALES_EMAIL_TEMPLATES.length).toBeGreaterThanOrEqual(4);
 
