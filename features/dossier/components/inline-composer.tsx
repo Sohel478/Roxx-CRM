@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useTransition, useRef, useMemo } from "react";
 import {
   FileText,
   Mail,
@@ -14,9 +14,12 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { logActivityAction } from "@/actions/activities";
 import { createTaskAction } from "@/actions/tasks";
 import { getSmtpConfigAction, sendLeadEmailAction } from "@/actions/email";
@@ -26,6 +29,7 @@ import {
   MergeContext,
 } from "@/lib/templates/email-templates";
 import { ActivityType } from "@/lib/validations/activities";
+import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
 
 interface InlineComposerProps {
   entityId: string;
@@ -62,18 +66,31 @@ export function InlineComposer({
   // Email Template Selection
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
-  // SMTP Status
+  // SMTP Status & Deliverability
   const [isSmtpConfigured, setIsSmtpConfigured] = useState(false);
   const [smtpHost, setSmtpHost] = useState("");
+  const [smtpFromEmail, setSmtpFromEmail] = useState("");
+  const [smtpUsername, setSmtpUsername] = useState("");
 
   useEffect(() => {
     getSmtpConfigAction().then((res) => {
       if (res.success && res.data) {
         setIsSmtpConfigured(res.data.isConfigured);
         setSmtpHost(res.data.host);
+        setSmtpFromEmail(res.data.fromEmail || "");
+        setSmtpUsername(res.data.username || "");
       }
     });
   }, []);
+
+  const deliverability = useMemo(() => {
+    return analyzeEmailDeliverability({
+      subject,
+      body: description,
+      fromEmail: smtpFromEmail || undefined,
+      smtpUsername: smtpUsername || undefined,
+    });
+  }, [subject, description, smtpFromEmail, smtpUsername]);
 
   // Call / Meeting fields
   const [callOutcome, setCallOutcome] = useState("Connected");
@@ -577,6 +594,77 @@ export function InlineComposer({
             }
             className="w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-y"
           />
+
+          {/* Live Deliverability & Anti-Spam Score Card */}
+          {activeTab === "EMAIL" && Boolean(subject.trim() || description.trim()) && (
+            <div
+              className={`p-3 rounded-xl border text-xs transition-all ${
+                deliverability.rating === "PRIMARY_INBOX"
+                  ? "bg-emerald-50/80 border-emerald-200 text-emerald-950"
+                  : deliverability.rating === "NEEDS_IMPROVEMENT"
+                  ? "bg-amber-50/80 border-amber-200 text-amber-950"
+                  : "bg-red-50/90 border-red-200 text-red-950"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {deliverability.rating === "PRIMARY_INBOX" ? (
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                  )}
+                  <span className="font-bold">
+                    Inbox Placement Score: {deliverability.score}/100
+                  </span>
+                  <Badge
+                    variant={
+                      deliverability.rating === "PRIMARY_INBOX"
+                        ? "success"
+                        : deliverability.rating === "NEEDS_IMPROVEMENT"
+                        ? "secondary"
+                        : "destructive"
+                    }
+                    className="text-[10px] px-2 py-0.5"
+                  >
+                    {deliverability.rating === "PRIMARY_INBOX"
+                      ? "Primary Inbox Guaranteed"
+                      : deliverability.rating === "NEEDS_IMPROVEMENT"
+                      ? "Moderate Placement"
+                      : "Spam Risk Alert"}
+                  </Badge>
+                </div>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {deliverability.wordCount} words
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-600 mt-1">
+                {deliverability.headline}
+              </p>
+
+              {deliverability.issues.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1.5 text-[11px]">
+                  {deliverability.issues.map((iss, idx) => (
+                    <div key={idx} className="flex items-start gap-1.5 leading-snug">
+                      <span
+                        className={`font-semibold shrink-0 ${
+                          iss.severity === "error"
+                            ? "text-red-700"
+                            : iss.severity === "warning"
+                            ? "text-amber-700"
+                            : "text-blue-700"
+                        }`}
+                      >
+                        {iss.severity === "error" ? "⚠️" : iss.severity === "warning" ? "⚡" : "💡"}{" "}
+                        {iss.title}:
+                      </span>
+                      <span className="text-slate-700">{iss.description}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}

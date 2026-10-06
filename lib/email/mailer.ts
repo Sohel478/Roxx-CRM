@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 export interface SmtpConnectionOptions {
   host: string;
@@ -18,26 +19,32 @@ export interface SendMailOptions {
   replyTo?: string;
   inReplyTo?: string;
   references?: string;
+  isMarketing?: boolean;
+  unsubscribeEmail?: string;
 }
 
 /**
- * Creates a configured Nodemailer Transporter with authentic FQDN EHLO greeting
- * to avoid HELO_DYNAMIC_IPADDR and INVALID_HELO spam penalties.
+ * Creates a configured Nodemailer Transporter.
+ * Avoids sending forged EHLO greetings (e.g. claiming to be 'gmail.com' to Google SMTP)
+ * which trigger HELO_DYNAMIC_IPADDR and spoofing penalties.
  */
 export function createTransporter(options: SmtpConnectionOptions) {
-  let domain = options.clientDomain;
-  if (!domain && options.username.includes("@")) {
-    domain = options.username.split("@")[1].trim().toLowerCase();
-  }
-  if (!domain && options.host) {
-    domain = options.host.replace(/^smtp\./i, "");
+  const isGoogle =
+    options.host.toLowerCase().includes("google") ||
+    options.host.toLowerCase().includes("gmail");
+
+  let fqdn = options.clientDomain;
+  if (!fqdn && !isGoogle && options.username.includes("@")) {
+    const uDomain = options.username.split("@")[1].trim().toLowerCase();
+    if (uDomain !== "gmail.com" && uDomain !== "googlemail.com" && uDomain.includes(".")) {
+      fqdn = uDomain;
+    }
   }
 
-  return nodemailer.createTransport({
-    name: domain || "mail.roxx-crm.com", // Valid FQDN for EHLO greeting
+  const transportConfig: SMTPTransport.Options = {
     host: options.host,
     port: options.port,
-    secure: options.secure, // true for 465, false for 587 or other STARTTLS ports
+    secure: options.secure, // true for 465, false for 587 or STARTTLS
     auth: {
       user: options.username,
       pass: options.password || "",
@@ -46,9 +53,16 @@ export function createTransporter(options: SmtpConnectionOptions) {
     greetingTimeout: 10000,
     socketTimeout: 15000,
     tls: {
-      rejectUnauthorized: false, // Allows self-signed certificates in dev/on-prem environments
+      rejectUnauthorized: false,
     },
-  });
+  };
+
+  // Only assign explicit client FQDN if it is a custom domain and not Google
+  if (fqdn && !isGoogle) {
+    transportConfig.name = fqdn;
+  }
+
+  return nodemailer.createTransport(transportConfig);
 }
 
 /**
@@ -80,7 +94,7 @@ export async function verifySmtp(
 
 /**
  * Dispatches an email via the tenant's own SMTP connection with RFC-compliant headers
- * formatted as a direct, high-reputation 1-on-1 personal/business email to guarantee
+ * formatted as a direct, high-reputation personal/business email to guarantee
  * placement in the recipient's Primary Inbox rather than Spam or Promotions tabs.
  */
 export async function sendSmtpEmail(
@@ -105,31 +119,20 @@ export async function sendSmtpEmail(
       ? `"${mail.fromName.trim()}" <${senderEmail}>`
       : senderEmail;
 
-    // Extract domain for EHLO handshake alignment
-    let domain = "";
-    if (senderEmail.includes("@")) {
-      domain = senderEmail.split("@")[1].trim().toLowerCase();
-    }
-
-    const transporter = createTransporter({
-      ...connection,
-      clientDomain: domain || connection.clientDomain,
-    });
+    const transporter = createTransporter(connection);
 
     const cleanBodyText = mail.body.trim();
 
-    // Natural 1-on-1 human HTML formatting:
-    // Bayesian & machine-learning spam filters (Gmail, Microsoft 365, Yahoo) analyze
-    // the text-to-HTML ratio and markup structure. Emails wrapped in <!DOCTYPE html>,
-    // <meta name="viewport">, and <div style="max-width: 600px"> are classified as
-    // automated bulk/marketing campaigns and diverted to Spam or Promotions.
-    // Real personal/business correspondence uses clean, natural paragraphs.
+    // Natural human HTML formatting: direct paragraph elements in dir="ltr"
+    // matches human compose windows in Gmail/Apple Mail rather than marketing templates
     const paragraphsHtml = cleanBodyText
       .split(/\n\n+/)
       .map((p) => `<div style="margin-bottom: 12px;">${p.replace(/\n/g, "<br/>")}</div>`)
       .join("");
 
-    const naturalHtml = `<div dir="ltr" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; color: #222222; line-height: 1.6;">${paragraphsHtml}</div>`;
+    const naturalHtml = `<div dir="ltr" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222222;">
+${paragraphsHtml}
+</div>`;
 
     // Only set replyTo if explicitly provided and distinct from From address
     // (Redundant replyTo equal to from triggers SpamAssassin REPLYTO_SAME_AS_FROM)
@@ -138,11 +141,19 @@ export async function sendSmtpEmail(
       mail.replyTo.trim().toLowerCase() !== senderEmail;
 
     const headers: Record<string, string> = {
-      // NOTE: We intentionally DO NOT send "X-Mailer". Native Gmail and Outlook
-      // send no X-Mailer header. Custom X-Mailer headers trigger spam penalties.
+      // Intentionally omit "X-Mailer" to match native human mail clients
       ...(mail.inReplyTo ? { "In-Reply-To": mail.inReplyTo } : {}),
-      ...(mail.references ? { "References": mail.references } : {}),
+      ...(mail.references ? { References: mail.references } : {}),
     };
+
+    // Google & Yahoo 2024 Bulk Sender compliance:
+    // If sending a bulk marketing campaign, attach RFC 8058 One-Click Unsubscribe headers
+    if (mail.isMarketing) {
+      const unsubEmail = mail.unsubscribeEmail || senderEmail;
+      headers["List-Unsubscribe"] = `<mailto:${unsubEmail}?subject=unsubscribe>`;
+      headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+      headers["Precedence"] = "bulk";
+    }
 
     const info = await transporter.sendMail({
       from: fromAddress,
@@ -150,18 +161,13 @@ export async function sendSmtpEmail(
       subject: mail.subject,
       text: cleanBodyText,
       html: naturalHtml,
+      ...(hasCustomReplyTo ? { replyTo: mail.replyTo } : {}),
+      date: new Date(),
       envelope: {
         from: senderEmail,
         to: mail.to,
       },
-      ...(hasCustomReplyTo ? { replyTo: mail.replyTo } : {}),
-      date: new Date(),
       headers,
-      // NOTE: We DO NOT force a synthetic client-side messageId!
-      // When sending through Gmail/Google Workspace, passing a custom synthetic
-      // messageId triggers SpamAssassin rule GMAIL_MSGID_BAD.
-      // Letting the authenticated SMTP relay generate the canonical Message-ID
-      // ensures 100% cryptographic DKIM/SPF alignment.
     });
 
     return {

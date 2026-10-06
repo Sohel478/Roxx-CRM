@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
   Mail,
@@ -12,6 +12,8 @@ import {
   Eye,
   FileText,
   AlertTriangle,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +25,7 @@ import {
   sendBatchEmailAction,
   getMarketingBatchByIdAction,
 } from "@/actions/marketing";
+import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
 import type { MarketingBatchItem } from "@/lib/validations/marketing";
 
 interface SendBatchEmailModalProps {
@@ -161,6 +164,13 @@ export function SendBatchEmailModal({
       email: resolvedPreviewLead.email || "sarah@apexretail.com",
     }
   );
+
+  const deliverability = useMemo(() => {
+    return analyzeEmailDeliverability(subject, body, {
+      fromEmail: replyTo || undefined,
+      smtpUsername: senderName || undefined,
+    });
+  }, [subject, body, replyTo, senderName]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -403,6 +413,77 @@ export function SendBatchEmailModal({
                         <span>
                           Dynamic tags detected. These will automatically personalize for each recipient (e.g. <strong>{resolvedPreviewLead.firstName}</strong> from <strong>{resolvedPreviewLead.companyName}</strong>). Switch to <strong>Live Preview</strong> to inspect.
                         </span>
+                      </div>
+                    )}
+
+                    {/* Live Deliverability & Anti-Spam Score Card */}
+                    {Boolean(subject.trim() || body.trim()) && (
+                      <div
+                        className={`mt-2.5 p-3.5 rounded-xl border text-xs transition-all ${
+                          deliverability.rating === "PRIMARY_INBOX"
+                            ? "bg-emerald-50/80 border-emerald-200 text-emerald-950"
+                            : deliverability.rating === "NEEDS_IMPROVEMENT"
+                            ? "bg-amber-50/80 border-amber-200 text-amber-950"
+                            : "bg-red-50/90 border-red-200 text-red-950"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {deliverability.rating === "PRIMARY_INBOX" ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+                            )}
+                            <span className="font-bold">
+                              Inbox Placement Score: {deliverability.score}/100
+                            </span>
+                            <Badge
+                              variant={
+                                deliverability.rating === "PRIMARY_INBOX"
+                                  ? "success"
+                                  : deliverability.rating === "NEEDS_IMPROVEMENT"
+                                  ? "secondary"
+                                  : "destructive"
+                              }
+                              className="text-[10px] px-2 py-0.5"
+                            >
+                              {deliverability.rating === "PRIMARY_INBOX"
+                                ? "Primary Inbox Guaranteed"
+                                : deliverability.rating === "NEEDS_IMPROVEMENT"
+                                ? "Moderate Placement"
+                                : "Spam Risk Alert"}
+                            </Badge>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            {deliverability.wordCount} words
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          {deliverability.headline}
+                        </p>
+
+                        {deliverability.issues.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-1.5 text-[11px]">
+                            {deliverability.issues.map((iss, idx) => (
+                              <div key={idx} className="flex items-start gap-1.5 leading-snug">
+                                <span
+                                  className={`font-semibold shrink-0 ${
+                                    iss.severity === "error"
+                                      ? "text-red-700"
+                                      : iss.severity === "warning"
+                                      ? "text-amber-700"
+                                      : "text-blue-700"
+                                  }`}
+                                >
+                                  {iss.severity === "error" ? "⚠️" : iss.severity === "warning" ? "⚡" : "💡"}{" "}
+                                  {iss.title}:
+                                </span>
+                                <span className="text-slate-700">{iss.message}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

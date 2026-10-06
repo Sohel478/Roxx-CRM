@@ -743,6 +743,8 @@ export async function sendBatchEmailAction(
             replyTo: replyTo || fromSenderEmail,
             subject: personalizedSubject,
             body: personalizedBody,
+            isMarketing: true,
+            unsubscribeEmail: fromSenderEmail,
           }
         );
 
