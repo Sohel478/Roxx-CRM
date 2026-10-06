@@ -7,6 +7,7 @@ import { LeadTable } from "@/features/leads/components/lead-table";
 import { LeadModal } from "@/features/leads/components/lead-modal";
 import { ImportModal } from "@/features/imports/components/import-modal";
 import { DataResetModal } from "@/features/settings/components/data-reset-modal";
+import { CreateBatchModal } from "@/features/marketing/components/create-batch-modal";
 import { exportEntityCsvAction } from "@/actions/imports";
 import {
   getLeadsAction,
@@ -36,6 +37,7 @@ export default function LeadsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string }) | null>(null);
   const [, startTransition] = useTransition();
@@ -332,6 +334,7 @@ export default function LeadsPage() {
         onBulkAssign={handleBulkAssign}
         onBulkDelete={handleBulkDelete}
         onClearSelection={handleClearSelection}
+        onCreateMarketingBatch={() => setIsBatchModalOpen(true)}
       />
 
       {/* Modal Dialog */}
@@ -361,6 +364,17 @@ export default function LeadsPage() {
         entity="leads"
         count={meta.total || leads.length}
         onSuccess={() => loadLeads(1)}
+      />
+
+      {/* Create Marketing Batch Modal */}
+      <CreateBatchModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        initialSelectedLeadIds={selectedLeadIds}
+        onBatchCreated={() => {
+          setSelectedLeadIds([]);
+          setIsBatchModalOpen(false);
+        }}
       />
     </div>
   );

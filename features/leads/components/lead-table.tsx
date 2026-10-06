@@ -20,6 +20,7 @@ import {
   X,
   AlertTriangle,
   Loader2,
+  Megaphone,
 } from "lucide-react";
 import type { LeadItem } from "@/lib/validations/leads";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ interface LeadTableProps {
   onBulkAssign?: (ownerId: string) => void;
   onBulkDelete?: () => void;
   onClearSelection?: () => void;
+  onCreateMarketingBatch?: () => void;
 }
 
 export function LeadTable({
@@ -78,6 +80,7 @@ export function LeadTable({
   onBulkAssign,
   onBulkDelete,
   onClearSelection,
+  onCreateMarketingBatch,
 }: LeadTableProps) {
   const [bulkTargetOwner, setBulkTargetOwner] = useState("");
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
@@ -471,6 +474,18 @@ export function LeadTable({
                 <span>Assign</span>
               </Button>
             </div>
+          )}
+
+          {onCreateMarketingBatch && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onCreateMarketingBatch}
+              className="text-xs px-3 h-8 shadow-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+            >
+              <Megaphone className="w-3.5 h-3.5 mr-1" />
+              <span>Create Batch ({selectedLeadIds.length})</span>
+            </Button>
           )}
 
           {onBulkDelete && (

@@ -69,6 +69,8 @@ model Organization {
   subscriptionEvents SubscriptionEvent[]
   payments           Payment[]
   usageSnapshots     UsageSnapshot[]
+  marketingBatches   MarketingBatch[]
+  marketingCampaigns MarketingCampaign[]
 
   @@map("organizations")
 }
@@ -688,3 +690,55 @@ model UsageSnapshot {
   @@index([organizationId, capturedAt])
   @@map("usage_snapshots")
 }
+
+// ----------------------------------------------------
+// 12. Marketing: Lead Batches & Campaigns
+// ----------------------------------------------------
+
+model MarketingBatch {
+  id             String              @id @default(cuid())
+  organizationId String              @map("organization_id")
+  name           String
+  description    String?             @db.Text
+  ownerId        String              @map("owner_id")
+  leadIds        Json                @default("[]") @map("lead_ids")
+  leadCount      Int                 @default(0) @map("lead_count")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns      MarketingCampaign[]
+
+  @@index([organizationId])
+  @@index([organizationId, ownerId])
+  @@map("marketing_batches")
+}
+
+model MarketingCampaign {
+  id              String         @id @default(cuid())
+  batchId         String         @map("batch_id")
+  organizationId  String         @map("organization_id")
+  senderId        String         @map("sender_id")
+  senderName      String?        @map("sender_name")
+  senderEmail     String?        @map("sender_email")
+  subject         String
+  body            String         @db.Text
+  status          String         @default("SENT") // DRAFT, SENDING, SENT, FAILED
+  totalRecipients Int            @default(0) @map("total_recipients")
+  sentCount       Int            @default(0) @map("sent_count")
+  failedCount     Int            @default(0) @map("failed_count")
+  recipientLogs   Json           @default("[]") @map("recipient_logs")
+  sentAt          DateTime?      @map("sent_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  batch           MarketingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([batchId])
+  @@index([organizationId, senderId])
+  @@map("marketing_campaigns")
+}
+

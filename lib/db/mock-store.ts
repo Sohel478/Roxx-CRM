@@ -934,3 +934,53 @@ export interface MockInboxEmail {
 
 export const mockInboxStore: MockInboxEmail[] = [];
 
+// ----------------------------------------------------
+// Marketing Batches & Campaigns Store
+// ----------------------------------------------------
+
+export interface MockRecipientLog {
+  leadId: string;
+  leadName: string;
+  email: string;
+  companyName?: string | null;
+  status: "SENT" | "FAILED" | "SKIPPED";
+  error?: string | null;
+  sentAt?: string | null;
+}
+
+export interface MockMarketingCampaign {
+  id: string;
+  batchId: string;
+  organizationId: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  subject: string;
+  body: string;
+  status: "DRAFT" | "SENDING" | "SENT" | "FAILED";
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  recipientLogs: MockRecipientLog[];
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MockMarketingBatch {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string | null;
+  ownerId: string;
+  ownerName?: string | null;
+  leadIds: string[];
+  leadCount: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+export const mockMarketingBatchesStore: MockMarketingBatch[] = [];
+export const mockMarketingCampaignsStore: MockMarketingCampaign[] = [];
+
