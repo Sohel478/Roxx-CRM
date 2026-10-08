@@ -17,12 +17,14 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getMarketingBatchByIdAction } from "@/actions/marketing";
 import type { MarketingBatchDetail } from "@/lib/validations/marketing";
 import { SendBatchEmailModal } from "@/features/marketing/components/send-batch-email-modal";
+import { AiBatchStudyModal } from "@/features/marketing/components/ai-batch-study-modal";
 
 export default function MarketingBatchDetailPage() {
   const params = useParams();
@@ -34,6 +36,7 @@ export default function MarketingBatchDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"leads" | "campaigns">("leads");
   const [isSendOpen, setIsSendOpen] = useState(false);
+  const [isAiStudyOpen, setIsAiStudyOpen] = useState(false);
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
 
   const fetchBatch = useCallback(async () => {
@@ -128,6 +131,16 @@ export default function MarketingBatchDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsAiStudyOpen(true)}
+            className="border-purple-200 text-purple-700 hover:bg-purple-50 font-semibold text-xs px-3.5 h-9 shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-600" />
+            <span>AI Study &amp; Schedule</span>
+          </Button>
+
           <Button
             type="button"
             onClick={() => setIsSendOpen(true)}
@@ -454,6 +467,17 @@ export default function MarketingBatchDetailPage() {
           batch={batch}
           sampleLead={sampleLead}
           onCampaignDispatched={() => {
+            fetchBatch();
+          }}
+        />
+      )}
+
+      {/* AI Batch Study & Schedule Modal */}
+      {isAiStudyOpen && (
+        <AiBatchStudyModal
+          batch={batch}
+          onClose={() => setIsAiStudyOpen(false)}
+          onCampaignScheduled={() => {
             fetchBatch();
           }}
         />

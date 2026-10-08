@@ -984,3 +984,70 @@ export interface MockMarketingBatch {
 export const mockMarketingBatchesStore: MockMarketingBatch[] = [];
 export const mockMarketingCampaignsStore: MockMarketingCampaign[] = [];
 
+export interface MockAiLeadSchedule {
+  id: string;
+  campaignId: string;
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  companyName: string;
+  jobTitle?: string | null;
+  initialSubject: string;
+  initialBody: string;
+  status:
+    | "SCHEDULED"
+    | "SENT"
+    | "FAILED"
+    | "AWAITING_REPLY"
+    | "FOLLOW_UP_SCHEDULED"
+    | "FOLLOW_UP_SENT"
+    | "REPLIED"
+    | "COMPLETED";
+  scheduledAt: string;
+  sentAt?: string | null;
+  followUpSubject?: string | null;
+  followUpBody?: string | null;
+  followUpScheduledAt?: string | null;
+  followUpSentAt?: string | null;
+  repliedAt?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface MockAiCampaign {
+  id: string;
+  organizationId: string;
+  batchId: string;
+  batchName: string;
+  name: string;
+  creatorId: string;
+  creatorName: string;
+  objective: string;
+  tone: string;
+  status: "SCHEDULED" | "ACTIVE" | "COMPLETED" | "PAUSED";
+  totalLeads: number;
+  sentCount: number;
+  repliedCount: number;
+  followUpCount: number;
+  pacingMinutes: number;
+  enableFollowUp: boolean;
+  followUpDays: number;
+  scheduledStartDate: string;
+  schedules: MockAiLeadSchedule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MockAiConfig {
+  organizationId: string;
+  aiProvider: "builtin" | "openai" | "gemini";
+  apiKey?: string | null;
+  defaultCompanyPitch?: string | null;
+  defaultFollowUpDays: number;
+  defaultPacingMinutes: number;
+  updatedAt: string;
+}
+
+export const mockAiCampaignsStore: MockAiCampaign[] = [];
+export const mockAiConfigsStore: Record<string, MockAiConfig> = {};
+
+

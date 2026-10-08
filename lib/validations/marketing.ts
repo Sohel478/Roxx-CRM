@@ -102,3 +102,81 @@ export interface MarketingBatchDetail extends MarketingBatchItem {
   }[];
   campaigns: MarketingCampaignItem[];
 }
+
+export const aiStudyBatchSchema = z.object({
+  batchId: z.string().min(1, "Batch ID is required"),
+  objective: z
+    .enum([
+      "INITIAL_OUTREACH",
+      "MEETING_INVITE",
+      "FOLLOW_UP",
+      "RE_ENGAGEMENT",
+      "VALUE_CASE_STUDY",
+    ])
+    .default("INITIAL_OUTREACH"),
+  tone: z
+    .enum(["PROFESSIONAL", "WARM", "EXECUTIVE", "CONSULTATIVE"])
+    .default("PROFESSIONAL"),
+  valueProposition: z.string().max(1000).optional(),
+  customInstruction: z.string().max(1000).optional(),
+  enableFollowUp: z.boolean().default(true),
+  followUpDays: z.number().int().min(1).max(30).default(3),
+});
+
+export type AiStudyBatchInput = z.infer<typeof aiStudyBatchSchema>;
+
+export const aiScheduleLeadItemSchema = z.object({
+  leadId: z.string().min(1),
+  leadName: z.string(),
+  leadEmail: z.string().email(),
+  companyName: z.string(),
+  jobTitle: z.string().optional().nullable(),
+  initialSubject: z.string().min(1, "Subject is required"),
+  initialBody: z.string().min(1, "Email body is required"),
+  followUpSubject: z.string().optional().nullable(),
+  followUpBody: z.string().optional().nullable(),
+});
+
+export const aiScheduleBatchSchema = z.object({
+  batchId: z.string().min(1, "Batch ID is required"),
+  campaignName: z.string().min(1, "Campaign name is required").max(100),
+  objective: z.string(),
+  tone: z.string(),
+  startDate: z.string(), // ISO string or 'now'
+  pacingMinutes: z.number().int().min(1).max(60).default(2),
+  enableFollowUp: z.boolean().default(true),
+  followUpDays: z.number().int().min(1).max(30).default(3),
+  leads: z.array(aiScheduleLeadItemSchema).min(1, "At least one lead is required"),
+});
+
+export type AiScheduleBatchInput = z.infer<typeof aiScheduleBatchSchema>;
+
+export const aiLeadEmailGenerateSchema = z.object({
+  leadId: z.string().min(1, "Lead ID is required"),
+  objective: z
+    .enum([
+      "INITIAL_OUTREACH",
+      "MEETING_INVITE",
+      "FOLLOW_UP",
+      "RE_ENGAGEMENT",
+      "VALUE_CASE_STUDY",
+    ])
+    .default("INITIAL_OUTREACH"),
+  tone: z
+    .enum(["PROFESSIONAL", "WARM", "EXECUTIVE", "CONSULTATIVE"])
+    .default("PROFESSIONAL"),
+  customInstruction: z.string().max(1000).optional(),
+  valueProposition: z.string().max(1000).optional(),
+});
+
+export type AiLeadEmailGenerateInput = z.infer<typeof aiLeadEmailGenerateSchema>;
+
+export const aiConfigSchema = z.object({
+  aiProvider: z.enum(["builtin", "openai", "gemini"]).default("builtin"),
+  apiKey: z.string().max(300).optional().nullable(),
+  defaultCompanyPitch: z.string().max(1000).optional().nullable(),
+  defaultFollowUpDays: z.number().int().min(1).max(30).default(3),
+  defaultPacingMinutes: z.number().int().min(1).max(60).default(2),
+});
+
+export type AiConfigInput = z.infer<typeof aiConfigSchema>;

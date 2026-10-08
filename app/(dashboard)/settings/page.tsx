@@ -12,6 +12,7 @@ import {
   Target,
   Mail,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeamMembersTab } from "@/features/settings/components/team-members-tab";
@@ -22,6 +23,7 @@ import { BillingTab } from "@/features/settings/components/billing-tab";
 import { ChangePasswordTab } from "@/features/settings/components/change-password-tab";
 import { SalesTargetsTab } from "@/features/settings/components/sales-targets-tab";
 import { EmailSettingsTab } from "@/features/settings/components/email-settings-tab";
+import { AiSettingsTab } from "@/features/settings/components/ai-settings-tab";
 import { DataManagementTab } from "@/features/settings/components/data-management-tab";
 import { getUsersAction, getTenantSeatUsageAction } from "@/actions/users";
 import type { UserItem, TenantSeatUsage } from "@/lib/validations/settings";
@@ -36,7 +38,7 @@ import type {
   PipelineStageItem,
 } from "@/lib/validations/settings";
 
-type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email" | "data";
+type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email" | "ai" | "data";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("team");
@@ -89,7 +91,7 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab") as TabType;
-      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets", "email", "data"].includes(tab)) {
+      if (tab && ["team", "audit", "organization", "stages", "billing", "security", "targets", "email", "ai", "data"].includes(tab)) {
         setActiveTab(tab);
       }
     }
@@ -230,6 +232,19 @@ export default function SettingsPage() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("ai")}
+          className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+            activeTab === "ai"
+              ? "border-purple-600 text-purple-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-purple-600" />
+          <span>AI Intelligence</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("security")}
           className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
             activeTab === "security"
@@ -271,6 +286,10 @@ export default function SettingsPage() {
 
         {activeTab === "email" && (
           <EmailSettingsTab />
+        )}
+
+        {activeTab === "ai" && (
+          <AiSettingsTab />
         )}
 
         {activeTab === "data" && (

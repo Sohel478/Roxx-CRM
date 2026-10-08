@@ -30,6 +30,7 @@ import {
 } from "@/lib/templates/email-templates";
 import { ActivityType } from "@/lib/validations/activities";
 import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
+import { AiEmailAssistantModal } from "./ai-email-assistant-modal";
 
 interface InlineComposerProps {
   entityId: string;
@@ -55,6 +56,9 @@ export function InlineComposer({
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [toEmail, setToEmail] = useState(mergeContext.email || "");
+
+  // AI Assistant Modal
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   // Keep toEmail synchronized if mergeContext.email changes
   useEffect(() => {
@@ -401,23 +405,37 @@ export function InlineComposer({
 
             <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between bg-purple-50/50 p-2.5 rounded-xl border border-purple-100">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
-                <span className="text-xs font-bold text-purple-900">
-                  Quick Sales Template:
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAiModalOpen(true)}
+                  className="bg-white hover:bg-purple-100/70 border-purple-200 text-purple-700 font-bold text-xs h-8 gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  <span>✨ AI Research &amp; Draft</span>
+                </Button>
+                <span className="text-[11px] font-semibold text-purple-400 hidden sm:inline">
+                  or
                 </span>
               </div>
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => handleSelectTemplate(e.target.value)}
-                className="text-xs rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-purple-950 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-              >
-                <option value="">Insert a sales template...</option>
-                {SALES_EMAIL_TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    [{t.category}] {t.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <span className="text-xs font-bold text-purple-900 hidden md:inline shrink-0">
+                  Quick Template:
+                </span>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  className="w-full sm:w-auto text-xs rounded-lg border border-purple-200 bg-white px-3 py-1.5 text-purple-950 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                >
+                  <option value="">Insert a sales template...</option>
+                  {SALES_EMAIL_TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      [{t.category}] {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
@@ -795,6 +813,22 @@ export function InlineComposer({
           </div>
         </div>
       </div>
+
+      {isAiModalOpen && (
+        <AiEmailAssistantModal
+          leadId={entityType === "lead" ? entityId : ""}
+          leadName={
+            `${mergeContext.firstName || ""} ${mergeContext.lastName || ""}`.trim() ||
+            "Valued Lead"
+          }
+          companyName={mergeContext.companyName}
+          onApplyEmail={(newSubject, newBody) => {
+            setSubject(newSubject);
+            setDescription(newBody);
+          }}
+          onClose={() => setIsAiModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

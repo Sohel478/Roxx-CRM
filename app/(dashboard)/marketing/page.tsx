@@ -13,6 +13,8 @@ import {
   Loader2,
   Calendar,
   AlertCircle,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,12 +22,20 @@ import {
   getMarketingBatchesAction,
   deleteMarketingBatchAction,
 } from "@/actions/marketing";
+import {
+  getScheduledAiCampaignsAction,
+  processScheduledAiQueueAction,
+} from "@/actions/ai-email";
 import type { MarketingBatchItem } from "@/lib/validations/marketing";
+import type { MockAiCampaign } from "@/lib/db/mock-store";
 import { CreateBatchModal } from "@/features/marketing/components/create-batch-modal";
 import { SendBatchEmailModal } from "@/features/marketing/components/send-batch-email-modal";
+import { AiBatchStudyModal } from "@/features/marketing/components/ai-batch-study-modal";
 
 export default function MarketingPage() {
+  const [activeTab, setActiveTab] = useState<"batches" | "ai_campaigns">("batches");
   const [batches, setBatches] = useState<MarketingBatchItem[]>([]);
+  const [aiCampaigns, setAiCampaigns] = useState<MockAiCampaign[]>([]);
   const [stats, setStats] = useState({
     totalBatches: 0,
     totalCampaigns: 0,
@@ -33,25 +43,45 @@ export default function MarketingPage() {
     totalLeadsBatched: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedBatchForSend, setSelectedBatchForSend] = useState<MarketingBatchItem | null>(null);
+  const [selectedBatchForAi, setSelectedBatchForAi] = useState<MarketingBatchItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchBatches = async () => {
     setIsLoading(true);
     try {
-      const res = await getMarketingBatchesAction();
+      const [res, aiRes] = await Promise.all([
+        getMarketingBatchesAction(),
+        getScheduledAiCampaignsAction(),
+      ]);
       if (res.success && res.data) {
         setBatches(res.data.batches);
         setStats(res.data.stats);
       } else {
         setError(res.error || "Failed to load marketing batches");
       }
+      if (aiRes.success && aiRes.data) {
+        setAiCampaigns(aiRes.data);
+      }
     } catch (err: unknown) {
       setError((err as Error)?.message || "Failed to connect to marketing service");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleProcessQueue = async () => {
+    setIsProcessingQueue(true);
+    try {
+      const res = await processScheduledAiQueueAction();
+      if (res.success) {
+        await fetchBatches();
+      }
+    } finally {
+      setIsProcessingQueue(false);
     }
   };
 
@@ -162,8 +192,54 @@ export default function MarketingPage() {
         </div>
       </div>
 
-      {/* Batches Table Section */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+      {/* Batches & AI Campaigns Tab Bar */}
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("batches")}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+              activeTab === "batches"
+                ? "bg-blue-600 text-white shadow-2xs"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            <Users2 className="w-3.5 h-3.5" />
+            <span>Lead Batches ({batches.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("ai_campaigns")}
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+              activeTab === "ai_campaigns"
+                ? "bg-purple-600 text-white shadow-2xs"
+                : "text-slate-600 hover:bg-purple-50 hover:text-purple-700"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>✨ AI Autonomous Campaigns ({aiCampaigns.length})</span>
+          </button>
+        </div>
+
+        {activeTab === "ai_campaigns" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleProcessQueue}
+            disabled={isProcessingQueue}
+            className="text-xs h-8 gap-1.5 text-purple-700 border-purple-200 hover:bg-purple-50 font-semibold"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isProcessingQueue ? "animate-spin text-purple-600" : ""}`} />
+            <span>{isProcessingQueue ? "Processing Queue..." : "Run Due Queue Now"}</span>
+          </Button>
+        )}
+      </div>
+
+      {activeTab === "batches" ? (
+        /* Batches Table Section */
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Lead Batches</h2>
@@ -291,7 +367,19 @@ export default function MarketingPage() {
 
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedBatchForAi(batch)}
+                          className="bg-purple-50 hover:bg-purple-100/80 text-purple-700 border-purple-200 text-xs h-7 px-2.5 shadow-2xs font-bold"
+                          title="AI studies every lead in this batch and drafts personalized emails with automated follow-ups"
+                        >
+                          <Sparkles className="w-3 h-3 mr-1 text-purple-600" />
+                          <span>AI Study</span>
+                        </Button>
+
                         <Button
                           type="button"
                           size="sm"
@@ -331,6 +419,117 @@ export default function MarketingPage() {
           </div>
         )}
       </div>
+      ) : (
+        /* AI Autonomous Campaigns View */
+        <div className="space-y-4">
+          {aiCampaigns.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">No AI campaigns scheduled yet</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Pick any lead batch and click &quot;AI Study&quot; to study each lead individually, compose bespoke emails, and schedule automated follow-ups.
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => setActiveTab("batches")}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-8 px-4"
+              >
+                <span>Select a Batch to Study &rarr;</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {aiCampaigns.map((camp) => (
+                <div
+                  key={camp.id}
+                  className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xs"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm">{camp.name}</span>
+                        <Badge
+                          className={
+                            camp.status === "COMPLETED"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : camp.status === "ACTIVE"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-purple-100 text-purple-800"
+                          }
+                        >
+                          {camp.status}
+                        </Badge>
+                        {camp.enableFollowUp && (
+                          <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-[10px]">
+                            ⚡ {camp.followUpDays}d Follow-Up Active
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Batch: <strong>{camp.batchName}</strong> • Created by {camp.creatorName} • Pacing: Every {camp.pacingMinutes}m
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs font-semibold">
+                      <div className="text-right">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Progress</span>
+                        <span className="text-slate-800">
+                          {camp.sentCount} / {camp.totalLeads} dispatched
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Replies</span>
+                        <span className="text-emerald-600 font-bold">
+                          {camp.repliedCount} detected
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Leads Queue Preview */}
+                  <div className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50/50">
+                    <div className="px-3 py-2 bg-slate-100/60 border-b border-slate-200 text-[11px] font-bold text-slate-600 flex justify-between">
+                      <span>Scheduled Recipient Queue ({camp.schedules.length} leads)</span>
+                      <span>Next Run: {new Date(camp.scheduledStartDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    </div>
+                    <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                      {camp.schedules.map((item) => (
+                        <div key={item.id} className="px-3 py-2 text-xs flex items-center justify-between gap-3">
+                          <div className="truncate">
+                            <span className="font-bold text-slate-900 mr-2">{item.leadName}</span>
+                            <span className="text-slate-500 text-[11px]">({item.companyName})</span>
+                            <span className="text-slate-400 text-[11px] block truncate">
+                              Subject: &quot;{item.initialSubject}&quot;
+                            </span>
+                          </div>
+                          <Badge
+                            variant={
+                              item.status === "SENT" || item.status === "FOLLOW_UP_SENT"
+                                ? "success"
+                                : item.status === "REPLIED"
+                                ? "default"
+                                : item.status === "AWAITING_REPLY"
+                                ? "warning"
+                                : "secondary"
+                            }
+                            className="text-[10px] shrink-0 font-bold"
+                          >
+                            {item.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create Batch Modal */}
       <CreateBatchModal
@@ -349,6 +548,18 @@ export default function MarketingPage() {
           batch={selectedBatchForSend}
           onCampaignDispatched={() => {
             fetchBatches();
+          }}
+        />
+      )}
+
+      {/* AI Batch Study & Schedule Modal */}
+      {selectedBatchForAi && (
+        <AiBatchStudyModal
+          batch={selectedBatchForAi}
+          onClose={() => setSelectedBatchForAi(null)}
+          onCampaignScheduled={() => {
+            fetchBatches();
+            setActiveTab("ai_campaigns");
           }}
         />
       )}
