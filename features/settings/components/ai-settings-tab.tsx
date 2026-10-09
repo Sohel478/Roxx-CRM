@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { getAiConfigAction, saveAiConfigAction } from "@/actions/ai-email";
+import { getAiConfigAction, saveAiConfigAction, testAiConnectionAction } from "@/actions/ai-email";
 import { getCompanyMatrixAction, saveCompanyMatrixAction } from "@/actions/company-matrix";
 import { AiCompanyMatrixModal } from "./ai-company-matrix-modal";
 import type {
@@ -44,6 +44,47 @@ export function AiSettingsTab() {
   const [defaultCompanyPitch, setDefaultCompanyPitch] = useState("");
   const [defaultFollowUpDays, setDefaultFollowUpDays] = useState(3);
   const [defaultPacingMinutes, setDefaultPacingMinutes] = useState(2);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+
+  const handleTestConnection = async () => {
+    if (!apiKey.trim()) {
+      setTestResult({
+        success: false,
+        message: "Please enter an API key before testing.",
+      });
+      return;
+    }
+    setIsTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await testAiConnectionAction({
+        provider,
+        apiKey: apiKey.trim(),
+      });
+      if (res.success) {
+        setTestResult({
+          success: true,
+          message: res.message || "Connection successful!",
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: res.error || "Connection test failed.",
+        });
+      }
+    } catch (e: any) {
+      setTestResult({
+        success: false,
+        message: e?.message || "Failed to reach AI provider.",
+      });
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
 
   // Company Matrix State
   const [matrix, setMatrix] = useState<CompanyMatrix>({
@@ -384,6 +425,42 @@ export function AiSettingsTab() {
                 {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
+            
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleTestConnection}
+                disabled={isTestingKey || !apiKey.trim()}
+                className="text-xs h-8 border-slate-300 hover:bg-slate-50 gap-1.5 font-medium shadow-2xs"
+              >
+                {isTestingKey ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                )}
+                <span>Test Connection</span>
+              </Button>
+
+              {testResult && (
+                <div
+                  className={`text-xs flex items-center gap-1.5 font-medium px-2.5 py-1 rounded-lg border ${
+                    testResult.success
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      : "bg-red-50 text-red-800 border-red-200"
+                  }`}
+                >
+                  {testResult.success ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  )}
+                  <span>{testResult.message}</span>
+                </div>
+              )}
+            </div>
+
             <p className="text-[11px] text-slate-400">
               Keys are encrypted at rest with AES-256 and never logged or exposed in client bundles.
             </p>

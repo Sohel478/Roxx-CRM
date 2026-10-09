@@ -1031,6 +1031,7 @@ export interface MockAiCampaign {
   status: "SCHEDULED" | "ACTIVE" | "COMPLETED" | "PAUSED";
   totalLeads: number;
   sentCount: number;
+  failedCount?: number;
   repliedCount: number;
   followUpCount: number;
   pacingMinutes: number;

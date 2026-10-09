@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   studyMarketingBatchAiAction,
   scheduleAiBatchCampaignAction,
+  getAiConfigAction,
 } from "@/actions/ai-email";
 import { assignMarketingBatchAction } from "@/actions/marketing";
 import { getUsersAction, type UserItem } from "@/actions/users";
@@ -91,6 +92,26 @@ export function AiBatchStudyModal({
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
+
+  const [activeEngine, setActiveEngine] = useState<{
+    provider: "builtin" | "openai" | "gemini";
+    hasKey: boolean;
+  }>({ provider: "builtin", hasKey: false });
+
+  useEffect(() => {
+    let isMounted = true;
+    getAiConfigAction().then((res) => {
+      if (isMounted && res.success && res.data) {
+        setActiveEngine({
+          provider: res.data.aiProvider || "builtin",
+          hasKey: Boolean(res.data.apiKey && res.data.apiKey.trim().length > 0),
+        });
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -263,12 +284,27 @@ export function AiBatchStudyModal({
               <Sparkles className="w-5 h-5 text-blue-100" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>AI Batch Study &amp; Scheduled Outreach</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-slate-900">
+                  AI Batch Study &amp; Scheduled Outreach
+                </h2>
                 <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-[10px]">
                   {batch.name} ({batch.leadCount} leads)
                 </Badge>
-              </h2>
+                {activeEngine.provider === "openai" && activeEngine.hasKey ? (
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-semibold">
+                    ✨ OpenAI (GPT-4o-mini)
+                  </Badge>
+                ) : activeEngine.provider === "gemini" && activeEngine.hasKey ? (
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-[10px] font-semibold">
+                    ✨ Google Gemini 1.5
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-slate-600 bg-slate-50 border-slate-200 text-[10px]">
+                    ⚡ Built-in Neural Engine
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs text-slate-500">
                 Studies each lead individually to create personalized 1-on-1 emails &amp; automated follow-ups
               </p>

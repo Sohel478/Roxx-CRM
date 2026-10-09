@@ -605,32 +605,73 @@ Rules:
 6. Output strict JSON with format: {"subject": "...", "body": "..."}`;
 
   if (options.aiProvider === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-      }),
-    });
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+        }),
+      });
 
-    if (res.ok) {
-      const data = await res.json();
-      const content = JSON.parse(data.choices?.[0]?.message?.content || "{}");
-      if (content.subject && content.body) {
-        return {
-          subject: content.subject,
-          body: content.body,
-          researchBrief: brief,
-          objective: options.objective || "INITIAL_OUTREACH",
-          tone: options.tone || "PROFESSIONAL",
-        };
+      if (res.ok) {
+        const data = await res.json();
+        const content = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+        if (content.subject && content.body) {
+          return {
+            subject: content.subject,
+            body: content.body,
+            researchBrief: brief,
+            objective: options.objective || "INITIAL_OUTREACH",
+            tone: options.tone || "PROFESSIONAL",
+          };
+        }
+      } else {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[OpenAI Error ${res.status}] Failed to generate email:`, errText);
       }
+    } catch (fetchErr) {
+      console.warn("[OpenAI Fetch Exception]:", fetchErr);
+    }
+  }
+
+  if (options.aiProvider === "gemini") {
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${options.apiKey.trim()}`;
+      const res = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${prompt}\nOutput strict JSON only with format: {"subject": "...", "body": "..."}` }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const rawContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const content = JSON.parse(rawContent);
+        if (content.subject && content.body) {
+          return {
+            subject: content.subject,
+            body: content.body,
+            researchBrief: brief,
+            objective: options.objective || "INITIAL_OUTREACH",
+            tone: options.tone || "PROFESSIONAL",
+          };
+        }
+      } else {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[Gemini Error ${res.status}]:`, errText);
+      }
+    } catch (gErr) {
+      console.warn("[Gemini Fetch Exception]:", gErr);
     }
   }
 

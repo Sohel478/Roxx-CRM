@@ -9,9 +9,11 @@ import {
   mockUsersStore,
   mockActivitiesStore,
   mockMarketingBatchesStore,
+  mockMarketingCampaignsStore,
   mockSmtpStore,
   mockAiCampaignsStore,
   mockAiConfigsStore,
+  MockMarketingCampaign,
   MockAiCampaign,
   MockAiLeadSchedule,
   MockAiConfig,
@@ -316,6 +318,8 @@ export async function studyMarketingBatchAiAction(
       enableFollowUp,
       followUpDays,
       companyMatrix: configData?.companyMatrix,
+      aiProvider: configData?.aiProvider || "builtin",
+      apiKey: configData?.apiKey || null,
     };
 
     const studyResult = await studyMarketingBatch(leadsForStudy, config);
@@ -430,13 +434,41 @@ export async function scheduleAiBatchCampaignAction(
 
     mockAiCampaignsStore.unshift(newCampaign);
 
-    // If scheduled for 'now', trigger queue processing immediately
-    if (startDate === "now" || baseStartTime <= Date.now() + 60000) {
-      setTimeout(() => {
-        processScheduledAiQueueAction(campaignId).catch((err) =>
-          console.error("Immediate queue run error:", err)
-        );
-      }, 100);
+    // Sync into mockMarketingCampaignsStore as well so it appears in MarketingBatchDetailPage and MarketingPage
+    const initialMarketingCampaign: MockMarketingCampaign = {
+      id: campaignId,
+      batchId,
+      organizationId,
+      senderId: assignedRepId,
+      senderName: assignedRepName,
+      senderEmail: batch?.assignedToEmail || session.email || "",
+      subject: leads[0]?.initialSubject || campaignName,
+      body: leads[0]?.initialBody || "",
+      status: "SENDING",
+      totalRecipients: leads.length,
+      sentCount: 0,
+      failedCount: 0,
+      recipientLogs: leads.map((l) => ({
+        leadId: l.leadId,
+        leadName: l.leadName,
+        email: l.leadEmail,
+        companyName: l.companyName,
+        status: "SKIPPED",
+        sentAt: null,
+      })),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sentAt: null,
+    };
+    mockMarketingCampaignsStore.unshift(initialMarketingCampaign);
+
+    // If scheduled for 'now', trigger queue processing immediately right inside this action!
+    if (startDate === "now") {
+      try {
+        await processAiQueueInternal(organizationId, campaignId);
+      } catch (err) {
+        console.error("Error executing immediate queue send:", err);
+      }
     }
 
     revalidatePath("/marketing");
@@ -457,6 +489,260 @@ export async function scheduleAiBatchCampaignAction(
       error: error?.message || "Failed to schedule AI campaign",
     };
   }
+}
+
+/**
+ * Internal worker for processing due scheduled AI emails
+ */
+export async function processAiQueueInternal(
+  organizationId: string,
+  targetCampaignId?: string
+): Promise<{
+  processedCount: number;
+  sentInitialCount: number;
+  sentFollowUpCount: number;
+  repliesDetectedCount: number;
+}> {
+  const now = Date.now();
+  let sentInitialCount = 0;
+  let sentFollowUpCount = 0;
+  let repliesDetectedCount = 0;
+
+  // Fetch tenant's SMTP configuration
+  let smtpConfig: any = null;
+  try {
+    const setting = await prisma.systemSetting.findUnique({
+      where: {
+        organizationId_key: {
+          organizationId,
+          key: "smtp_config",
+        },
+      },
+    });
+    if (setting?.value) {
+      smtpConfig = JSON.parse(setting.value);
+    }
+  } catch {
+    smtpConfig = mockSmtpStore[organizationId] || null;
+  }
+
+  if (!smtpConfig && mockSmtpStore[organizationId]) {
+    smtpConfig = mockSmtpStore[organizationId];
+  }
+
+  let password = "";
+  if (smtpConfig?.encryptedPassword) {
+    try {
+      password = decryptSecret(smtpConfig.encryptedPassword);
+    } catch {
+      password = "";
+    }
+  }
+
+  const campaignsToProcess = mockAiCampaignsStore.filter((c) => {
+    if (c.organizationId !== organizationId) return false;
+    if (targetCampaignId && c.id !== targetCampaignId) return false;
+    return c.status === "SCHEDULED" || c.status === "ACTIVE";
+  });
+
+  for (const campaign of campaignsToProcess) {
+    campaign.status = "ACTIVE";
+    const campaignInMarketing = mockMarketingCampaignsStore.find((c) => c.id === campaign.id);
+
+    for (const item of campaign.schedules) {
+      const scheduledTimeMs = new Date(item.scheduledAt).getTime();
+
+      // 1. Initial email dispatch
+      if (item.status === "SCHEDULED" && scheduledTimeMs <= now) {
+        let sentSuccess = false;
+        let errorMessage: string | null = null;
+
+        if (smtpConfig && smtpConfig.host && smtpConfig.username && password) {
+          const sendRes = await mailer.sendSmtpEmail(
+            {
+              host: smtpConfig.host,
+              port: smtpConfig.port,
+              secure: smtpConfig.secure,
+              username: smtpConfig.username,
+              password,
+            },
+            {
+              to: item.leadEmail,
+              fromName: campaign.creatorName || smtpConfig.fromName,
+              fromEmail: smtpConfig.fromEmail || smtpConfig.username,
+              subject: item.initialSubject,
+              body: item.initialBody,
+              isMarketing: true,
+              unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
+            }
+          );
+
+          if (sendRes.success) {
+            sentSuccess = true;
+          } else {
+            errorMessage = sendRes.error || "SMTP send failed";
+          }
+        } else {
+          // Simulated send if live SMTP not configured
+          sentSuccess = true;
+        }
+
+        if (sentSuccess) {
+          item.status = campaign.enableFollowUp ? "AWAITING_REPLY" : "SENT";
+          item.sentAt = new Date().toISOString();
+          campaign.sentCount += 1;
+          sentInitialCount += 1;
+
+          // Log to Lead Activity timeline in mock store & database
+          mockActivitiesStore.push({
+            id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            organizationId,
+            type: "EMAIL",
+            subject: item.initialSubject,
+            description: `[AI Outreach]: Delivered initial personalized email to ${item.leadEmail}.\n\n${item.initialBody}`,
+            leadId: item.leadId,
+            leadName: item.leadName,
+            companyId: null,
+            companyName: item.companyName || null,
+            contactId: null,
+            contactName: null,
+            opportunityId: null,
+            opportunityName: null,
+            userId: campaign.creatorId || "system",
+            userName: campaign.creatorName || "AI Campaign Assistant",
+            activityAt: new Date().toISOString(),
+            durationMinutes: null,
+            outcome: "SENT",
+            createdAt: new Date().toISOString(),
+          });
+
+          if (campaignInMarketing) {
+            campaignInMarketing.sentCount = campaign.sentCount;
+            const log = campaignInMarketing.recipientLogs.find((l) => l.leadId === item.leadId);
+            if (log) {
+              log.status = "SENT";
+              log.sentAt = item.sentAt;
+            }
+          }
+        } else {
+          item.status = "FAILED";
+          item.errorMessage = errorMessage;
+          if (campaignInMarketing) {
+            campaignInMarketing.failedCount += 1;
+            const log = campaignInMarketing.recipientLogs.find((l) => l.leadId === item.leadId);
+            if (log) {
+              log.status = "FAILED";
+              log.error = errorMessage;
+            }
+          }
+        }
+      }
+
+      // 2. Automated Follow-Up Check
+      if (item.status === "AWAITING_REPLY" && campaign.enableFollowUp && item.followUpScheduledAt) {
+        const followUpTimeMs = new Date(item.followUpScheduledAt).getTime();
+
+        // Check if lead has replied in CRM
+        const replyActivity = mockActivitiesStore.find(
+          (a) => a.leadId === item.leadId && a.outcome === "REPLY_RECEIVED"
+        );
+
+        if (replyActivity) {
+          item.status = "REPLIED";
+          item.repliedAt = replyActivity.activityAt || new Date().toISOString();
+          campaign.repliedCount += 1;
+          repliesDetectedCount += 1;
+          continue;
+        }
+
+        // If due and not replied, send Step 2 follow-up
+        if (followUpTimeMs <= now && item.followUpSubject && item.followUpBody) {
+          let sentFollowUp = false;
+          if (smtpConfig && smtpConfig.host && smtpConfig.username && password) {
+            const sendRes = await mailer.sendSmtpEmail(
+              {
+                host: smtpConfig.host,
+                port: smtpConfig.port,
+                secure: smtpConfig.secure,
+                username: smtpConfig.username,
+                password,
+              },
+              {
+                to: item.leadEmail,
+                fromName: campaign.creatorName || smtpConfig.fromName,
+                fromEmail: smtpConfig.fromEmail || smtpConfig.username,
+                subject: item.followUpSubject,
+                body: item.followUpBody,
+                isMarketing: true,
+                unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
+              }
+            );
+            if (sendRes.success) sentFollowUp = true;
+          } else {
+            sentFollowUp = true;
+          }
+
+          if (sentFollowUp) {
+            item.status = "FOLLOW_UP_SENT";
+            item.followUpSentAt = new Date().toISOString();
+            campaign.followUpCount += 1;
+            sentFollowUpCount += 1;
+
+            mockActivitiesStore.push({
+              id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              organizationId,
+              type: "EMAIL",
+              subject: item.followUpSubject,
+              description: `[AI Cadence Follow-Up]: Dispatched automated Step 2 follow-up email to ${item.leadEmail}.\n\n${item.followUpBody}`,
+              leadId: item.leadId,
+              leadName: item.leadName,
+              companyId: null,
+              companyName: item.companyName || null,
+              contactId: null,
+              contactName: null,
+              opportunityId: null,
+              opportunityName: null,
+              userId: campaign.creatorId || "system",
+              userName: campaign.creatorName || "AI Campaign Assistant",
+              activityAt: new Date().toISOString(),
+              durationMinutes: null,
+              outcome: "FOLLOW_UP_SENT",
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    }
+
+    const allDone = campaign.schedules.every(
+      (s) =>
+        s.status === "SENT" ||
+        s.status === "FOLLOW_UP_SENT" ||
+        s.status === "REPLIED" ||
+        s.status === "FAILED" ||
+        s.status === "COMPLETED"
+    );
+
+    if (allDone) {
+      campaign.status = "COMPLETED";
+      if (campaignInMarketing) campaignInMarketing.status = "SENT";
+    } else {
+      if (campaignInMarketing) campaignInMarketing.status = "SENDING";
+    }
+
+    campaign.updatedAt = new Date().toISOString();
+    if (campaignInMarketing) campaignInMarketing.updatedAt = new Date().toISOString();
+  }
+
+  revalidatePath("/marketing");
+  revalidatePath("/leads");
+
+  return {
+    processedCount: sentInitialCount + sentFollowUpCount,
+    sentInitialCount,
+    sentFollowUpCount,
+    repliesDetectedCount,
+  };
 }
 
 /**
@@ -503,197 +789,8 @@ export async function processScheduledAiQueueAction(
   try {
     const session = await requireAuth();
     const { organizationId } = await resolveTenantContext(session);
-
-    const now = Date.now();
-    let sentInitialCount = 0;
-    let sentFollowUpCount = 0;
-    let repliesDetectedCount = 0;
-
-    // Fetch tenant's SMTP configuration
-    let smtpConfig: any = null;
-    try {
-      const setting = await prisma.systemSetting.findUnique({
-        where: {
-          organizationId_key: {
-            organizationId,
-            key: "smtp_config",
-          },
-        },
-      });
-      if (setting?.value) {
-        smtpConfig = JSON.parse(setting.value);
-      }
-    } catch {
-      smtpConfig = mockSmtpStore[organizationId] || null;
-    }
-
-    if (!smtpConfig && mockSmtpStore[organizationId]) {
-      smtpConfig = mockSmtpStore[organizationId];
-    }
-
-    let password = "";
-    if (smtpConfig?.encryptedPassword) {
-      try {
-        password = decryptSecret(smtpConfig.encryptedPassword);
-      } catch {
-        password = "";
-      }
-    }
-
-    const campaignsToProcess = mockAiCampaignsStore.filter((c) => {
-      if (c.organizationId !== organizationId) return false;
-      if (targetCampaignId && c.id !== targetCampaignId) return false;
-      return c.status === "SCHEDULED" || c.status === "ACTIVE";
-    });
-
-    for (const campaign of campaignsToProcess) {
-      campaign.status = "ACTIVE";
-
-      for (const item of campaign.schedules) {
-        const scheduledTimeMs = new Date(item.scheduledAt).getTime();
-
-        // 1. Initial email dispatch
-        if (item.status === "SCHEDULED" && scheduledTimeMs <= now) {
-          if (smtpConfig && smtpConfig.host && smtpConfig.username && password) {
-            const sendRes = await mailer.sendSmtpEmail(
-              {
-                host: smtpConfig.host,
-                port: smtpConfig.port,
-                secure: smtpConfig.secure,
-                username: smtpConfig.username,
-                password,
-              },
-              {
-                to: item.leadEmail,
-                fromName: campaign.creatorName || smtpConfig.fromName,
-                fromEmail: smtpConfig.fromEmail || smtpConfig.username,
-                subject: item.initialSubject,
-                body: item.initialBody,
-                isMarketing: true,
-                unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
-              }
-            );
-
-            if (sendRes.success) {
-              item.status = campaign.enableFollowUp ? "AWAITING_REPLY" : "SENT";
-              item.sentAt = new Date().toISOString();
-              campaign.sentCount += 1;
-              sentInitialCount += 1;
-
-              // Log to Lead Activity timeline
-              await logActivityAction({
-                type: "EMAIL",
-                subject: item.initialSubject,
-                description: `[AI Outreach]: Delivered initial personalized email to ${item.leadEmail}.\n\n${item.initialBody}`,
-                leadId: item.leadId,
-                activityAt: new Date().toISOString(),
-              }).catch(() => {});
-            } else {
-              item.status = "FAILED";
-              item.errorMessage = sendRes.error || "SMTP send failed";
-            }
-          } else {
-            // Mock send if no live SMTP
-            item.status = campaign.enableFollowUp ? "AWAITING_REPLY" : "SENT";
-            item.sentAt = new Date().toISOString();
-            campaign.sentCount += 1;
-            sentInitialCount += 1;
-          }
-        }
-
-        // 2. Automated Follow-Up Check
-        if (item.status === "AWAITING_REPLY" && campaign.enableFollowUp && item.followUpScheduledAt) {
-          const followUpTimeMs = new Date(item.followUpScheduledAt).getTime();
-
-          // Check if lead has replied (search CRM activities or inbox)
-          const replyActivity = mockActivitiesStore.find(
-            (a) => a.leadId === item.leadId && a.outcome === "REPLY_RECEIVED"
-          );
-
-          if (replyActivity) {
-            // Client replied! Automatically stop the sequence
-            item.status = "REPLIED";
-            item.repliedAt = replyActivity.activityAt || new Date().toISOString();
-            campaign.repliedCount += 1;
-            repliesDetectedCount += 1;
-            continue;
-          }
-
-          // If no reply and due date reached -> send Step 2 follow-up
-          if (followUpTimeMs <= now && item.followUpSubject && item.followUpBody) {
-            if (smtpConfig && smtpConfig.host && smtpConfig.username && password) {
-              const sendRes = await mailer.sendSmtpEmail(
-                {
-                  host: smtpConfig.host,
-                  port: smtpConfig.port,
-                  secure: smtpConfig.secure,
-                  username: smtpConfig.username,
-                  password,
-                },
-                {
-                  to: item.leadEmail,
-                  fromName: campaign.creatorName || smtpConfig.fromName,
-                  fromEmail: smtpConfig.fromEmail || smtpConfig.username,
-                  subject: item.followUpSubject,
-                  body: item.followUpBody,
-                  isMarketing: true,
-                  unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
-                }
-              );
-
-              if (sendRes.success) {
-                item.status = "FOLLOW_UP_SENT";
-                item.followUpSentAt = new Date().toISOString();
-                campaign.followUpCount += 1;
-                sentFollowUpCount += 1;
-
-                // Log follow-up to timeline
-                await logActivityAction({
-                  type: "EMAIL",
-                  subject: item.followUpSubject,
-                  description: `[AI Cadence Follow-Up]: Dispatched automated Step 2 follow-up email to ${item.leadEmail}.\n\n${item.followUpBody}`,
-                  leadId: item.leadId,
-                  activityAt: new Date().toISOString(),
-                }).catch(() => {});
-              }
-            } else {
-              item.status = "FOLLOW_UP_SENT";
-              item.followUpSentAt = new Date().toISOString();
-              campaign.followUpCount += 1;
-              sentFollowUpCount += 1;
-            }
-          }
-        }
-      }
-
-      // Check if campaign is completed
-      const allDone = campaign.schedules.every(
-        (s) =>
-          s.status === "SENT" ||
-          s.status === "FOLLOW_UP_SENT" ||
-          s.status === "REPLIED" ||
-          s.status === "FAILED" ||
-          s.status === "COMPLETED"
-      );
-
-      if (allDone) {
-        campaign.status = "COMPLETED";
-      }
-
-      campaign.updatedAt = new Date().toISOString();
-    }
-
-    revalidatePath("/marketing");
-
-    return {
-      success: true,
-      data: {
-        processedCount: sentInitialCount + sentFollowUpCount,
-        sentInitialCount,
-        sentFollowUpCount,
-        repliesDetectedCount,
-      },
-    };
+    const data = await processAiQueueInternal(organizationId, targetCampaignId);
+    return { success: true, data };
   } catch (error: any) {
     return {
       success: false,
@@ -768,16 +865,37 @@ export async function saveAiConfigAction(
       return { success: false, error: parsed.error.errors[0]?.message || "Invalid AI configuration" };
     }
 
-    const { aiProvider, apiKey, defaultCompanyPitch, defaultFollowUpDays, defaultPacingMinutes } =
+    const { aiProvider, apiKey, defaultCompanyPitch, defaultFollowUpDays, defaultPacingMinutes, companyMatrix } =
       parsed.data;
+
+    let existingConfig: any = null;
+    try {
+      const setting = await prisma.systemSetting.findUnique({
+        where: {
+          organizationId_key: {
+            organizationId,
+            key: "ai_config",
+          },
+        },
+      });
+      if (setting?.value) {
+        existingConfig = JSON.parse(setting.value);
+      }
+    } catch {
+      existingConfig = mockAiConfigsStore[organizationId];
+    }
+    if (!existingConfig) {
+      existingConfig = mockAiConfigsStore[organizationId];
+    }
 
     const updatedConfig: MockAiConfig = {
       organizationId,
       aiProvider,
-      apiKey: apiKey || null,
-      defaultCompanyPitch: defaultCompanyPitch || null,
-      defaultFollowUpDays,
-      defaultPacingMinutes,
+      apiKey: apiKey !== undefined ? (apiKey || null) : (existingConfig?.apiKey || null),
+      companyMatrix: companyMatrix !== undefined ? (companyMatrix || null) : (existingConfig?.companyMatrix || null),
+      defaultCompanyPitch: defaultCompanyPitch !== undefined ? (defaultCompanyPitch || null) : (existingConfig?.defaultCompanyPitch || null),
+      defaultFollowUpDays: defaultFollowUpDays ?? existingConfig?.defaultFollowUpDays ?? 3,
+      defaultPacingMinutes: defaultPacingMinutes ?? existingConfig?.defaultPacingMinutes ?? 2,
       updatedAt: new Date().toISOString(),
     };
 
@@ -813,6 +931,123 @@ export async function saveAiConfigAction(
     return {
       success: false,
       error: error?.message || "Failed to save AI configuration",
+    };
+  }
+}
+
+/**
+ * 8. Test AI provider connection and API key validity
+ */
+export async function testAiConnectionAction(input: {
+  provider: "builtin" | "openai" | "gemini";
+  apiKey?: string | null;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    await requireAuth();
+
+    const { provider, apiKey } = input;
+
+    if (provider === "builtin") {
+      return {
+        success: true,
+        message: "Built-in Neural Heuristic Engine is operational and ready.",
+      };
+    }
+
+    const key = (apiKey || "").trim();
+    if (!key) {
+      return {
+        success: false,
+        error: `Please enter an API key for ${provider === "openai" ? "OpenAI" : "Google Gemini"} before testing.`,
+      };
+    }
+
+    if (provider === "openai") {
+      try {
+        const res = await fetch("https://api.openai.com/v1/models", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${key}`,
+          },
+        });
+
+        if (res.ok) {
+          return {
+            success: true,
+            message: "Successfully connected to OpenAI! Model access verified.",
+          };
+        }
+
+        const errJson = await res.json().catch(() => null);
+        const errMsg = errJson?.error?.message || res.statusText;
+
+        if (res.status === 401) {
+          return {
+            success: false,
+            error: "Authentication failed (401): Invalid OpenAI API key.",
+          };
+        } else if (res.status === 429) {
+          return {
+            success: false,
+            error: `OpenAI Rate Limit / Quota Exceeded (429): ${errMsg}`,
+          };
+        } else {
+          return {
+            success: false,
+            error: `OpenAI Error (${res.status}): ${errMsg}`,
+          };
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          error: `Network failure connecting to OpenAI: ${err.message || "Unknown error"}`,
+        };
+      }
+    }
+
+    if (provider === "gemini") {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+          {
+            method: "GET",
+          }
+        );
+
+        if (res.ok) {
+          return {
+            success: true,
+            message: "Successfully connected to Google Gemini! Model access verified.",
+          };
+        }
+
+        const errJson = await res.json().catch(() => null);
+        const errMsg = errJson?.error?.message || res.statusText;
+
+        return {
+          success: false,
+          error: `Gemini API Error (${res.status}): ${errMsg}`,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          error: `Network failure connecting to Google Gemini: ${err.message || "Unknown error"}`,
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: "Unknown AI provider selected.",
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || "Failed to test AI connection",
     };
   }
 }

@@ -75,6 +75,8 @@ export interface BatchStudyConfig {
   enableFollowUp?: boolean;
   followUpDays?: number;
   companyMatrix?: import("@/lib/validations/marketing").CompanyMatrix | null;
+  aiProvider?: "builtin" | "openai" | "gemini";
+  apiKey?: string | null;
 }
 
 /**
@@ -156,6 +158,8 @@ export async function studyMarketingBatch(
       tone: config.tone,
       valueProposition: config.valueProposition,
       customInstruction: config.customInstruction,
+      apiKey: config.apiKey || undefined,
+      aiProvider: config.aiProvider || "builtin",
     });
 
     const deliverability = analyzeEmailDeliverability({

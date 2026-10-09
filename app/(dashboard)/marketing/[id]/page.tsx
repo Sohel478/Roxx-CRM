@@ -26,6 +26,7 @@ import {
   getMarketingBatchByIdAction,
   assignMarketingBatchAction,
 } from "@/actions/marketing";
+import { processScheduledAiQueueAction } from "@/actions/ai-email";
 import { getUsersAction, type UserItem } from "@/actions/users";
 import type { MarketingBatchDetail } from "@/lib/validations/marketing";
 import { SendBatchEmailModal } from "@/features/marketing/components/send-batch-email-modal";
@@ -43,6 +44,7 @@ export default function MarketingBatchDetailPage() {
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isAiStudyOpen, setIsAiStudyOpen] = useState(false);
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [isProcessingQueue, setIsProcessingQueue] = useState<string | null>(null);
 
   const [isReassignOpen, setIsReassignOpen] = useState(false);
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -70,6 +72,18 @@ export default function MarketingBatchDetailPage() {
       setIsLoading(false);
     }
   }, [batchId]);
+
+  const handleDispatchQueue = async (campaignId: string) => {
+    setIsProcessingQueue(campaignId);
+    try {
+      await processScheduledAiQueueAction(campaignId);
+      await fetchBatch();
+    } catch {
+      // ignore
+    } finally {
+      setIsProcessingQueue(null);
+    }
+  };
 
   const handleOpenReassign = async () => {
     setIsReassignOpen(true);
@@ -415,7 +429,14 @@ export default function MarketingBatchDetailPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {(camp.status === "SENDING" || camp.sentCount < camp.totalRecipients) && (
+                          <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold">
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Autonomous Queue ({camp.sentCount}/{camp.totalRecipients})
+                          </Badge>
+                        )}
+
                         <Badge
                           variant="success"
                           className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold"
@@ -431,6 +452,25 @@ export default function MarketingBatchDetailPage() {
                             <AlertTriangle className="w-3 h-3 mr-1" />
                             {camp.failedCount} Failed / Skipped
                           </Badge>
+                        )}
+                        {(camp.status === "SENDING" || camp.sentCount < camp.totalRecipients) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDispatchQueue(camp.id);
+                            }}
+                            disabled={isProcessingQueue === camp.id}
+                            className="h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50 gap-1 px-2.5 shadow-2xs font-medium"
+                          >
+                            {isProcessingQueue === camp.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3 h-3 text-blue-600" />
+                            )}
+                            <span>Dispatch Next Email</span>
+                          </Button>
                         )}
                       </div>
                       <button

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   mockMarketingBatchesStore,
   mockAiCampaignsStore,
+  mockMarketingCampaignsStore,
   mockLeadsStore,
   mockActivitiesStore,
   mockAiConfigsStore,
@@ -13,7 +13,9 @@ import {
   processScheduledAiQueueAction,
   getAiConfigAction,
   saveAiConfigAction,
+  testAiConnectionAction,
 } from "@/actions/ai-email";
+import { getMarketingBatchByIdAction } from "@/actions/marketing";
 
 // Mock next/cache
 vi.mock("next/cache", () => ({
@@ -40,6 +42,7 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
   beforeEach(() => {
     mockMarketingBatchesStore.length = 0;
     mockAiCampaignsStore.length = 0;
+    mockMarketingCampaignsStore.length = 0;
     mockLeadsStore.length = 0;
     mockActivitiesStore.length = 0;
 
@@ -358,5 +361,143 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
     expect(updatedConfig.data?.defaultCompanyPitch).toBe("World-class CRM automation platform");
     expect(updatedConfig.data?.defaultFollowUpDays).toBe(4);
     expect(updatedConfig.data?.defaultPacingMinutes).toBe(5);
+  });
+
+  it("should immediately send lead #1 and sync to mockMarketingCampaignsStore when startDate is 'now'", async () => {
+    const res = await scheduleAiBatchCampaignAction({
+      batchId: "batch_ai_1",
+      campaignName: "Immediate AI Outreach",
+      objective: "INITIAL_OUTREACH",
+      tone: "PROFESSIONAL",
+      startDate: "now",
+      pacingMinutes: 2,
+      enableFollowUp: true,
+      followUpDays: 3,
+      leads: [
+        {
+          leadId: "lead_b1",
+          leadName: "Alice Smith",
+          leadEmail: "alice@finovate.io",
+          companyName: "Finovate Labs",
+          initialSubject: "Alice Intro",
+          initialBody: "Hello Alice, let's connect.",
+          followUpSubject: "Alice Follow Up",
+          followUpBody: "Checking in Alice.",
+        },
+        {
+          leadId: "lead_b2",
+          leadName: "Bob Jones",
+          leadEmail: "bob@cloudscale.net",
+          companyName: "CloudScale Systems",
+          initialSubject: "Bob Intro",
+          initialBody: "Hello Bob, let's connect.",
+          followUpSubject: "Bob Follow Up",
+          followUpBody: "Checking in Bob.",
+        },
+      ],
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.data?.campaignId).toBeDefined();
+
+    // Verify AI campaign state
+    const aiCamp = mockAiCampaignsStore.find((c) => c.id === res.data?.campaignId);
+    expect(aiCamp).toBeDefined();
+    expect(aiCamp?.sentCount).toBe(1); // Lead #1 sent immediately
+    expect(aiCamp?.schedules[0].status).toBe("AWAITING_REPLY");
+    expect(aiCamp?.schedules[1].status).toBe("SCHEDULED"); // Lead #2 queued for later
+
+    // Verify sync to mockMarketingCampaignsStore
+    const syncedCamp = mockMarketingCampaignsStore.find((c) => c.id === res.data?.campaignId);
+    expect(syncedCamp).toBeDefined();
+    expect(syncedCamp?.sentCount).toBe(1);
+    expect(syncedCamp?.totalRecipients).toBe(2);
+
+    // Verify getMarketingBatchByIdAction includes the AI campaign
+    const batchDetailRes = await getMarketingBatchByIdAction("batch_ai_1");
+    expect(batchDetailRes.success).toBe(true);
+    const foundInBatch = batchDetailRes.data?.campaigns.find((c) => c.id === res.data?.campaignId);
+    expect(foundInBatch).toBeDefined();
+    expect(foundInBatch?.sentCount).toBe(1);
+  });
+
+  it("should test AI connection correctly with testAiConnectionAction", async () => {
+    // 1. Builtin provider always succeeds
+    const builtinRes = await testAiConnectionAction({ provider: "builtin" });
+    expect(builtinRes.success).toBe(true);
+    expect(builtinRes.message).toContain("operational and ready");
+
+    // 2. Empty key errors out
+    const emptyKeyRes = await testAiConnectionAction({ provider: "openai", apiKey: "" });
+    expect(emptyKeyRes.success).toBe(false);
+    expect(emptyKeyRes.error).toContain("Please enter an API key");
+
+    // 3. Mock fetch response for OpenAI test
+    const originalFetch = global.fetch;
+    try {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+      } as any);
+
+      const openaiSuccessRes = await testAiConnectionAction({
+        provider: "openai",
+        apiKey: "sk-proj-valid-test-key",
+      });
+      expect(openaiSuccessRes.success).toBe(true);
+      expect(openaiSuccessRes.message).toContain("Successfully connected to OpenAI");
+
+      // Mock 401 Unauthorized
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: async () => ({ error: { message: "Incorrect API key provided" } }),
+      } as any);
+
+      const openaiFailRes = await testAiConnectionAction({
+        provider: "openai",
+        apiKey: "sk-proj-invalid-key",
+      });
+      expect(openaiFailRes.success).toBe(false);
+      expect(openaiFailRes.error).toContain("Invalid OpenAI API key");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("should preserve companyMatrix when saving AI configuration", async () => {
+    // Save config with company matrix
+    await saveAiConfigAction({
+      aiProvider: "openai",
+      apiKey: "sk-proj-test-matrix",
+      defaultCompanyPitch: "Tech leaders",
+      defaultFollowUpDays: 3,
+      defaultPacingMinutes: 2,
+      companyMatrix: {
+        websiteUrl: "https://example.com",
+        elevatorPitch: "Premier Enterprise Cloud Solutions",
+        coreSkillsets: ["Cloud Migration", "Kubernetes", "DevSecOps"],
+        serviceOfferings: ["Architecture Audit", "Modernization"],
+        targetIndustries: ["FinTech", "HealthTech"],
+        caseStudies: [],
+        outOfScopeExclusions: ["Hardware repair"],
+      },
+    });
+
+    // Update only pitch and provider
+    const updateRes = await saveAiConfigAction({
+      aiProvider: "openai",
+      apiKey: "sk-proj-test-matrix",
+      defaultCompanyPitch: "Updated pitch",
+      defaultFollowUpDays: 5,
+      defaultPacingMinutes: 3,
+    });
+    expect(updateRes.success).toBe(true);
+
+    const saved = await getAiConfigAction();
+    expect(saved.data?.defaultCompanyPitch).toBe("Updated pitch");
+    expect(saved.data?.companyMatrix?.coreSkillsets).toContain("Cloud Migration");
+    expect(saved.data?.companyMatrix?.outOfScopeExclusions).toContain("Hardware repair");
   });
 });

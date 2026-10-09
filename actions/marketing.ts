@@ -7,6 +7,7 @@ import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockMarketingBatchesStore,
   mockMarketingCampaignsStore,
+  mockAiCampaignsStore,
   mockLeadsStore,
   mockUsersStore,
   mockSmtpStore,
@@ -122,12 +123,44 @@ export async function getMarketingBatchesAction(): Promise<{
 
       batches = dbBatches.map((b) => {
         const leadIds = Array.isArray(b.leadIds) ? (b.leadIds as string[]) : [];
-        const lastCampaign = b.campaigns[0]
+        let lastCampaign = b.campaigns[0]
           ? {
               ...b.campaigns[0],
               sentAt: b.campaigns[0].sentAt ? b.campaigns[0].sentAt.toISOString() : null,
             }
           : null;
+
+        if (!lastCampaign) {
+          const mockC = mockMarketingCampaignsStore
+            .filter((c) => c.batchId === b.id)
+            .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0];
+          if (mockC) {
+            lastCampaign = {
+              id: mockC.id,
+              subject: mockC.subject,
+              sentAt: mockC.sentAt || null,
+              status: mockC.status,
+              sentCount: mockC.sentCount,
+              failedCount: mockC.failedCount,
+              totalRecipients: mockC.totalRecipients,
+            };
+          } else {
+            const aiC = mockAiCampaignsStore
+              .filter((c) => c.batchId === b.id)
+              .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0];
+            if (aiC) {
+              lastCampaign = {
+                id: aiC.id,
+                subject: aiC.objective ? `[AI] ${aiC.objective}` : "AI Outreach",
+                sentAt: aiC.updatedAt,
+                status: aiC.status === "COMPLETED" ? "SENT" : aiC.status === "ACTIVE" || aiC.status === "SCHEDULED" ? "SENDING" : "DRAFT",
+                sentCount: aiC.sentCount,
+                failedCount: aiC.failedCount ?? 0,
+                totalRecipients: aiC.totalLeads,
+              };
+            }
+          }
+        }
 
         const assignedName = (b as any).assignedToName || (session.id === b.ownerId ? session.name : "Sales Rep");
         const assignedEmail = (b as any).assignedToEmail || (session.id === b.ownerId ? session.email : null);
@@ -164,7 +197,7 @@ export async function getMarketingBatchesAction(): Promise<{
           .filter((c) => c.batchId === b.id)
           .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
 
-        const last = campaigns[0]
+        let last = campaigns[0]
           ? {
               id: campaigns[0].id,
               subject: campaigns[0].subject,
@@ -175,6 +208,23 @@ export async function getMarketingBatchesAction(): Promise<{
               totalRecipients: campaigns[0].totalRecipients,
             }
           : null;
+
+        if (!last) {
+          const aiC = mockAiCampaignsStore
+            .filter((c) => c.batchId === b.id)
+            .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0];
+          if (aiC) {
+            last = {
+              id: aiC.id,
+              subject: aiC.objective ? `[AI] ${aiC.objective}` : "AI Outreach",
+              sentAt: aiC.updatedAt,
+              status: aiC.status === "COMPLETED" ? "SENT" : aiC.status === "ACTIVE" || aiC.status === "SCHEDULED" ? "SENDING" : "DRAFT",
+              sentCount: aiC.sentCount,
+              failedCount: aiC.failedCount ?? 0,
+              totalRecipients: aiC.totalLeads,
+            };
+          }
+        }
 
         const assignedName = b.assignedToName || b.ownerName || (session.id === b.ownerId ? session.name : "Sales Rep");
         const assignedEmail = b.assignedToEmail || (session.id === b.ownerId ? session.email : null);
@@ -287,6 +337,51 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       }
     }
 
+    // Merge any mock campaigns or AI campaigns targeting this batch
+    const mockMatchingCampaigns = mockMarketingCampaignsStore.filter((c) => c.batchId === batchId);
+    for (const mc of mockMatchingCampaigns) {
+      if (!campaignRecords.some((c: any) => c.id === mc.id)) {
+        campaignRecords.push(mc);
+      }
+    }
+
+    const aiMatchingCampaigns = mockAiCampaignsStore.filter((c) => c.batchId === batchId);
+    for (const ac of aiMatchingCampaigns) {
+      if (!campaignRecords.some((c: any) => c.id === ac.id)) {
+        campaignRecords.push({
+          id: ac.id,
+          batchId: ac.batchId,
+          organizationId: ac.organizationId,
+          senderId: ac.creatorId || "system",
+          senderName: ac.creatorName || "Sales Rep",
+          senderEmail: (ac as any).senderEmail || null,
+          subject: ac.objective ? `[AI Campaign] ${ac.objective}` : "AI Automated Outreach",
+          body: `AI Scheduled Campaign (${ac.schedules?.length || 0} leads targeted)`,
+          status: ac.status === "COMPLETED" ? "SENT" : ac.status === "ACTIVE" || ac.status === "SCHEDULED" ? "SENDING" : "DRAFT",
+          totalRecipients: ac.totalLeads,
+          sentCount: ac.sentCount,
+          deliveredCount: ac.sentCount,
+          openedCount: 0,
+          clickedCount: 0,
+          failedCount: ac.failedCount ?? 0,
+          startedAt: ac.createdAt,
+          completedAt: ac.status === "COMPLETED" ? ac.updatedAt : null,
+          createdAt: ac.createdAt,
+          updatedAt: ac.updatedAt,
+          recipientLogs: ac.schedules.map((s) => ({
+            leadId: s.leadId,
+            leadName: s.leadName,
+            email: s.leadEmail,
+            status: s.status === "SENT" || s.status === "FOLLOW_UP_SENT" ? "SENT" : s.status === "FAILED" ? "FAILED" : "SKIPPED",
+            error: s.errorMessage || null,
+            sentAt: s.sentAt || null,
+          })),
+        });
+      }
+    }
+
+    campaignRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     if (!batchRecord || batchRecord.deletedAt) {
       return { success: false, error: "Marketing batch not found" };
     }
@@ -355,7 +450,7 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       senderEmail: c.senderEmail || null,
       subject: c.subject,
       body: c.body,
-      status: c.status,
+      status: (c.status === "COMPLETED" || c.status === "completed" || c.status === "SENT") ? "SENT" : (c.status === "ACTIVE" || c.status === "active" || c.status === "SENDING" || c.status === "sending") ? "SENDING" : (c.status === "FAILED" || c.status === "failed") ? "FAILED" : "DRAFT",
       totalRecipients: c.totalRecipients,
       sentCount: c.sentCount,
       failedCount: c.failedCount,
