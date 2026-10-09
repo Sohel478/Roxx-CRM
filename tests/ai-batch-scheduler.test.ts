@@ -123,6 +123,7 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
       followUpDays: 3,
     });
 
+    expect(studyRes.error).toBeUndefined();
     expect(studyRes.success).toBe(true);
     expect(studyRes.data).toBeDefined();
 
@@ -499,5 +500,136 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
     expect(saved.data?.defaultCompanyPitch).toBe("Updated pitch");
     expect(saved.data?.companyMatrix?.coreSkillsets).toContain("Cloud Migration");
     expect(saved.data?.companyMatrix?.outOfScopeExclusions).toContain("Hardware repair");
+  });
+
+  it("should generate distinct bespoke human subject lines and resolve clean company names across a 5-lead cohort", async () => {
+    // Seed 5 leads with mixed company names (including 'Organization' and domain-based websites)
+    const cohortLeads = [
+      {
+        id: "cohort_1",
+        leadNumber: "LD-9001",
+        organizationId: "org_ai_batch_test",
+        firstName: "Sarah",
+        lastName: "Jenkins",
+        fullName: "Sarah Jenkins",
+        email: "sarah@toys-unique.com",
+        companyName: "Organization",
+        website: "https://toys-unique.com",
+        jobTitle: "Founder & Owner",
+        status: "NEW",
+        assignedToId: "usr_rep_1",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "cohort_2",
+        leadNumber: "LD-9002",
+        organizationId: "org_ai_batch_test",
+        firstName: "Michael",
+        lastName: "Brown",
+        fullName: "Michael Brown",
+        email: "michael@mattresses-for-less.com",
+        companyName: "Organization",
+        website: "https://mattresses-for-less.com",
+        jobTitle: "Operations Manager",
+        status: "NEW",
+        assignedToId: "usr_rep_1",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "cohort_3",
+        leadNumber: "LD-9003",
+        organizationId: "org_ai_batch_test",
+        firstName: "Jessica",
+        lastName: "Lee",
+        fullName: "Jessica Lee",
+        email: "jessica@apexcloud.io",
+        companyName: "Apex Cloud",
+        jobTitle: "VP of Engineering",
+        status: "NEW",
+        assignedToId: "usr_rep_1",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "cohort_4",
+        leadNumber: "LD-9004",
+        organizationId: "org_ai_batch_test",
+        firstName: "David",
+        lastName: "Taylor",
+        fullName: "David Taylor",
+        email: "david@luminahealth.com",
+        companyName: "Lumina Health",
+        jobTitle: "Head of Partnerships",
+        status: "NEW",
+        assignedToId: "usr_rep_1",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "cohort_5",
+        leadNumber: "LD-9005",
+        organizationId: "org_ai_batch_test",
+        firstName: "Amanda",
+        lastName: "White",
+        fullName: "Amanda White",
+        email: "amanda@nexustech.co",
+        companyName: "Nexus Tech",
+        jobTitle: "Chief Executive Officer",
+        status: "NEW",
+        assignedToId: "usr_rep_1",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    mockLeadsStore.push(...(cohortLeads as any[]));
+
+    const batchId = "batch_cohort_5";
+    mockMarketingBatchesStore.push({
+      id: batchId,
+      name: "Q4 Retail & Tech Cohort",
+      organizationId: "org_ai_batch_test",
+      description: "Batch of 5 leads",
+      ownerId: "usr_rep_1",
+      ownerName: "Alex Sales",
+      assignedToId: "usr_rep_1",
+      assignedToName: "Alex Sales",
+      assignedToEmail: "alex@vanguard.com",
+      status: "READY",
+      leadIds: cohortLeads.map((l) => l.id),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const studyRes = await studyMarketingBatchAiAction({
+      batchId,
+      objective: "INITIAL_OUTREACH",
+      tone: "PROFESSIONAL",
+    });
+
+    expect(studyRes.success).toBe(true);
+    expect(studyRes.data).toBeDefined();
+    expect(studyRes.data?.totalStudied).toBe(5);
+
+    const subjects = studyRes.data!.leads.map((l) => l.initialEmail.subject);
+    const uniqueSubjects = new Set(subjects);
+
+    // CRITICAL: All 5 subject lines must be completely distinct! Zero duplicates!
+    expect(uniqueSubjects.size).toBe(5);
+
+    // None should have the old formulaic robotic template
+    for (const sub of subjects) {
+      expect(sub).not.toBe("your team <> Techflux Solutions: streamlining client engagement");
+      expect(sub.length).toBeGreaterThan(10);
+    }
+
+    // Verify company names were cleaned from domains when 'Organization' was provided
+    const lead1 = studyRes.data!.leads.find((l) => l.leadId === "cohort_1");
+    expect(lead1?.companyName).toBe("Toys Unique");
+
+    const lead2 = studyRes.data!.leads.find((l) => l.leadId === "cohort_2");
+    expect(lead2?.companyName).toBe("Mattresses For Less");
   });
 });

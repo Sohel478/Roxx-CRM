@@ -210,6 +210,7 @@ export const companyDocumentSchema = z.object({
 export type CompanyDocument = z.infer<typeof companyDocumentSchema>;
 
 export const companyMatrixSchema = z.object({
+  companyName: z.string().optional().nullable(),
   websiteUrl: z.string().optional().nullable(),
   sourceDocuments: z.array(companyDocumentSchema).default([]),
   elevatorPitch: z.string().max(1000).optional().nullable(),

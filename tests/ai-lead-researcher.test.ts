@@ -92,7 +92,8 @@ describe("AI Lead Researcher & Copywriter Engine", () => {
 
     expect(result.researchBrief.seniorityLevel).toBe("Director / Head of Department");
     expect(result.researchBrief.department).toBe("Sales & Business Development");
-    expect(result.subject).toContain("Marcus");
+    expect(result.subject).toBeDefined();
+    expect(result.body).toContain("Marcus");
     expect(result.body).toContain("Growth Scale Inc");
     expect(result.deliverabilityScore).toBeGreaterThanOrEqual(85);
   });

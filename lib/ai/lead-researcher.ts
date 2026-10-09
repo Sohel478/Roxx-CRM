@@ -89,6 +89,7 @@ export interface AiResearchOptions {
   valueProposition?: string;
   apiKey?: string;
   aiProvider?: "builtin" | "openai" | "gemini";
+  leadIndex?: number;
 }
 
 /**
@@ -186,47 +187,94 @@ function analyzeJobTitle(title?: string | null): {
 }
 
 /**
- * Extracts and analyzes website or company domain cues
+/**
+ * Resolves a clean, human brand name and extracts domain / industry indicators
  */
-function analyzeCompanyDomain(
+export function resolveCleanCompanyName(
   companyName?: string | null,
   website?: string | null,
   email?: string | null
 ): { domain: string; cleanName: string; likelyIndustry: string } {
   let domain = "";
-  if (website) {
+  if (website && typeof website === "string") {
     try {
       const url = website.startsWith("http") ? website : `https://${website}`;
       domain = new URL(url).hostname.replace(/^www\./i, "");
     } catch {
       domain = website.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0];
     }
-  } else if (email && email.includes("@")) {
+  } else if (email && typeof email === "string" && email.includes("@")) {
     const parts = email.split("@")[1].toLowerCase();
-    if (!["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"].includes(parts)) {
+    if (!["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "mail.com", "proton.me", "protonmail.com"].includes(parts)) {
       domain = parts;
     }
   }
 
-  const cleanName = (companyName || (domain ? domain.split(".")[0] : "your team")).trim();
-  const lowerName = cleanName.toLowerCase();
+  const rawCompanyName =
+    typeof companyName === "string"
+      ? companyName
+      : companyName && typeof companyName === "object" && "cleanName" in companyName
+      ? String((companyName as { cleanName?: unknown }).cleanName || "")
+      : "";
 
+  const raw = rawCompanyName.trim();
+  const isGeneric =
+    !raw ||
+    [
+      "organization",
+      "your team",
+      "n/a",
+      "na",
+      "none",
+      "unknown",
+      "company",
+      "null",
+      "undefined",
+      "lead",
+    ].includes(raw.toLowerCase());
+
+  let cleanName = "";
+  if (!isGeneric) {
+    cleanName = raw;
+  } else if (domain) {
+    const base = domain.split(".")[0];
+    cleanName = base
+      .replace(/[-_]/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  } else {
+    cleanName = "";
+  }
+
+  const checkText = `${cleanName} ${domain}`.toLowerCase();
   let likelyIndustry = "technology & modern services";
-  if (lowerName.includes("tech") || lowerName.includes("soft") || lowerName.includes("ai") || lowerName.includes("cloud") || lowerName.includes("data")) {
+  if (checkText.includes("tech") || checkText.includes("soft") || checkText.includes("ai") || checkText.includes("cloud") || checkText.includes("data") || checkText.includes("dev")) {
     likelyIndustry = "Software, Technology & Cloud Services";
-  } else if (lowerName.includes("health") || lowerName.includes("care") || lowerName.includes("med") || lowerName.includes("clinic")) {
+  } else if (checkText.includes("health") || checkText.includes("care") || checkText.includes("med") || checkText.includes("clinic") || checkText.includes("pharma")) {
     likelyIndustry = "Healthcare & Life Sciences";
-  } else if (lowerName.includes("capital") || lowerName.includes("invest") || lowerName.includes("fin") || lowerName.includes("bank")) {
+  } else if (checkText.includes("mattress") || checkText.includes("furniture") || checkText.includes("bed") || checkText.includes("home")) {
+    likelyIndustry = "Home Furnishings & Retail";
+  } else if (checkText.includes("toy") || checkText.includes("game") || checkText.includes("kid") || checkText.includes("play")) {
+    likelyIndustry = "Consumer Products & Goods";
+  } else if (checkText.includes("capital") || checkText.includes("invest") || checkText.includes("fin") || checkText.includes("bank") || checkText.includes("pay")) {
     likelyIndustry = "Financial Services & Investment";
-  } else if (lowerName.includes("logist") || lowerName.includes("freight") || lowerName.includes("supply") || lowerName.includes("shipping")) {
+  } else if (checkText.includes("logist") || checkText.includes("freight") || checkText.includes("supply") || checkText.includes("shipping") || checkText.includes("cargo")) {
     likelyIndustry = "Logistics & Supply Chain Operations";
-  } else if (lowerName.includes("consult") || lowerName.includes("advis") || lowerName.includes("agency") || lowerName.includes("studio")) {
+  } else if (checkText.includes("consult") || checkText.includes("advis") || checkText.includes("agency") || checkText.includes("studio")) {
     likelyIndustry = "Professional Consulting & Strategic Services";
-  } else if (lowerName.includes("retail") || lowerName.includes("store") || lowerName.includes("commerce") || lowerName.includes("shop")) {
+  } else if (checkText.includes("retail") || checkText.includes("store") || checkText.includes("commerce") || checkText.includes("shop")) {
     likelyIndustry = "Retail & E-commerce Operations";
   }
 
   return { domain, cleanName, likelyIndustry };
+}
+
+function analyzeCompanyDomain(
+  companyName?: string | null,
+  website?: string | null,
+  email?: string | null
+): { domain: string; cleanName: string; likelyIndustry: string } {
+  return resolveCleanCompanyName(companyName, website, email);
 }
 
 /**
@@ -407,6 +455,160 @@ export function buildLeadResearchBrief(context: LeadResearchContext): LeadResear
 }
 
 /**
+ * Generates an authentic, distinct, human-sounding subject line tailored specifically per lead
+ */
+function generateBespokeSubjectLine(params: {
+  firstName: string;
+  cleanCompany: string;
+  department: string;
+  departmentLabel: string;
+  seniority: string;
+  repOrg: string;
+  matchedCapability: string;
+  objective: AiEmailObjective;
+  tone: AiEmailTone;
+  seed: number;
+}): string {
+  const {
+    firstName,
+    cleanCompany,
+    department,
+    departmentLabel,
+    seniority,
+    repOrg,
+    matchedCapability,
+    objective,
+    seed,
+  } = params;
+
+  const hasCompany = Boolean(cleanCompany && cleanCompany.toLowerCase() !== "your team");
+  const cap = matchedCapability || "technical solutions";
+  const dep = department.toLowerCase();
+
+  if (objective === "MEETING_INVITE") {
+    const inviteStyles = hasCompany
+      ? [
+          `Brief 10-minute sync for ${cleanCompany}?`,
+          `Walkthrough invitation for ${firstName} & ${cleanCompany}`,
+          `${firstName} & ${repOrg} — quick screenshare?`,
+          `Quick conversation regarding ${cleanCompany}'s ${dep} roadmap`,
+          `Idea for ${cleanCompany} // 10m sync?`,
+        ]
+      : [
+          `Quick 10-minute discussion, ${firstName}?`,
+          `${firstName} & ${repOrg} — introductory sync?`,
+          `Brief walkthrough on ${cap}`,
+          `10 minutes this week, ${firstName}?`,
+          `Connecting with ${firstName} (${repOrg})`,
+        ];
+    return inviteStyles[seed % inviteStyles.length];
+  }
+
+  if (objective === "FOLLOW_UP") {
+    const followUpStyles = hasCompany
+      ? [
+          `Following up on our discussion — ${cleanCompany}`,
+          `Quick follow-up for ${firstName} at ${cleanCompany}`,
+          `Circling back regarding ${cleanCompany}'s ${dep} initiatives`,
+          `Re: thoughts on ${cleanCompany}'s ${cap}`,
+          `Touching base, ${firstName} (${cleanCompany})`,
+        ]
+      : [
+          `Quick follow-up for you, ${firstName}`,
+          `Circling back following our earlier note`,
+          `Touching base regarding ${cap}, ${firstName}`,
+          `Quick check-in, ${firstName}`,
+          `Re: introductory sync with ${firstName}`,
+        ];
+    return followUpStyles[seed % followUpStyles.length];
+  }
+
+  if (objective === "VALUE_CASE_STUDY") {
+    const caseStyles = hasCompany
+      ? [
+          `How peer organizations in your space scale ${cap}`,
+          `Relevant benchmarks for ${cleanCompany}'s ${dep} team`,
+          `Quick performance case study for ${cleanCompany}`,
+          `How peer teams approach ${cap} without overhead`,
+          `Growth metric for ${cleanCompany}`,
+        ]
+      : [
+          `Relevant benchmarks on ${cap} for ${firstName}`,
+          `How peer teams in your space approached ${cap}`,
+          `Quick performance data point for ${firstName}`,
+          `Case study on scaling ${cap}`,
+          `Benchmarks for ${firstName}'s team`,
+        ];
+    return caseStyles[seed % caseStyles.length];
+  }
+
+  if (objective === "RE_ENGAGEMENT") {
+    const reEngageStyles = hasCompany
+      ? [
+          `Checking in regarding ${cleanCompany}'s quarterly priorities`,
+          `Revisiting ${cleanCompany}'s ${dep} roadmap`,
+          `${firstName} — touching base on ${cleanCompany}'s timeline`,
+          `Still on radar for ${cleanCompany}?`,
+          `Quick pulse check for ${cleanCompany}`,
+        ]
+      : [
+          `Checking in regarding your timeline, ${firstName}`,
+          `Revisiting your ${dep} priorities, ${firstName}`,
+          `${firstName} — touching base on quarterly goals`,
+          `Still on your radar, ${firstName}?`,
+          `Quick check-in for ${firstName}`,
+        ];
+    return reEngageStyles[seed % reEngageStyles.length];
+  }
+
+  // Default: INITIAL_OUTREACH
+  if (seniority === "FOUNDER" || seniority === "C-LEVEL") {
+    const executiveStyles = hasCompany
+      ? [
+          `Quick question regarding ${cleanCompany}`,
+          `Idea for ${cleanCompany}'s ${cap}`,
+          `${cleanCompany} + ${repOrg} // ${cap}`,
+          `${firstName} — perspective on ${cleanCompany}'s growth`,
+          `Question on ${cleanCompany}'s tech roadmap`,
+          `Intro: ${firstName} & ${repOrg}`,
+          `${cleanCompany}'s ${dep} strategy: quick note`,
+        ]
+      : [
+          `Quick question for you, ${firstName}`,
+          `Idea regarding ${cap} for your team, ${firstName}`,
+          `Intro: ${firstName} & ${repOrg}`,
+          `${firstName} — perspective on scaling ${cap}`,
+          `Quick thought for ${firstName}`,
+          `Question on your team's tech roadmap`,
+        ];
+    return executiveStyles[seed % executiveStyles.length];
+  }
+
+  // Department leaders & practitioners
+  const standardStyles = hasCompany
+    ? [
+        `Idea for ${cleanCompany}'s ${dep} workflow`,
+        `Connecting regarding ${cleanCompany}'s ${dep} operations`,
+        `${cleanCompany} & ${repOrg}: ${cap}`,
+        `${firstName} — quick question regarding ${cleanCompany}`,
+        `Question about ${cleanCompany}'s ${dep} initiatives`,
+        `Resource for ${cleanCompany}'s ${dep} team`,
+        `${cleanCompany}'s ${dep} roadmap: quick perspective`,
+      ]
+    : [
+        `Idea for your ${dep} workflow, ${firstName}`,
+        `Connecting regarding your ${dep} operations, ${firstName}`,
+        `Quick question for you, ${firstName}`,
+        `${firstName} — thought on your team's ${cap}`,
+        `Question about your ${dep} initiatives, ${firstName}`,
+        `Quick note on ${cap}`,
+        `Connecting with ${firstName} (${departmentLabel})`,
+      ];
+
+  return standardStyles[seed % standardStyles.length];
+}
+
+/**
  * Intelligent Contextual Generation Engine
  *
  * Employs heuristic prompt engineering & deep context injection to craft
@@ -421,14 +623,21 @@ export async function generatePersonalizedLeadEmail(
   const tone = options.tone || "PROFESSIONAL";
   const researchBrief = buildLeadResearchBrief(context);
 
+  const companyAnalysis = resolveCleanCompanyName(context.companyName, context.website, context.email);
   const firstName = (context.firstName || "there").trim();
-  const companyName = (context.companyName || "your team").trim();
+  const cleanCompany = companyAnalysis.cleanName || (context.companyName && context.companyName.toLowerCase() !== "organization" ? context.companyName.trim() : "");
   const repName = (context.repName || "Account Representative").trim();
   const repOrg = (context.organizationName || "Roxx CRM").trim();
   const roleAnalysis = analyzeJobTitle(context.jobTitle);
 
-  // If an external LLM key is configured (OpenAI or Gemini), we could call the remote endpoint.
-  // We first check if an external API key is provided and valid.
+  // Compute a deterministic seed per lead to guarantee distinct, varied subject lines
+  const seed = Math.abs(
+    (options.leadIndex ?? 0) * 31 +
+    (context.leadId ? context.leadId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) : 0) +
+    (firstName.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0))
+  );
+
+  // If an external LLM key is configured (OpenAI or Gemini), we call the remote endpoint.
   if (options.apiKey && options.aiProvider && options.aiProvider !== "builtin") {
     try {
       const remoteResult = await callExternalLlm(context, researchBrief, options);
@@ -441,9 +650,6 @@ export async function generatePersonalizedLeadEmail(
   }
 
   // Built-in Advanced Synthesis Engine
-  let subject = "";
-  let bodyParagraphs: string[] = [];
-
   const matched = researchBrief.matchedSkillset;
   const caseStudyWin = matched?.matchedCaseStudy
     ? ` (recently helped a team in your sector achieve ${matched.matchedCaseStudy.metric ? `${matched.matchedCaseStudy.metric}` : "major efficiency"})`
@@ -454,43 +660,62 @@ export async function generatePersonalizedLeadEmail(
       ? `${matched.primaryCapability.toLowerCase()}${caseStudyWin}`
       : `helping modern teams streamline their pipeline management and automate high-touch lead follow-ups without landing in spam`);
 
+  const companyRef = cleanCompany ? cleanCompany : "your team";
+  const leadRoleText = context.jobTitle ? `as ${context.jobTitle}` : "overseeing operations";
+
+  const subject = generateBespokeSubjectLine({
+    firstName,
+    cleanCompany,
+    department: roleAnalysis.department,
+    departmentLabel: roleAnalysis.departmentLabel,
+    seniority: roleAnalysis.seniority,
+    repOrg,
+    matchedCapability: matched?.primaryCapability || "custom solutions",
+    objective,
+    tone,
+    seed,
+  });
+
+  let bodyParagraphs: string[] = [];
+
   // Construct Subject & Body according to Objective & Tone
   switch (objective) {
     case "INITIAL_OUTREACH": {
-      if (roleAnalysis.seniority === "FOUNDER" || roleAnalysis.seniority === "C-LEVEL") {
-        subject = tone === "EXECUTIVE"
-          ? `${companyName} <> ${repOrg}: revenue velocity`
-          : `Quick perspective on ${companyName}'s growth initiatives`;
-        
+      const bodyStyleVariant = seed % 3;
+
+      if (bodyStyleVariant === 0) {
         bodyParagraphs = [
           `Hi ${firstName},`,
-          `${researchBrief.personalizedHook}`,
-          `Given your leadership at ${companyName}, I imagine accelerating pipeline conversion while keeping team overhead lean is a top priority. At ${repOrg}, we specialize in ${customPitch}.`,
-          `Would you be open to a brief 10-minute introductory sync this Thursday or Friday to explore if there is a mutual fit?`,
+          `I came across ${companyRef} and wanted to reach out directly regarding how you're approaching ${roleAnalysis.department.toLowerCase()} operations.`,
+          `At ${repOrg}, we specialize in ${customPitch}. We partner with leaders in your space to eliminate execution bottlenecks and scale results without operational bloat.`,
+          `Would you be open to a brief 10-minute introductory conversation this Thursday or Friday to explore if there might be a mutual fit?`,
           `Best regards,\n${repName}\n${repOrg}`,
         ];
-      } else {
-        subject = tone === "WARM"
-          ? `Connecting regarding ${companyName}'s ${roleAnalysis.department.toLowerCase()} workflow`
-          : `${companyName} <> ${repOrg}: streamlining client engagement`;
-
+      } else if (bodyStyleVariant === 1) {
         bodyParagraphs = [
           `Hi ${firstName},`,
           `${researchBrief.personalizedHook}`,
-          `Teams in your space often face challenges with ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "pipeline momentum"}. We help ${roleAnalysis.department.toLowerCase()} leaders at organizations like yours solve this by ${customPitch}.`,
-          `I would love to learn more about how ${companyName} currently tackles this. Do you have a few minutes for a quick chat later this week?`,
+          `Teams in ${companyAnalysis.likelyIndustry} frequently run into friction with ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "pipeline momentum"}. We help teams solve this by ${customPitch}.`,
+          `Curious if this is currently a priority for ${companyRef}. Do you have a few minutes for a quick chat later this week?`,
           `Warm regards,\n${repName}\n${repOrg}`,
+        ];
+      } else {
+        bodyParagraphs = [
+          `Hi ${firstName},`,
+          `Noticed your role ${leadRoleText} at ${companyRef} and wanted to share a quick perspective.`,
+          `At ${repOrg}, we focus on ${customPitch}. Given your focus on team delivery and conversion, I wanted to see if our approach aligns with what you're building.`,
+          `Happy to send over a concise 2-minute overview or jump on a brief call if you are open to comparing notes.`,
+          `Best,\n${repName}\n${repOrg}`,
         ];
       }
       break;
     }
 
     case "MEETING_INVITE": {
-      subject = `Walkthrough invitation for ${firstName} & ${companyName}`;
       bodyParagraphs = [
         `Hi ${firstName},`,
         `Hope your week is off to a productive start.`,
-        `Following up on our focus on ${companyName}, I have put together a concise 15-minute product walkthrough demonstrating how ${repOrg} can address ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "your core pipeline challenges"}.`,
+        `Following up on our focus on ${companyRef}, I have put together a concise 15-minute walkthrough demonstrating how ${repOrg} can address ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "your core challenges"} around ${customPitch}.`,
         `Would 2:00 PM this Wednesday or Thursday work for a quick screenshare? If not, feel free to suggest a time that suits your calendar.`,
         `Looking forward to connecting,\n${repName}\n${repOrg}`,
       ];
@@ -498,10 +723,9 @@ export async function generatePersonalizedLeadEmail(
     }
 
     case "FOLLOW_UP": {
-      subject = `Following up on our discussion — ${companyName}`;
       const noteRef = context.pastActivitiesSummary
         ? `Reflecting on our earlier notes regarding ${context.pastActivitiesSummary.slice(0, 80)}...`
-        : `Wanted to quickly circle back following our earlier touchpoint with ${companyName}.`;
+        : `Wanted to quickly circle back following our earlier touchpoint with ${companyRef}.`;
 
       bodyParagraphs = [
         `Hi ${firstName},`,
@@ -514,22 +738,20 @@ export async function generatePersonalizedLeadEmail(
     }
 
     case "VALUE_CASE_STUDY": {
-      subject = `How peer organizations in ${context.companyIndustry || "your industry"} scale client retention`;
       bodyParagraphs = [
         `Hi ${firstName},`,
-        `I have been following ${companyName}'s recent initiatives and noticed your strategic position in the market.`,
+        `I have been following ${companyRef}'s recent initiatives and noticed your strategic position in the market.`,
         `Recently, we worked with a similar team in your sector to solve ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "lead follow-up drop-offs"}, resulting in a 34% increase in qualified meeting bookings within the first 60 days.`,
-        `I would be happy to send over the 2-page case breakdown or hop on a brief call if you are curious to see how the numbers apply to ${companyName}.`,
+        `I would be happy to send over the 2-page case breakdown or hop on a brief call if you are curious to see how the numbers apply to ${companyRef}.`,
         `Best,\n${repName}\n${repOrg}`,
       ];
       break;
     }
 
     case "RE_ENGAGEMENT": {
-      subject = `Checking in regarding ${companyName}'s timeline`;
       bodyParagraphs = [
         `Hi ${firstName},`,
-        `I know priorities shift quickly, so I wanted to touch base to see if optimizing your ${roleAnalysis.department.toLowerCase()} pipeline is still on ${companyName}'s radar for this quarter.`,
+        `I know priorities shift quickly, so I wanted to touch base to see if optimizing your ${roleAnalysis.department.toLowerCase()} pipeline is still on ${companyRef}'s radar for this quarter.`,
         `If the timing isn't right, no problem at all. If you'd like to revisit our notes or explore updated capabilities, just let me know.`,
         `Best regards,\n${repName}`,
       ];
@@ -572,9 +794,19 @@ async function callExternalLlm(
 
   const matrix = context.companyMatrix;
   const matched = brief.matchedSkillset;
+  const companyAnalysis = resolveCleanCompanyName(context.companyName, context.website, context.email);
+  const cleanCompany = companyAnalysis.cleanName || (context.companyName && context.companyName.toLowerCase() !== "organization" ? context.companyName.trim() : "their team");
 
   const prompt = `You are an elite B2B sales development strategist for ${context.organizationName || "Roxx CRM"}.
 Draft a highly personalized, authentic 1-on-1 human email to this lead.
+
+CRITICAL HUMAN OUTREACH INSTRUCTIONS:
+1. BESPOKE SUBJECT LINE: You MUST create a 100% bespoke, natural, human subject line tailored specifically for this lead (${context.firstName} at ${cleanCompany}). NEVER use formulaic patterns like "your team <> Company: streamlining client engagement". Use varied human subject styles like "Quick question, ${context.firstName}", "Idea for ${cleanCompany}'s ${brief.department.toLowerCase()} operations", or "${context.firstName} — perspective on ${matched?.primaryCapability || "growth"}".
+2. NATURAL HUMAN VOICE: Write in an authentic, respectful 1-on-1 human voice from one professional to another. Avoid marketing buzzwords, cheesy hype, or automated boilerplate.
+3. CONTEXTUAL RELEVANCE: Speak directly to their specific role (${context.jobTitle || "Executive"}) and organization (${cleanCompany}). Connect it naturally to our verified capability (${matched?.primaryCapability || "Custom Solutions"}).
+4. VERIFIED CAPABILITIES ONLY: ONLY pitch our verified capabilities listed below. Strictly NEVER mention anything in the Out-of-Scope Exclusions list.
+5. CONCISE: Keep between 45 and 110 words across 3-4 natural paragraphs.
+6. OUTPUT FORMAT: Output strict JSON only: {"subject": "...", "body": "..."}
 
 Our Company Verified Capabilities & Skillsets:
 - Service Offerings: ${matrix?.serviceOfferings?.join(", ") || matched?.matchedServices?.join(", ") || "Custom Software & Technology Solutions"}
@@ -586,23 +818,16 @@ Our Company Verified Capabilities & Skillsets:
 
 Lead Context:
 - Name: ${context.firstName} ${context.lastName || ""}
-- Company: ${context.companyName || "N/A"}
-- Role: ${context.jobTitle || "Stakeholder"}
+- Organization / Company: ${cleanCompany}
+- Role / Title: ${context.jobTitle || "Stakeholder"}
+- Domain / Website: ${companyAnalysis.domain || context.website || "N/A"}
 - LinkedIn: ${context.customerLinkedin || context.companyLinkedin || "N/A"}
-- Company Focus: ${brief.companyFocus}
+- Sector: ${companyAnalysis.likelyIndustry}
 - Persona Insights: ${brief.personaInsights}
 - Objective: ${options.objective || "INITIAL_OUTREACH"}
 - Tone: ${options.tone || "PROFESSIONAL"}
 - Rep Name: ${context.repName || "Account Rep"}
-- Custom Instructions: ${options.customInstruction || "None"}
-
-Rules:
-1. ONLY pitch our verified capabilities. NEVER mention or offer anything in the Out-of-Scope Exclusions list.
-2. Speak to the lead on their exact peer level (${matched?.peerToneGuidance || "Peer level"}).
-3. No promotional marketing buzzwords or cheesy openers like "I hope this email finds you well".
-4. Keep it between 40 and 120 words.
-5. Natural, direct paragraphs.
-6. Output strict JSON with format: {"subject": "...", "body": "..."}`;
+- Custom Instructions: ${options.customInstruction || "None"}`;
 
   if (options.aiProvider === "openai") {
     try {

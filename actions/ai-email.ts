@@ -153,7 +153,7 @@ export async function generateLeadAiEmailAction(
       companyIndustry: lead.industry,
       repName,
       repEmail,
-      organizationName: session.organizationName || "Roxx CRM",
+      organizationName: configData?.companyMatrix?.companyName || session.organizationName || "Roxx CRM",
       pastActivitiesSummary,
       companyMatrix: configData?.companyMatrix,
     };
@@ -163,7 +163,7 @@ export async function generateLeadAiEmailAction(
       objective: objective as any,
       tone: tone as any,
       customInstruction,
-      valueProposition: valueProposition || configData?.defaultCompanyPitch || undefined,
+      valueProposition: valueProposition || configData?.defaultCompanyPitch || configData?.companyMatrix?.elevatorPitch || undefined,
       apiKey: configData?.apiKey || undefined,
       aiProvider: configData?.aiProvider || "builtin",
     });
@@ -310,11 +310,11 @@ export async function studyMarketingBatchAiAction(
       batchId,
       objective: objective as any,
       tone: tone as any,
-      valueProposition: valueProposition || configData?.defaultCompanyPitch || undefined,
+      valueProposition: valueProposition || configData?.defaultCompanyPitch || configData?.companyMatrix?.elevatorPitch || undefined,
       customInstruction,
       repName: assignedRepName || session.name || "Sales Rep",
       repEmail: assignedRepEmail || session.email || "",
-      organizationName: session.organizationName || "Roxx CRM",
+      organizationName: configData?.companyMatrix?.companyName || session.organizationName || "Roxx CRM",
       enableFollowUp,
       followUpDays,
       companyMatrix: configData?.companyMatrix,
@@ -839,6 +839,29 @@ export async function getAiConfigAction(): Promise<{
         defaultPacingMinutes: 2,
         updatedAt: new Date().toISOString(),
       };
+    }
+
+    // Ensure companyMatrix is resolved if saved under company_matrix setting
+    if (!config.companyMatrix) {
+      try {
+        const matrixSetting = await prisma.systemSetting.findUnique({
+          where: {
+            organizationId_key: {
+              organizationId,
+              key: "company_matrix",
+            },
+          },
+        });
+        if (matrixSetting?.value) {
+          config.companyMatrix = JSON.parse(matrixSetting.value);
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (!config.companyMatrix && mockAiConfigsStore[organizationId]?.companyMatrix) {
+      config.companyMatrix = mockAiConfigsStore[organizationId].companyMatrix;
     }
 
     return { success: true, data: config };

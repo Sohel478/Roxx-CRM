@@ -13,6 +13,7 @@ import {
   AiEmailTone,
   AiEmailSuggestion,
   LeadResearchBrief,
+  resolveCleanCompanyName,
 } from "./lead-researcher";
 import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
 
@@ -85,10 +86,11 @@ export interface BatchStudyConfig {
 function buildContextualFollowUp(
   lead: BatchStudyLeadInput,
   initialSubject: string,
-  repName: string
+  repName: string,
+  cleanCompany: string
 ): { subject: string; body: string } {
   const firstName = lead.firstName?.trim() || "there";
-  const company = lead.companyName?.trim() || "your team";
+  const company = cleanCompany || "your team";
 
   const subject = initialSubject.toLowerCase().startsWith("re:")
     ? initialSubject
@@ -130,11 +132,13 @@ export async function studyMarketingBatch(
       continue;
     }
 
+    const cleanCompany = resolveCleanCompanyName(lead.companyName, lead.website, lead.email).cleanName;
+
     const context: LeadResearchContext = {
       leadId: lead.id,
       firstName: lead.firstName,
       lastName: lead.lastName,
-      companyName: lead.companyName,
+      companyName: cleanCompany,
       jobTitle: lead.jobTitle,
       email: lead.email,
       phone: lead.phone,
@@ -160,6 +164,7 @@ export async function studyMarketingBatch(
       customInstruction: config.customInstruction,
       apiKey: config.apiKey || undefined,
       aiProvider: config.aiProvider || "builtin",
+      leadIndex: studiedLeads.length,
     });
 
     const deliverability = analyzeEmailDeliverability({
@@ -169,7 +174,7 @@ export async function studyMarketingBatch(
 
     let followUpData: StudiedLeadItem["followUpEmail"] | undefined = undefined;
     if (config.enableFollowUp) {
-      const followUp = buildContextualFollowUp(lead, emailSuggestion.subject, repName);
+      const followUp = buildContextualFollowUp(lead, emailSuggestion.subject, repName, cleanCompany);
       const followUpDeliv = analyzeEmailDeliverability({
         subject: followUp.subject,
         body: followUp.body,
@@ -188,7 +193,7 @@ export async function studyMarketingBatch(
       leadNumber: lead.leadNumber || `LEAD-${lead.id.slice(-4).toUpperCase()}`,
       leadName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
       leadEmail: lead.email,
-      companyName: lead.companyName || "Organization",
+      companyName: cleanCompany,
       jobTitle: lead.jobTitle || "Executive",
       researchBrief,
       initialEmail: {
