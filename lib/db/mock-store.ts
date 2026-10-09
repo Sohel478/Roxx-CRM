@@ -1,4 +1,5 @@
 import initialLeads from "./initial-leads.json";
+import type { CompanyMatrix } from "@/lib/validations/marketing";
 
 export interface MockCompany {
   id: string;
@@ -1044,6 +1045,7 @@ export interface MockAiConfig {
   defaultCompanyPitch?: string | null;
   defaultFollowUpDays: number;
   defaultPacingMinutes: number;
+  companyMatrix?: CompanyMatrix | null;
   updatedAt: string;
 }
 

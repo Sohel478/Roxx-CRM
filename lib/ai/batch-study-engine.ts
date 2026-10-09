@@ -74,6 +74,7 @@ export interface BatchStudyConfig {
   organizationName?: string;
   enableFollowUp?: boolean;
   followUpDays?: number;
+  companyMatrix?: import("@/lib/validations/marketing").CompanyMatrix | null;
 }
 
 /**
@@ -144,6 +145,7 @@ export async function studyMarketingBatch(
       repName,
       repEmail,
       organizationName: orgName,
+      companyMatrix: config.companyMatrix,
     };
 
     const researchBrief = buildLeadResearchBrief(context);

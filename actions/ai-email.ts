@@ -131,6 +131,7 @@ export async function generateLeadAiEmailAction(
       repEmail: session.email || "",
       organizationName: session.organizationName || "Roxx CRM",
       pastActivitiesSummary,
+      companyMatrix: configData?.companyMatrix,
     };
 
     const brief = buildLeadResearchBrief(context);
@@ -254,17 +255,21 @@ export async function studyMarketingBatchAiAction(
       rating: l.rating,
     }));
 
+    const aiConfig = await getAiConfigAction();
+    const configData = aiConfig.data;
+
     const config: BatchStudyConfig = {
       batchId,
       objective: objective as any,
       tone: tone as any,
-      valueProposition,
+      valueProposition: valueProposition || configData?.defaultCompanyPitch || undefined,
       customInstruction,
       repName: session.name || "Sales Rep",
       repEmail: session.email || "",
       organizationName: session.organizationName || "Roxx CRM",
       enableFollowUp,
       followUpDays,
+      companyMatrix: configData?.companyMatrix,
     };
 
     const studyResult = await studyMarketingBatch(leadsForStudy, config);

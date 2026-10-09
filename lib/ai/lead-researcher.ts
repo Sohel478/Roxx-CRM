@@ -6,6 +6,7 @@
  */
 
 import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
+import type { CompanyMatrix } from "@/lib/validations/marketing";
 
 export type AiEmailObjective =
   | "INITIAL_OUTREACH"
@@ -19,6 +20,19 @@ export type AiEmailTone =
   | "WARM"
   | "EXECUTIVE"
   | "CONSULTATIVE";
+
+export interface MatchedSkillsetResult {
+  primaryCapability: string;
+  matchedServices: string[];
+  matchedSkills: string[];
+  matchedCaseStudy?: {
+    title: string;
+    metric?: string | null;
+    summary: string;
+  };
+  peerToneGuidance: string;
+  excludedSkillsAvoided: string[];
+}
 
 export interface LeadResearchContext {
   leadId?: string;
@@ -43,6 +57,7 @@ export interface LeadResearchContext {
   repEmail?: string | null;
   organizationName?: string | null;
   pastActivitiesSummary?: string | null;
+  companyMatrix?: CompanyMatrix | null;
 }
 
 export type LeadProfileInput = LeadResearchContext;
@@ -56,6 +71,7 @@ export interface LeadResearchBrief {
   recommendedAngle: string;
   detectedPainPoints: string[];
   linkedinPresence?: string;
+  matchedSkillset?: MatchedSkillsetResult;
 }
 
 export interface AiEmailSuggestion {
@@ -214,11 +230,112 @@ function analyzeCompanyDomain(
 }
 
 /**
+ * Matches a lead's role, department, and industry with our company's verified skillsets,
+ * enforcing negative exclusions and tuning communication to the lead's peer level.
+ */
+export function matchLeadWithCompanySkillsets(
+  context: LeadResearchContext,
+  matrix?: CompanyMatrix | null
+): MatchedSkillsetResult {
+  const roleAnalysis = analyzeJobTitle(context.jobTitle);
+  const leadIndustry = (context.companyIndustry || "").toLowerCase();
+
+  const allSkills = matrix?.coreSkillsets?.length
+    ? matrix.coreSkillsets
+    : [
+        "Full-Stack Web Development",
+        "Next.js & React",
+        "Node.js & Python",
+        "Cloud Infrastructure (AWS/GCP)",
+        "DevOps & CI/CD Automation",
+      ];
+
+  const allServices = matrix?.serviceOfferings?.length
+    ? matrix.serviceOfferings
+    : [
+        "Custom Software & Web App Development",
+        "Cloud Architecture & Modernization",
+        "Dedicated Engineering Teams",
+      ];
+
+  const rawExclusions = matrix?.outOfScopeExclusions || [];
+  const exclusions = rawExclusions.map((e) => e.toLowerCase());
+
+  // Filter out any skills or services that collide with out-of-scope exclusions
+  const validSkills = allSkills.filter(
+    (s) => !exclusions.some((ex) => s.toLowerCase().includes(ex) || ex.includes(s.toLowerCase()))
+  );
+  const validServices = allServices.filter(
+    (s) => !exclusions.some((ex) => s.toLowerCase().includes(ex) || ex.includes(s.toLowerCase()))
+  );
+
+  let primaryCapability = validServices[0] || validSkills[0] || "Custom Software & Technology Solutions";
+  let peerToneGuidance = "Align communication with executive ROI and delivery reliability.";
+
+  if (roleAnalysis.department === "ENGINEERING") {
+    const engServices = validServices.filter((s) =>
+      /(?:software|cloud|devops|api|engineering|architecture|app|backend)/i.test(s)
+    );
+    const engSkills = validSkills.filter((s) =>
+      /(?:cloud|devops|aws|api|backend|full-stack|react|node|python|kubernetes|microservices|docker)/i.test(s)
+    );
+
+    if (engServices.length > 0) {
+      primaryCapability = engServices[0];
+    } else if (engSkills.length > 0) {
+      primaryCapability = `${engSkills.slice(0, 2).join(" & ")} Engineering`;
+    }
+
+    peerToneGuidance =
+      "Peer engineering level: speak in terms of architecture, deployment pipelines, latency, and code maintainability.";
+  } else if (roleAnalysis.department === "SALES" || roleAnalysis.department === "MARKETING") {
+    const bizServices = validServices.filter((s) =>
+      /(?:crm|sales|conversion|automation|analytics|pipeline|operations|growth)/i.test(s)
+    );
+    if (bizServices.length > 0) {
+      primaryCapability = bizServices[0];
+    }
+    peerToneGuidance =
+      "Commercial peer level: focus on pipeline velocity, lead conversion efficiency, and automated workflows.";
+  } else if (roleAnalysis.seniority === "C-LEVEL" || roleAnalysis.seniority === "FOUNDER") {
+    primaryCapability = validServices[0] || matrix?.elevatorPitch?.slice(0, 60) || "Strategic Technical Partner";
+    peerToneGuidance =
+      "Executive peer level: focus on macro business ROI, capital efficiency, risk mitigation, and time-to-market.";
+  }
+
+  // Find matching case study
+  let matchedCaseStudy: MatchedSkillsetResult["matchedCaseStudy"] = undefined;
+  if (matrix?.caseStudies && matrix.caseStudies.length > 0) {
+    const industryMatch = matrix.caseStudies.find(
+      (cs) => cs.industry && leadIndustry.includes(cs.industry.toLowerCase())
+    );
+    const selected = industryMatch || matrix.caseStudies[0];
+    if (selected) {
+      matchedCaseStudy = {
+        title: selected.title,
+        metric: selected.metric ?? null,
+        summary: selected.summary,
+      };
+    }
+  }
+
+  return {
+    primaryCapability,
+    matchedServices: validServices.slice(0, 3),
+    matchedSkills: validSkills.slice(0, 5),
+    matchedCaseStudy,
+    peerToneGuidance,
+    excludedSkillsAvoided: rawExclusions,
+  };
+}
+
+/**
  * Deep Research Synthesizer: constructs the research brief from all known signals
  */
 export function buildLeadResearchBrief(context: LeadResearchContext): LeadResearchBrief {
   const roleAnalysis = analyzeJobTitle(context.jobTitle);
   const companyAnalysis = analyzeCompanyDomain(context.companyName, context.website, context.email);
+  const matchedSkillset = matchLeadWithCompanySkillsets(context, context.companyMatrix);
 
   const linkedinPresent = Boolean(context.customerLinkedin || context.companyLinkedin);
   const linkedinTarget = context.customerLinkedin || context.companyLinkedin || "";
@@ -285,6 +402,7 @@ export function buildLeadResearchBrief(context: LeadResearchContext): LeadResear
       context.customerLinkedin || context.companyLinkedin || context.linkedinUrl
         ? "Active LinkedIn Profile detected"
         : undefined,
+    matchedSkillset,
   };
 }
 
@@ -326,8 +444,15 @@ export async function generatePersonalizedLeadEmail(
   let subject = "";
   let bodyParagraphs: string[] = [];
 
+  const matched = researchBrief.matchedSkillset;
+  const caseStudyWin = matched?.matchedCaseStudy
+    ? ` (recently helped a team in your sector achieve ${matched.matchedCaseStudy.metric ? `${matched.matchedCaseStudy.metric}` : "major efficiency"})`
+    : "";
+
   const customPitch = options.valueProposition?.trim() ||
-    `helping modern teams streamline their pipeline management and automate high-touch lead follow-ups without landing in spam`;
+    (matched
+      ? `${matched.primaryCapability.toLowerCase()}${caseStudyWin}`
+      : `helping modern teams streamline their pipeline management and automate high-touch lead follow-ups without landing in spam`);
 
   // Construct Subject & Body according to Objective & Tone
   switch (objective) {
@@ -445,8 +570,20 @@ async function callExternalLlm(
 ): Promise<AiEmailSuggestion | null> {
   if (!options.apiKey) return null;
 
-  const prompt = `You are an elite B2B sales development strategist for Roxx CRM.
+  const matrix = context.companyMatrix;
+  const matched = brief.matchedSkillset;
+
+  const prompt = `You are an elite B2B sales development strategist for ${context.organizationName || "Roxx CRM"}.
 Draft a highly personalized, authentic 1-on-1 human email to this lead.
+
+Our Company Verified Capabilities & Skillsets:
+- Service Offerings: ${matrix?.serviceOfferings?.join(", ") || matched?.matchedServices?.join(", ") || "Custom Software & Technology Solutions"}
+- Core Skillsets: ${matrix?.coreSkillsets?.join(", ") || matched?.matchedSkills?.join(", ") || "Full-Stack Development, Cloud Infrastructure"}
+- Out-of-Scope (STRICT EXCLUSIONS - NEVER PITCH THESE): ${matrix?.outOfScopeExclusions?.join(", ") || "None"}
+- Matched Offering for this Lead: ${matched?.primaryCapability || "Custom Software Solutions"}
+- Matched Proof Point / Metric: ${matched?.matchedCaseStudy?.metric || ""} ${matched?.matchedCaseStudy?.summary || ""}
+- Peer Level Tone Guidance: ${matched?.peerToneGuidance || "Peer level"}
+
 Lead Context:
 - Name: ${context.firstName} ${context.lastName || ""}
 - Company: ${context.companyName || "N/A"}
@@ -460,10 +597,12 @@ Lead Context:
 - Custom Instructions: ${options.customInstruction || "None"}
 
 Rules:
-1. No promotional marketing buzzwords or cheesy openers like "I hope this email finds you well".
-2. Keep it between 40 and 120 words.
-3. Natural, direct paragraphs.
-4. Output strict JSON with format: {"subject": "...", "body": "..."}`;
+1. ONLY pitch our verified capabilities. NEVER mention or offer anything in the Out-of-Scope Exclusions list.
+2. Speak to the lead on their exact peer level (${matched?.peerToneGuidance || "Peer level"}).
+3. No promotional marketing buzzwords or cheesy openers like "I hope this email finds you well".
+4. Keep it between 40 and 120 words.
+5. Natural, direct paragraphs.
+6. Output strict JSON with format: {"subject": "...", "body": "..."}`;
 
   if (options.aiProvider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {

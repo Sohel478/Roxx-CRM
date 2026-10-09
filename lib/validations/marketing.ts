@@ -171,12 +171,36 @@ export const aiLeadEmailGenerateSchema = z.object({
 
 export type AiLeadEmailGenerateInput = z.infer<typeof aiLeadEmailGenerateSchema>;
 
+export const companyCaseStudySchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1, "Title is required"),
+  metric: z.string().optional().nullable(),
+  summary: z.string().min(1, "Summary is required"),
+  industry: z.string().optional().nullable(),
+});
+
+export type CompanyCaseStudy = z.infer<typeof companyCaseStudySchema>;
+
+export const companyMatrixSchema = z.object({
+  websiteUrl: z.string().optional().nullable(),
+  elevatorPitch: z.string().max(1000).optional().nullable(),
+  coreSkillsets: z.array(z.string()).default([]),
+  serviceOfferings: z.array(z.string()).default([]),
+  targetIndustries: z.array(z.string()).default([]),
+  caseStudies: z.array(companyCaseStudySchema).default([]),
+  outOfScopeExclusions: z.array(z.string()).default([]),
+});
+
+export type CompanyMatrix = z.infer<typeof companyMatrixSchema>;
+
 export const aiConfigSchema = z.object({
   aiProvider: z.enum(["builtin", "openai", "gemini"]).default("builtin"),
   apiKey: z.string().max(300).optional().nullable(),
   defaultCompanyPitch: z.string().max(1000).optional().nullable(),
   defaultFollowUpDays: z.number().int().min(1).max(30).default(3),
   defaultPacingMinutes: z.number().int().min(1).max(60).default(2),
+  companyMatrix: companyMatrixSchema.optional().nullable(),
 });
 
 export type AiConfigInput = z.infer<typeof aiConfigSchema>;
+

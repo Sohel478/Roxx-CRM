@@ -13,6 +13,8 @@ import {
   ArrowRight,
   HelpCircle,
   Linkedin,
+  Layers,
+  Award,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -262,6 +264,31 @@ export function AiEmailAssistantModal({
                   <span className="font-bold text-indigo-900 block mb-0.5">Personalized Hook:</span>
                   <span className="text-slate-700 italic">&ldquo;{result.researchBrief.personalizedHook}&rdquo;</span>
                 </div>
+
+                {result.researchBrief.matchedSkillset && (
+                  <div className="bg-purple-50/80 p-2.5 rounded-lg border border-purple-200 text-[11px] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-900 flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        Matched Capability: {result.researchBrief.matchedSkillset.primaryCapability}
+                      </span>
+                      <span className="text-[10px] text-purple-700 font-medium">
+                        {result.researchBrief.matchedSkillset.peerToneGuidance}
+                      </span>
+                    </div>
+                    {result.researchBrief.matchedSkillset.matchedCaseStudy && (
+                      <div className="text-[10px] text-purple-800">
+                        <span className="font-semibold">Relevant Proof Point: </span>
+                        {result.researchBrief.matchedSkillset.matchedCaseStudy.metric && (
+                          <span className="font-bold text-emerald-700 mr-1">
+                            [{result.researchBrief.matchedSkillset.matchedCaseStudy.metric}]
+                          </span>
+                        )}
+                        {result.researchBrief.matchedSkillset.matchedCaseStudy.summary}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Generated Subject & Body */}
