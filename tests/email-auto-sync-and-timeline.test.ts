@@ -203,4 +203,85 @@ describe("Email Timeline Visibility & Background Auto-Sync", () => {
     expect(res.lastSyncedAt).toBeDefined();
     expect(typeof res.lastSyncedAt).toBe("string");
   });
+
+  it("aggregates emails in global activity timeline when leadId is not specified", async () => {
+    mockMarketingCampaignsStore.push({
+      id: "camp_global_1",
+      batchId: "batch_1",
+      organizationId: "org_sync_test",
+      senderId: "usr_rep_1",
+      senderName: "Alex Sales",
+      senderEmail: "alex@roxx-crm.com",
+      subject: "Global Product Announcement",
+      body: "Hello everyone, check out our new CRM features.",
+      status: "SENT",
+      totalRecipients: 1,
+      sentCount: 1,
+      failedCount: 0,
+      recipientLogs: [
+        {
+          leadId: "lead_kubins_1",
+          leadName: "Kubins HQ",
+          email: "contact@kubins.com",
+          companyName: "Kubins Corp",
+          status: "SENT",
+          sentAt: new Date().toISOString(),
+        },
+      ],
+      sentAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const res = await getActivitiesAction({});
+    expect(res.success).toBe(true);
+    expect(res.data?.items.length).toBeGreaterThanOrEqual(1);
+    expect(res.data?.items.some((a) => a.subject.includes("Global Product Announcement"))).toBe(true);
+    expect(res.data?.summary.emailsCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("includes scheduled AI outreach items in timeline with outcome SCHEDULED", async () => {
+    mockAiCampaignsStore.push({
+      id: "ai_camp_scheduled",
+      batchId: "batch_1",
+      batchName: "Q4 High Value Leads",
+      organizationId: "org_sync_test",
+      campaignName: "Paced Outreach Campaign",
+      outreachObjective: "Demo Booking",
+      tone: "Professional",
+      status: "ACTIVE",
+      totalLeads: 1,
+      sentCount: 0,
+      repliedCount: 0,
+      followUpCount: 0,
+      enableFollowUp: false,
+      followUpDelayDays: 3,
+      pacingMinutes: 5,
+      creatorId: "usr_rep_1",
+      creatorName: "Alex Sales",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      schedules: [
+        {
+          leadId: "lead_kubins_1",
+          leadName: "Kubins HQ",
+          leadEmail: "contact@kubins.com",
+          companyName: "Kubins Corp",
+          jobTitle: "Founder",
+          initialSubject: "Scheduled Intro to Kubins",
+          initialBody: "Hi Kubins team, looking forward to connecting.",
+          status: "SCHEDULED",
+          scheduledAt: new Date(Date.now() + 300000).toISOString(),
+        },
+      ],
+    });
+
+    const res = await getActivitiesAction({ leadId: "lead_kubins_1" });
+    expect(res.success).toBe(true);
+
+    const scheduledItem = res.data?.items.find((a) => a.subject.includes("Scheduled Intro to Kubins"));
+    expect(scheduledItem).toBeDefined();
+    expect(scheduledItem?.outcome).toBe("SCHEDULED");
+    expect(scheduledItem?.type).toBe("EMAIL");
+  });
 });

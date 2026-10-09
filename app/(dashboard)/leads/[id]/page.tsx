@@ -101,7 +101,6 @@ export default function LeadDetailPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [activityFilter, setActivityFilter] = useState<string>("ALL");
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activityDefaultType] = useState<ActivityType>("CALL");
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
@@ -282,11 +281,6 @@ export default function LeadDetailPage() {
     lead.customerLinkedin ||
     lead.description?.match(/LinkedIn Profile:\s*([^\s\n\r]+)/i)?.[1] ||
     null;
-
-  const filteredActivities = activities.filter((act) => {
-    if (activityFilter === "ALL") return true;
-    return act.type === activityFilter;
-  });
 
   const handleDelete = () => {
     if (!confirm(`Are you sure you want to delete lead "${lead?.fullName}"?`)) return;
@@ -713,35 +707,17 @@ export default function LeadDetailPage() {
 
           {/* Activity Timeline */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-blue-600" />
                 <h2 className="text-sm font-bold text-slate-900">
                   Lead Interaction Timeline ({activities.length})
                 </h2>
               </div>
-
-              {/* Feed Filter Tabs */}
-              <div className="flex gap-1 overflow-x-auto">
-                {["ALL", "NOTE", "EMAIL", "CALL", "MEETING"].map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setActivityFilter(f)}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors ${
-                      activityFilter === f
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-500 hover:bg-slate-100"
-                    }`}
-                  >
-                    {f === "ALL" ? "All" : f.charAt(0) + f.slice(1).toLowerCase() + "s"}
-                  </button>
-                ))}
-              </div>
             </div>
 
             <ActivityTimeline
-              activities={filteredActivities}
+              activities={activities}
               onRefresh={loadLead}
               onSyncEmails={handleSyncEmails}
               isSyncingEmails={isSyncingEmails}

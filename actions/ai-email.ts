@@ -434,6 +434,41 @@ export async function scheduleAiBatchCampaignAction(
 
     mockAiCampaignsStore.unshift(newCampaign);
 
+    // Persist to Prisma SystemSetting so campaigns survive server restarts and rebuilds
+    try {
+      const existingSetting = await prisma.systemSetting.findFirst({
+        where: {
+          organizationId: { in: [organizationId, session.organizationId].filter(Boolean) },
+          key: "ai_campaigns",
+        },
+      });
+      let storedList: any[] = [];
+      if (existingSetting?.value) {
+        try {
+          storedList = JSON.parse(existingSetting.value);
+        } catch {}
+      }
+      storedList = [newCampaign, ...storedList.filter((c: any) => c.id !== campaignId)];
+      await prisma.systemSetting.upsert({
+        where: {
+          organizationId_key: {
+            organizationId,
+            key: "ai_campaigns",
+          },
+        },
+        create: {
+          organizationId,
+          key: "ai_campaigns",
+          value: JSON.stringify(storedList),
+        },
+        update: {
+          value: JSON.stringify(storedList),
+        },
+      });
+    } catch (saveErr) {
+      console.warn("Failed to persist AI campaign to systemSetting:", saveErr);
+    }
+
     // Sync into mockMarketingCampaignsStore as well so it appears in MarketingBatchDetailPage and MarketingPage
     const initialMarketingCampaign: MockMarketingCampaign = {
       id: campaignId,
@@ -461,6 +496,43 @@ export async function scheduleAiBatchCampaignAction(
       sentAt: null,
     };
     mockMarketingCampaignsStore.unshift(initialMarketingCampaign);
+
+    // Try persisting to Prisma marketingCampaign table if batch exists in DB
+    try {
+      const dbBatch = await prisma.marketingBatch.findUnique({
+        where: { id: batchId },
+        select: { id: true },
+      });
+      if (dbBatch) {
+        await prisma.marketingCampaign.create({
+          data: {
+            id: campaignId,
+            batchId,
+            organizationId,
+            senderId: assignedRepId,
+            senderName: assignedRepName,
+            senderEmail: batch?.assignedToEmail || session.email || "",
+            subject: leads[0]?.initialSubject || campaignName,
+            body: leads[0]?.initialBody || "",
+            status: "SENDING",
+            totalRecipients: leads.length,
+            sentCount: 0,
+            failedCount: 0,
+            recipientLogs: leads.map((l) => ({
+              leadId: l.leadId,
+              leadName: l.leadName,
+              email: l.leadEmail,
+              companyName: l.companyName,
+              status: "SKIPPED",
+              sentAt: null,
+            })) as any,
+            sentAt: null,
+          },
+        });
+      }
+    } catch (dbCampErr) {
+      console.warn("Prisma marketingCampaign create for AI campaign:", dbCampErr);
+    }
 
     // If scheduled for 'now', trigger queue processing immediately right inside this action!
     if (startDate === "now") {
@@ -624,13 +696,22 @@ export async function processAiQueueInternal(
             });
             if (firstOrgUser) dbUserId = firstOrgUser.id;
 
+            let validLeadId: string | null = null;
+            if (item.leadId) {
+              const dbLead = await prisma.lead.findUnique({
+                where: { id: item.leadId },
+                select: { id: true },
+              });
+              if (dbLead) validLeadId = dbLead.id;
+            }
+
             await prisma.activity.create({
               data: {
                 organizationId,
                 type: "EMAIL",
-                subject: item.initialSubject,
+                subject: item.initialSubject.slice(0, 250),
                 description: `[AI Outreach]: Delivered initial personalized email to ${item.leadEmail}.\n\n${item.initialBody}`,
-                leadId: item.leadId,
+                leadId: validLeadId,
                 userId: dbUserId,
                 activityAt: new Date(),
                 outcome: "SENT",
@@ -740,13 +821,22 @@ export async function processAiQueueInternal(
               });
               if (firstOrgUser) dbUserId = firstOrgUser.id;
 
+              let validLeadId: string | null = null;
+              if (item.leadId) {
+                const dbLead = await prisma.lead.findUnique({
+                  where: { id: item.leadId },
+                  select: { id: true },
+                });
+                if (dbLead) validLeadId = dbLead.id;
+              }
+
               await prisma.activity.create({
                 data: {
                   organizationId,
                   type: "EMAIL",
-                  subject: item.followUpSubject,
+                  subject: item.followUpSubject.slice(0, 250),
                   description: `[AI Cadence Follow-Up]: Dispatched automated Step 2 follow-up email to ${item.leadEmail}.\n\n${item.followUpBody}`,
-                  leadId: item.leadId,
+                  leadId: validLeadId,
                   userId: dbUserId,
                   activityAt: new Date(),
                   outcome: "FOLLOW_UP_SENT",
@@ -777,6 +867,41 @@ export async function processAiQueueInternal(
     campaign.updatedAt = new Date().toISOString();
     if (campaignInMarketing) campaignInMarketing.updatedAt = new Date().toISOString();
   }
+
+  // Update persistent system setting
+  try {
+    const existingSetting = await prisma.systemSetting.findFirst({
+      where: {
+        organizationId,
+        key: "ai_campaigns",
+      },
+    });
+    let storedList: any[] = [];
+    if (existingSetting?.value) {
+      try {
+        storedList = JSON.parse(existingSetting.value);
+      } catch {}
+    }
+    for (const c of campaignsToProcess) {
+      storedList = [c, ...storedList.filter((x: any) => x.id !== c.id)];
+    }
+    await prisma.systemSetting.upsert({
+      where: {
+        organizationId_key: {
+          organizationId,
+          key: "ai_campaigns",
+        },
+      },
+      create: {
+        organizationId,
+        key: "ai_campaigns",
+        value: JSON.stringify(storedList),
+      },
+      update: {
+        value: JSON.stringify(storedList),
+      },
+    });
+  } catch {}
 
   revalidatePath("/marketing");
   revalidatePath("/leads");

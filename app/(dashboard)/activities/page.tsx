@@ -9,6 +9,7 @@ import {
   Plus,
 } from "lucide-react";
 import { getActivitiesAction } from "@/actions/activities";
+import { syncLeadEmailsAction } from "@/actions/inbox";
 import { Button } from "@/components/ui/button";
 import { ActivityTimeline } from "@/features/activities/components/activity-timeline";
 import { ActivityModal } from "@/features/activities/components/activity-modal";
@@ -24,6 +25,9 @@ export default function ActivitiesPage() {
     notesCount: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncingEmails, setIsSyncingEmails] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,9 +48,35 @@ export default function ActivitiesPage() {
     }
   }, []);
 
+  const handleSyncEmails = useCallback(async () => {
+    if (isSyncingEmails) return;
+    setIsSyncingEmails(true);
+    try {
+      const res = await syncLeadEmailsAction("all");
+      if (res.success) {
+        setLastSyncedAt(res.lastSyncedAt);
+      }
+      await loadActivities();
+    } catch (err) {
+      console.warn("[ActivitiesPage] sync error:", err);
+    } finally {
+      setIsSyncingEmails(false);
+    }
+  }, [isSyncingEmails, loadActivities]);
+
   useEffect(() => {
     loadActivities();
   }, [loadActivities]);
+
+  // Background auto-sync interval every 30s
+  useEffect(() => {
+    if (!autoSyncEnabled) return;
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      handleSyncEmails();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [autoSyncEnabled, handleSyncEmails]);
 
   const handleOpenLogModal = (type: ActivityType = "CALL") => {
     setModalDefaultType(type);
@@ -162,6 +192,11 @@ export default function ActivitiesPage() {
         activities={activities}
         onOpenLogModal={handleOpenLogModal}
         onRefresh={loadActivities}
+        onSyncEmails={handleSyncEmails}
+        isSyncingEmails={isSyncingEmails}
+        lastSyncedAt={lastSyncedAt}
+        autoSyncEnabled={autoSyncEnabled}
+        onToggleAutoSync={() => setAutoSyncEnabled((prev) => !prev)}
       />
 
       {/* Modal */}
