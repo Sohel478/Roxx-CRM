@@ -8,6 +8,7 @@ import { mockAiConfigsStore, type MockAiConfig } from "@/lib/db/mock-store";
 import {
   companyMatrixSchema,
   type CompanyMatrix,
+  type CompanyDocument,
 } from "@/lib/validations/marketing";
 import {
   extractTextFromUrl,
@@ -18,7 +19,7 @@ import {
 import { getAiConfigAction } from "./ai-email";
 
 /**
- * 1. Extract capabilities matrix from website URL
+ * 1. Extract capabilities matrix from website URL and persist URL to matrix
  */
 export async function extractCompanyMatrixFromUrlAction(input: {
   url: string;
@@ -31,10 +32,19 @@ export async function extractCompanyMatrixFromUrlAction(input: {
       return { success: false, error: "Please provide a valid company website URL." };
     }
 
-    const textRes = await extractTextFromUrl(input.url);
+    let normalizedUrl = input.url.trim();
+    if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
+    const textRes = await extractTextFromUrl(normalizedUrl);
     if (!textRes.success || !textRes.text) {
       return { success: false, error: textRes.error || "Failed to extract text from URL" };
     }
+
+    // Load existing matrix to preserve any previously uploaded documents
+    const currentMatrixRes = await getCompanyMatrixAction();
+    const existingDocs = currentMatrixRes.data?.sourceDocuments || [];
 
     // Load AI config for tenant to check if OpenAI/Gemini is configured
     const aiConfig = await getAiConfigAction();
@@ -43,14 +53,22 @@ export async function extractCompanyMatrixFromUrlAction(input: {
     const matrix = await synthesizeCompanyMatrix(textRes.text, {
       aiProvider: configData?.aiProvider || "builtin",
       apiKey: configData?.apiKey || undefined,
-      websiteUrl: input.url,
+      websiteUrl: normalizedUrl,
     });
+
+    matrix.websiteUrl = normalizedUrl;
+    matrix.sourceDocuments = existingDocs;
+    matrix.lastExtractedAt = new Date().toISOString();
+    matrix.lastExtractedSource = `Website (${normalizedUrl})`;
+
+    // Automatically persist the extracted matrix and source URL
+    await saveCompanyMatrixAction(matrix);
 
     return {
       success: true,
       matrix,
       extractedTextPreview: textRes.text.slice(0, 500),
-      sourceUrl: input.url,
+      sourceUrl: normalizedUrl,
     };
   } catch (err: unknown) {
     return {
@@ -61,7 +79,7 @@ export async function extractCompanyMatrixFromUrlAction(input: {
 }
 
 /**
- * 2. Extract capabilities matrix from uploaded file (PDF / TXT / MD)
+ * 2. Extract capabilities matrix from uploaded file (PDF / TXT / MD) and persist document
  */
 export async function extractCompanyMatrixFromFileAction(
   formData: FormData
@@ -70,19 +88,52 @@ export async function extractCompanyMatrixFromFileAction(
     const session = await requireAuth();
     await resolveTenantContext(session);
 
-    const file = formData.get("file") as File | null;
+    const file = formData.get("file") as any;
     if (!file) {
       return { success: false, error: "No document file provided for upload." };
     }
 
-    const fileName = file.name || "document.pdf";
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const fileName = (typeof file === "object" && file?.name) ? file.name : "document.pdf";
+    let buffer: Buffer;
+    if (typeof file?.arrayBuffer === "function") {
+      const arrayBuffer = await file.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+    } else if (typeof file?.text === "function") {
+      const text = await file.text();
+      buffer = Buffer.from(text, "utf-8");
+    } else if (Buffer.isBuffer(file)) {
+      buffer = file;
+    } else {
+      buffer = Buffer.from(String(file), "utf-8");
+    }
 
     const textRes = extractTextFromDocumentBuffer(buffer, fileName);
     if (!textRes.success || !textRes.text) {
       return { success: false, error: textRes.error || "Failed to extract readable text from document" };
     }
+
+    // Load existing matrix to preserve website URL and merge documents
+    const currentMatrixRes = await getCompanyMatrixAction();
+    const existingDocs = currentMatrixRes.data?.sourceDocuments || [];
+    const existingUrl = currentMatrixRes.data?.websiteUrl || null;
+
+    const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const ext = fileName.split(".").pop()?.toLowerCase() || "pdf";
+
+    const newDoc: CompanyDocument = {
+      id: docId,
+      name: fileName,
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+      type: ext,
+      summary: textRes.text.slice(0, 300),
+    };
+
+    // Replace if document with same name exists, otherwise prepend
+    const updatedDocs = [
+      newDoc,
+      ...existingDocs.filter((d) => d.name.toLowerCase() !== fileName.toLowerCase()),
+    ];
 
     const aiConfig = await getAiConfigAction();
     const configData = aiConfig.data;
@@ -90,7 +141,16 @@ export async function extractCompanyMatrixFromFileAction(
     const matrix = await synthesizeCompanyMatrix(textRes.text, {
       aiProvider: configData?.aiProvider || "builtin",
       apiKey: configData?.apiKey || undefined,
+      websiteUrl: existingUrl || undefined,
     });
+
+    matrix.websiteUrl = existingUrl;
+    matrix.sourceDocuments = updatedDocs;
+    matrix.lastExtractedAt = new Date().toISOString();
+    matrix.lastExtractedSource = `Document (${fileName})`;
+
+    // Automatically persist the synthesized matrix and source document
+    await saveCompanyMatrixAction(matrix);
 
     return {
       success: true,
@@ -107,7 +167,48 @@ export async function extractCompanyMatrixFromFileAction(
 }
 
 /**
- * 3. Save tenant's verified company capabilities matrix
+ * 3. Remove an uploaded reference document from tenant's company matrix
+ */
+export async function removeCompanyDocumentAction(documentId: string): Promise<{
+  success: boolean;
+  matrix?: CompanyMatrix;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const matrixRes = await getCompanyMatrixAction();
+    if (!matrixRes.success || !matrixRes.data) {
+      return { success: false, error: "Capabilities matrix not found" };
+    }
+
+    const current = matrixRes.data;
+    const filteredDocs = (current.sourceDocuments || []).filter((d) => d.id !== documentId);
+
+    const updated: CompanyMatrix = {
+      ...current,
+      sourceDocuments: filteredDocs,
+    };
+
+    const saveRes = await saveCompanyMatrixAction(updated);
+    if (!saveRes.success) {
+      return { success: false, error: saveRes.error || "Failed to remove document" };
+    }
+
+    return {
+      success: true,
+      matrix: updated,
+      message: "Document removed successfully",
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: (err as Error)?.message || "Failed to remove document",
+    };
+  }
+}
+
+/**
+ * 4. Save tenant's verified company capabilities matrix (preserving URL and source documents)
  */
 export async function saveCompanyMatrixAction(
   matrix: CompanyMatrix
@@ -115,6 +216,28 @@ export async function saveCompanyMatrixAction(
   try {
     const session = await requireAuth();
     const { organizationId } = await resolveTenantContext(session);
+
+    // Normalize URL if provided without protocol (e.g., 'www.techflux.in')
+    if (matrix.websiteUrl && matrix.websiteUrl.trim()) {
+      let trimmed = matrix.websiteUrl.trim();
+      if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+        trimmed = `https://${trimmed}`;
+      }
+      matrix.websiteUrl = trimmed;
+    }
+
+    // Preserve existing documents or websiteUrl if omitted in partial updates
+    const existingInStore = mockAiConfigsStore[organizationId]?.companyMatrix;
+    if ((!matrix.sourceDocuments || matrix.sourceDocuments.length === 0) && existingInStore?.sourceDocuments?.length) {
+      matrix.sourceDocuments = existingInStore.sourceDocuments;
+    }
+    if (!matrix.websiteUrl && existingInStore?.websiteUrl) {
+      matrix.websiteUrl = existingInStore.websiteUrl;
+    }
+    if (!matrix.lastExtractedAt && existingInStore?.lastExtractedAt) {
+      matrix.lastExtractedAt = existingInStore.lastExtractedAt;
+      matrix.lastExtractedSource = existingInStore.lastExtractedSource;
+    }
 
     const parsed = companyMatrixSchema.safeParse(matrix);
     if (!parsed.success) {
@@ -211,14 +334,15 @@ export async function getCompanyMatrixAction(): Promise<{
       matrix = mockAiConfigsStore[organizationId]?.companyMatrix || null;
     }
 
-    if (!matrix && mockAiConfigsStore[organizationId]?.companyMatrix) {
-      matrix = mockAiConfigsStore[organizationId].companyMatrix;
+    if (matrix && !matrix.sourceDocuments) {
+      matrix.sourceDocuments = [];
     }
 
     // Default template if never configured
     if (!matrix) {
       matrix = {
         websiteUrl: null,
+        sourceDocuments: [],
         elevatorPitch:
           "Helping growing companies streamline technical execution, modernize core infrastructure, and eliminate workflow bottlenecks.",
         coreSkillsets: [
@@ -263,6 +387,8 @@ export async function getCompanyMatrixAction(): Promise<{
           "Cryptocurrency & Web3",
           "SEO & Social Media Marketing",
         ],
+        lastExtractedAt: null,
+        lastExtractedSource: null,
       };
     }
 

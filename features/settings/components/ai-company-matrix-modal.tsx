@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import {
   Globe,
   FileText,
@@ -28,16 +28,27 @@ interface AiCompanyMatrixModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyMatrix: (extractedMatrix: CompanyMatrix) => void;
+  currentMatrix?: CompanyMatrix | null;
+  initialTab?: "url" | "file";
 }
 
 export function AiCompanyMatrixModal({
   isOpen,
   onClose,
   onApplyMatrix,
+  currentMatrix,
+  initialTab = "url",
 }: AiCompanyMatrixModalProps) {
-  const [activeTab, setActiveTab] = useState<"url" | "file">("url");
-  const [urlInput, setUrlInput] = useState("");
+  const [activeTab, setActiveTab] = useState<"url" | "file">(initialTab);
+  const [urlInput, setUrlInput] = useState(currentMatrix?.websiteUrl || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialTab) setActiveTab(initialTab);
+      if (currentMatrix?.websiteUrl) setUrlInput(currentMatrix.websiteUrl);
+    }
+  }, [isOpen, initialTab, currentMatrix?.websiteUrl]);
 
   const [isExtracting, startExtracting] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +113,7 @@ export function AiCompanyMatrixModal({
     setExtractedMatrix(null);
     setExtractedPreview(null);
     setError(null);
-    setUrlInput("");
+    setUrlInput(currentMatrix?.websiteUrl || "");
     setSelectedFile(null);
   };
 
@@ -166,13 +177,20 @@ export function AiCompanyMatrixModal({
           <div className="space-y-4">
             {activeTab === "url" ? (
               <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700">
-                  Company or Agency Website URL
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Company or Agency Website URL
+                  </label>
+                  {currentMatrix?.websiteUrl && (
+                    <span className="text-[11px] text-purple-700 font-semibold bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
+                      Saved: {currentMatrix.websiteUrl}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Input
                     type="url"
-                    placeholder="https://yourcompany.com"
+                    placeholder="e.g. https://yourcompany.com or www.techflux.in"
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
                     disabled={isExtracting}
@@ -192,65 +210,109 @@ export function AiCompanyMatrixModal({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
-                        Extract Matrix
+                        {currentMatrix?.websiteUrl && currentMatrix.websiteUrl.toLowerCase() === urlInput.trim().toLowerCase()
+                          ? "Re-scan Website"
+                          : "Extract Matrix"}
                       </>
                     )}
                   </Button>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  AI will scrape your homepage, about, and services sections to identify your verified capabilities, tech stacks, and industries.
+                  AI will scrape your homepage, about, and services sections to identify your verified capabilities, tech stacks, and industries. Saved automatically to your organization profile.
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700">
-                  Company Profile, Portfolio Deck, or Pitch PDF
-                </label>
-                <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-purple-300 transition-colors bg-slate-50/50">
-                  <Upload className="w-8 h-8 text-purple-600 mx-auto mb-2 opacity-80" />
-                  <p className="text-xs font-medium text-slate-700 mb-1">
-                    {selectedFile ? selectedFile.name : "Select or drag & drop your company document"}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mb-3">
-                    Supports .pdf, .txt, or .md files (up to 10MB)
-                  </p>
-                  <label className="inline-block">
-                    <input
-                      type="file"
-                      accept=".pdf,.txt,.md"
-                      disabled={isExtracting}
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) setSelectedFile(file);
-                      }}
-                    />
-                    <span className="cursor-pointer bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-lg shadow-xs transition-colors">
-                      Browse File
-                    </span>
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Company Profile, Portfolio Deck, or Pitch PDF
                   </label>
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-purple-300 transition-colors bg-slate-50/50">
+                    <Upload className="w-8 h-8 text-purple-600 mx-auto mb-2 opacity-80" />
+                    <p className="text-xs font-medium text-slate-700 mb-1">
+                      {selectedFile ? selectedFile.name : "Select or drag & drop your company document"}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mb-3">
+                      Supports .pdf, .txt, or .md files (up to 10MB)
+                    </p>
+                    <label className="inline-block">
+                      <input
+                        type="file"
+                        accept=".pdf,.txt,.md"
+                        disabled={isExtracting}
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setSelectedFile(file);
+                        }}
+                      />
+                      <span className="cursor-pointer bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-semibold text-xs px-3 py-1.5 rounded-lg shadow-xs transition-colors">
+                        Browse File
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleExtractFile}
+                      disabled={isExtracting || !selectedFile}
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-10 px-5 shadow-xs"
+                    >
+                      {isExtracting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Parsing Document...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Synthesize Deck
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="flex justify-end pt-2">
-                  <Button
-                    type="button"
-                    onClick={handleExtractFile}
-                    disabled={isExtracting || !selectedFile}
-                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-10 px-5 shadow-xs"
-                  >
-                    {isExtracting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Parsing Document...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Synthesize Deck
-                      </>
-                    )}
-                  </Button>
-                </div>
+                {/* Currently Indexed Documents */}
+                {currentMatrix?.sourceDocuments && currentMatrix.sourceDocuments.length > 0 && (
+                  <div className="pt-3 border-t border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-purple-600" />
+                        Currently Saved Knowledge Documents ({currentMatrix.sourceDocuments.length})
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Preserved in company knowledge base
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {currentMatrix.sourceDocuments.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="p-1 rounded bg-purple-100 text-purple-700 text-[9px] font-bold uppercase shrink-0">
+                              {doc.type?.toUpperCase() || "DOC"}
+                            </span>
+                            <span className="font-medium text-slate-800 truncate text-[11px]">
+                              {doc.name}
+                            </span>
+                            {doc.size && (
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                ({(doc.size / 1024).toFixed(0)} KB)
+                              </span>
+                            )}
+                          </div>
+                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] shrink-0">
+                            Active
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -262,9 +324,16 @@ export function AiCompanyMatrixModal({
             <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="font-semibold">
-                  Capabilities synthesized successfully! Review below before applying.
-                </span>
+                <div>
+                  <span className="font-semibold block">
+                    Capabilities synthesized successfully! Review below before applying.
+                  </span>
+                  {extractedMatrix.lastExtractedSource && (
+                    <span className="text-[11px] text-emerald-700">
+                      Source: {extractedMatrix.lastExtractedSource}
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 type="button"

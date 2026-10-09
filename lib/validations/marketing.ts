@@ -198,14 +198,28 @@ export const companyCaseStudySchema = z.object({
 
 export type CompanyCaseStudy = z.infer<typeof companyCaseStudySchema>;
 
+export const companyDocumentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.number().optional().nullable(),
+  uploadedAt: z.string(),
+  type: z.string().optional().nullable(),
+  summary: z.string().optional().nullable(),
+});
+
+export type CompanyDocument = z.infer<typeof companyDocumentSchema>;
+
 export const companyMatrixSchema = z.object({
   websiteUrl: z.string().optional().nullable(),
+  sourceDocuments: z.array(companyDocumentSchema).default([]),
   elevatorPitch: z.string().max(1000).optional().nullable(),
   coreSkillsets: z.array(z.string()).default([]),
   serviceOfferings: z.array(z.string()).default([]),
   targetIndustries: z.array(z.string()).default([]),
   caseStudies: z.array(companyCaseStudySchema).default([]),
   outOfScopeExclusions: z.array(z.string()).default([]),
+  lastExtractedAt: z.string().optional().nullable(),
+  lastExtractedSource: z.string().optional().nullable(),
 });
 
 export type CompanyMatrix = z.infer<typeof companyMatrixSchema>;

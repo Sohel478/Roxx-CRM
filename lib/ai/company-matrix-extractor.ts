@@ -411,12 +411,15 @@ function synthesizeWithBuiltInEngine(rawText: string, websiteUrl?: string): Comp
 
   return {
     websiteUrl: websiteUrl || null,
+    sourceDocuments: [],
     elevatorPitch,
     coreSkillsets: Array.from(matchedSkillsets).slice(0, 15),
     serviceOfferings: Array.from(matchedServices).slice(0, 8),
     targetIndustries: Array.from(matchedIndustries).slice(0, 6),
     caseStudies,
     outOfScopeExclusions: exclusions,
+    lastExtractedAt: new Date().toISOString(),
+    lastExtractedSource: websiteUrl ? `Website (${websiteUrl})` : null,
   };
 }
 
@@ -464,12 +467,15 @@ Output strict JSON schema:
       if (parsed.coreSkillsets && parsed.serviceOfferings) {
         return {
           websiteUrl: options.websiteUrl || null,
+          sourceDocuments: [],
           elevatorPitch: parsed.elevatorPitch || "Trusted technology and software delivery partner.",
           coreSkillsets: parsed.coreSkillsets || [],
           serviceOfferings: parsed.serviceOfferings || [],
           targetIndustries: parsed.targetIndustries || [],
           caseStudies: parsed.caseStudies || [],
           outOfScopeExclusions: parsed.outOfScopeExclusions || [],
+          lastExtractedAt: new Date().toISOString(),
+          lastExtractedSource: options.websiteUrl ? `Website (${options.websiteUrl})` : null,
         };
       }
     }

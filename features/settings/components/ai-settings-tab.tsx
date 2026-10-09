@@ -24,12 +24,18 @@ import {
   Award,
   ShieldAlert,
   Trash2,
+  ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { getAiConfigAction, saveAiConfigAction, testAiConnectionAction } from "@/actions/ai-email";
-import { getCompanyMatrixAction, saveCompanyMatrixAction } from "@/actions/company-matrix";
+import {
+  getCompanyMatrixAction,
+  saveCompanyMatrixAction,
+  removeCompanyDocumentAction,
+} from "@/actions/company-matrix";
 import { AiCompanyMatrixModal } from "./ai-company-matrix-modal";
 import type {
   AiConfigInput,
@@ -95,9 +101,12 @@ export function AiSettingsTab() {
     targetIndustries: [],
     caseStudies: [],
     outOfScopeExclusions: [],
+    sourceDocuments: [],
   });
 
   const [isMatrixModalOpen, setIsMatrixModalOpen] = useState(false);
+  const [matrixModalTab, setMatrixModalTab] = useState<"url" | "file">("url");
+  const [isRemovingDocId, setIsRemovingDocId] = useState<string | null>(null);
   const [newSkill, setNewSkill] = useState("");
   const [newService, setNewService] = useState("");
   const [newIndustry, setNewIndustry] = useState("");
@@ -248,6 +257,36 @@ export function AiSettingsTab() {
       ...prev,
       caseStudies: prev.caseStudies?.filter((cs, i) => (id ? cs.id !== id : i !== index)) || [],
     }));
+  };
+
+  const handleRemoveDocument = (docId: string) => {
+    setIsRemovingDocId(docId);
+    setStatusMessage(null);
+    startSaving(async () => {
+      try {
+        const res = await removeCompanyDocumentAction(docId);
+        if (res.success && res.matrix) {
+          setMatrix(res.matrix);
+          setStatusMessage({
+            type: "success",
+            text: "Reference document removed from knowledge matrix.",
+          });
+          setTimeout(() => setStatusMessage(null), 4000);
+        } else {
+          setStatusMessage({
+            type: "error",
+            text: res.error || "Failed to remove document.",
+          });
+        }
+      } catch (err: unknown) {
+        setStatusMessage({
+          type: "error",
+          text: (err as Error)?.message || "Failed to remove document.",
+        });
+      } finally {
+        setIsRemovingDocId(null);
+      }
+    });
   };
 
   const handleApplyExtractedMatrix = (extracted: CompanyMatrix) => {
@@ -482,12 +521,188 @@ export function AiSettingsTab() {
           </div>
           <Button
             type="button"
-            onClick={() => setIsMatrixModalOpen(true)}
+            onClick={() => {
+              setMatrixModalTab("url");
+              setIsMatrixModalOpen(true);
+            }}
             className="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs h-9 px-3.5 gap-2 shrink-0 shadow-2xs"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-600" />
             <span>Auto-Extract from URL or PDF</span>
           </Button>
+        </div>
+
+        {/* Knowledge Base & Reference Sources */}
+        <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <Globe className="w-3.5 h-3.5 text-purple-600" />
+                Knowledge Base &amp; Reference Sources
+              </h4>
+              <p className="text-[11px] text-slate-500">
+                Sources saved and indexed by AI to keep your company capabilities matrix grounded in your real offerings.
+              </p>
+            </div>
+            {matrix.lastExtractedAt && (
+              <Badge variant="outline" className="text-[10px] bg-white border-purple-200 text-purple-700 shrink-0 self-start sm:self-auto shadow-2xs">
+                <Clock className="w-3 h-3 mr-1" />
+                Synced {new Date(matrix.lastExtractedAt).toLocaleDateString()} {matrix.lastExtractedSource ? `via ${matrix.lastExtractedSource}` : ""}
+              </Badge>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Connected Website Source Card */}
+            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-blue-600" />
+                  Connected Website URL
+                </span>
+                {matrix.websiteUrl ? (
+                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                    Active Source
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px] text-slate-500">
+                    Not Connected
+                  </Badge>
+                )}
+              </div>
+
+              {matrix.websiteUrl ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+                    <a
+                      href={matrix.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-purple-700 hover:text-purple-900 hover:underline truncate flex items-center gap-1.5"
+                    >
+                      <span className="truncate">{matrix.websiteUrl}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0 opacity-70" />
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMatrixModalTab("url");
+                        setIsMatrixModalOpen(true);
+                      }}
+                      className="text-xs h-7 gap-1.5 font-medium border-slate-200 hover:bg-purple-50 hover:text-purple-700"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Re-scan Website
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMatrix((prev) => ({ ...prev, websiteUrl: null }));
+                      }}
+                      className="text-xs h-7 text-slate-400 hover:text-red-600"
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-slate-500">
+                    Connect your agency or company website to auto-sync capabilities and service offerings.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMatrixModalTab("url");
+                      setIsMatrixModalOpen(true);
+                    }}
+                    className="text-xs h-7 gap-1.5 font-bold border-purple-200 text-purple-700 hover:bg-purple-50"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Connect &amp; Scan Website
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Uploaded Documents & Portfolio Decks */}
+            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-purple-600" />
+                  Portfolio &amp; Capability Decks ({matrix.sourceDocuments?.length || 0})
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMatrixModalTab("file");
+                    setIsMatrixModalOpen(true);
+                  }}
+                  className="text-[11px] h-6 px-2 gap-1 border-purple-200 text-purple-700 hover:bg-purple-50 font-semibold"
+                >
+                  <Upload className="w-3 h-3" />
+                  Upload Deck
+                </Button>
+              </div>
+
+              {matrix.sourceDocuments && matrix.sourceDocuments.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+                  {matrix.sourceDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="p-1 rounded bg-purple-100 text-purple-700 text-[9px] font-bold uppercase shrink-0">
+                          {doc.type?.toUpperCase() || "DOC"}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 truncate text-[11px]">
+                            {doc.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {doc.size ? `${(doc.size / 1024).toFixed(0)} KB • ` : ""}
+                            {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "Saved"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isRemovingDocId === doc.id}
+                        onClick={() => handleRemoveDocument(doc.id)}
+                        className="text-slate-400 hover:text-red-600 h-6 w-6 p-0 shrink-0"
+                        title="Remove knowledge document"
+                      >
+                        {isRemovingDocId === doc.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin text-red-600" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-slate-500">
+                    No documents uploaded yet. Upload company pitch decks, PDF profiles, or service brochures to expand the knowledge matrix.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Elevator Pitch */}
@@ -924,6 +1139,8 @@ export function AiSettingsTab() {
         isOpen={isMatrixModalOpen}
         onClose={() => setIsMatrixModalOpen(false)}
         onApplyMatrix={handleApplyExtractedMatrix}
+        currentMatrix={matrix}
+        initialTab={matrixModalTab}
       />
     </div>
   );
