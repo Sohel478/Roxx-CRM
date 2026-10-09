@@ -216,6 +216,24 @@ export function InboxView() {
     }
   };
 
+  // Background auto-sync every 45 seconds for incoming client emails
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (!isSyncing && !isSendingReply) {
+        syncInboxAction()
+          .then((res) => {
+            if (res.success) {
+              loadData(filter, search, selectedRep);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 45000);
+
+    return () => clearInterval(interval);
+  }, [filter, search, selectedRep, isSyncing, isSendingReply]);
+
   const handleSelectEmail = async (email: InboxEmailItem) => {
     setSelectedEmail(email);
     setMobileShowDetail(true);
@@ -359,7 +377,12 @@ export function InboxView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Auto-Sync: Active</span>
+          </div>
+
           <Button
             type="button"
             variant="outline"

@@ -36,6 +36,7 @@ import { getCurrentUserAction } from "@/actions/auth";
 import { getUsersAction } from "@/actions/users";
 import { getActivitiesAction } from "@/actions/activities";
 import { getTasksAction } from "@/actions/tasks";
+import { syncLeadEmailsAction } from "@/actions/inbox";
 import { LeadModal } from "@/features/leads/components/lead-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,9 +160,44 @@ export default function LeadDetailPage() {
     setIsLoading(false);
   }, [id]);
 
+  const [isSyncingEmails, setIsSyncingEmails] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+
+  const handleSyncEmails = useCallback(async () => {
+    if (!id || isSyncingEmails) return;
+    setIsSyncingEmails(true);
+    try {
+      const res = await syncLeadEmailsAction(id);
+      if (res.success) {
+        setLastSyncedAt(res.lastSyncedAt);
+      }
+      const actRes = await getActivitiesAction({ leadId: id });
+      if (actRes.success && actRes.data) {
+        setActivities(actRes.data.items);
+      }
+    } catch (err) {
+      console.warn("[handleSyncEmails] error:", err);
+    } finally {
+      setIsSyncingEmails(false);
+    }
+  }, [id, isSyncingEmails]);
+
   useEffect(() => {
     loadLead();
   }, [loadLead]);
+
+  // Background auto-sync interval: automatically syncs every 30 seconds
+  useEffect(() => {
+    if (!id || !autoSyncEnabled) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      handleSyncEmails();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [id, autoSyncEnabled, handleSyncEmails]);
 
   const handleAssignLead = (newOwnerId: string) => {
     if (!newOwnerId) return;
@@ -707,6 +743,11 @@ export default function LeadDetailPage() {
             <ActivityTimeline
               activities={filteredActivities}
               onRefresh={loadLead}
+              onSyncEmails={handleSyncEmails}
+              isSyncingEmails={isSyncingEmails}
+              lastSyncedAt={lastSyncedAt}
+              autoSyncEnabled={autoSyncEnabled}
+              onToggleAutoSync={() => setAutoSyncEnabled((prev) => !prev)}
             />
           </div>
         </div>

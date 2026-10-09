@@ -616,6 +616,28 @@ export async function processAiQueueInternal(
             createdAt: new Date().toISOString(),
           });
 
+          try {
+            let dbUserId = campaign.creatorId || "system";
+            const firstOrgUser = await prisma.user.findFirst({
+              where: { organizationId },
+              select: { id: true },
+            });
+            if (firstOrgUser) dbUserId = firstOrgUser.id;
+
+            await prisma.activity.create({
+              data: {
+                organizationId,
+                type: "EMAIL",
+                subject: item.initialSubject,
+                description: `[AI Outreach]: Delivered initial personalized email to ${item.leadEmail}.\n\n${item.initialBody}`,
+                leadId: item.leadId,
+                userId: dbUserId,
+                activityAt: new Date(),
+                outcome: "SENT",
+              },
+            });
+          } catch {}
+
           if (campaignInMarketing) {
             campaignInMarketing.sentCount = campaign.sentCount;
             const log = campaignInMarketing.recipientLogs.find((l) => l.leadId === item.leadId);
@@ -709,6 +731,28 @@ export async function processAiQueueInternal(
               outcome: "FOLLOW_UP_SENT",
               createdAt: new Date().toISOString(),
             });
+
+            try {
+              let dbUserId = campaign.creatorId || "system";
+              const firstOrgUser = await prisma.user.findFirst({
+                where: { organizationId },
+                select: { id: true },
+              });
+              if (firstOrgUser) dbUserId = firstOrgUser.id;
+
+              await prisma.activity.create({
+                data: {
+                  organizationId,
+                  type: "EMAIL",
+                  subject: item.followUpSubject,
+                  description: `[AI Cadence Follow-Up]: Dispatched automated Step 2 follow-up email to ${item.leadEmail}.\n\n${item.followUpBody}`,
+                  leadId: item.leadId,
+                  userId: dbUserId,
+                  activityAt: new Date(),
+                  outcome: "FOLLOW_UP_SENT",
+                },
+              });
+            } catch {}
           }
         }
       }

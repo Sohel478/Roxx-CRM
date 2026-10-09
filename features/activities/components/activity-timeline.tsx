@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   Reply,
+  RefreshCw,
 } from "lucide-react";
 import { deleteActivityAction } from "@/actions/activities";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
@@ -27,6 +28,11 @@ interface ActivityTimelineProps {
   onOpenLogModal?: (type?: ActivityType) => void;
   onRefresh: () => void;
   showFilters?: boolean;
+  onSyncEmails?: () => void;
+  isSyncingEmails?: boolean;
+  lastSyncedAt?: string | null;
+  autoSyncEnabled?: boolean;
+  onToggleAutoSync?: () => void;
 }
 
 export function ActivityTimeline({
@@ -34,6 +40,11 @@ export function ActivityTimeline({
   onOpenLogModal,
   onRefresh,
   showFilters = true,
+  onSyncEmails,
+  isSyncingEmails,
+  lastSyncedAt,
+  autoSyncEnabled = true,
+  onToggleAutoSync,
 }: ActivityTimelineProps) {
   const [selectedType, setSelectedType] = useState<string>("ALL");
   const [search, setSearch] = useState("");
@@ -150,17 +161,52 @@ export function ActivityTimeline({
               ))}
             </div>
 
-            {onOpenLogModal && (
-              <Button
-                type="button"
-                size="sm"
-                className="gap-1.5 text-xs h-8"
-                onClick={() => onOpenLogModal()}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Log Activity</span>
-              </Button>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {onSyncEmails && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        autoSyncEnabled ? "bg-emerald-500 animate-pulse" : "bg-slate-300"
+                      }`}
+                    />
+                    <span>Auto-Sync: {autoSyncEnabled ? "Active" : "Off"}</span>
+                    {lastSyncedAt && (
+                      <span className="text-slate-400 font-mono text-[10px]">
+                        ({new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSyncingEmails}
+                    onClick={onSyncEmails}
+                    className="gap-1.5 text-xs h-8 text-slate-700 hover:text-blue-600 cursor-pointer"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${
+                        isSyncingEmails ? "animate-spin text-blue-600" : ""
+                      }`}
+                    />
+                    <span>{isSyncingEmails ? "Syncing..." : "Sync Emails"}</span>
+                  </Button>
+                </div>
+              )}
+
+              {onOpenLogModal && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5 text-xs h-8"
+                  onClick={() => onOpenLogModal()}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Activity</span>
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="relative">

@@ -1289,3 +1289,73 @@ export async function clearDemoEmailsAction(): Promise<{
   }
 }
 
+/**
+ * Synchronize email interactions for a specific lead.
+ * Triggers live IMAP mailbox sync to pull incoming replies from this lead,
+ * processes any scheduled AI batch outreach due for dispatch,
+ * and refreshes the lead dossier timeline.
+ */
+export async function syncLeadEmailsAction(leadId: string): Promise<{
+  success: boolean;
+  syncedCount: number;
+  lastSyncedAt: string;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return {
+        success: false,
+        syncedCount: 0,
+        lastSyncedAt: new Date().toISOString(),
+        error: "Authentication required",
+      };
+    }
+
+    let syncedCount = 0;
+
+    // 1. Run live inbox sync
+    try {
+      const inboxRes = await syncInboxAction();
+      if (inboxRes.success) {
+        syncedCount += (inboxRes.syncedReplies || inboxRes.count || 0);
+      }
+    } catch (inboxErr) {
+      console.warn("[syncLeadEmailsAction] syncInboxAction error:", inboxErr);
+    }
+
+    // 2. Process any pending scheduled AI queue items that are due
+    try {
+      const { processScheduledAiQueueAction } = await import("@/actions/ai-email");
+      const queueRes = await processScheduledAiQueueAction();
+      if (queueRes.success && queueRes.data) {
+        syncedCount += queueRes.data.processedCount;
+      }
+    } catch {}
+
+    const nowIso = new Date().toISOString();
+
+    try {
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/inbox");
+      revalidatePath("/activities");
+    } catch {}
+
+    return {
+      success: true,
+      syncedCount,
+      lastSyncedAt: nowIso,
+      message: "Lead email synchronization complete.",
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      syncedCount: 0,
+      lastSyncedAt: new Date().toISOString(),
+      error: error?.message || "Failed to sync emails for lead",
+    };
+  }
+}
+
+
