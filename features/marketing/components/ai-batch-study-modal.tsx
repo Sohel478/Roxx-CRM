@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sparkles,
   X,
@@ -18,6 +18,7 @@ import {
   Users2,
   Eye,
   RefreshCw,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,8 @@ import {
   studyMarketingBatchAiAction,
   scheduleAiBatchCampaignAction,
 } from "@/actions/ai-email";
+import { assignMarketingBatchAction } from "@/actions/marketing";
+import { getUsersAction, type UserItem } from "@/actions/users";
 import type {
   StudiedLeadItem,
   BatchStudyResult,
@@ -48,6 +51,21 @@ export function AiBatchStudyModal({
   onClose,
 }: AiBatchStudyModalProps) {
   const [currentStep, setCurrentStep] = useState<"CONFIG" | "STUDYING" | "REVIEW" | "CONFIRMED">("CONFIG");
+
+  // Representative Assignment State
+  const [assignedRepId, setAssignedRepId] = useState<string | null>(
+    batch.assignedToId || batch.ownerId || null
+  );
+  const [assignedRepName, setAssignedRepName] = useState<string | null>(
+    batch.assignedToName || batch.ownerName || null
+  );
+  const [assignedRepEmail, setAssignedRepEmail] = useState<string | null>(
+    batch.assignedToEmail || null
+  );
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [isChangingAssignee, setIsChangingAssignee] = useState(false);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>("");
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // Configuration state
   const [campaignName, setCampaignName] = useState(`${batch.name} — AI Outreach`);
@@ -74,8 +92,61 @@ export function AiBatchStudyModal({
   const [editBody, setEditBody] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
 
+  useEffect(() => {
+    let isMounted = true;
+    getUsersAction().then((res) => {
+      if (isMounted && res.success && res.data) {
+        setUsers(res.data);
+        if (res.data.length > 0) {
+          const currentId = batch.assignedToId || batch.ownerId;
+          const found = res.data.find((u) => u.id === currentId);
+          if (found) {
+            setSelectedAssigneeId(found.id);
+            if (!assignedRepName) setAssignedRepName(found.name);
+            if (!assignedRepEmail) setAssignedRepEmail(found.email);
+          } else {
+            setSelectedAssigneeId(res.data[0].id);
+          }
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [batch.assignedToId, batch.ownerId, assignedRepName, assignedRepEmail]);
+
+  const handleAssignRep = async () => {
+    if (!selectedAssigneeId) return;
+    setIsAssigning(true);
+    setError(null);
+    try {
+      const res = await assignMarketingBatchAction({
+        batchId: batch.id,
+        assignedToId: selectedAssigneeId,
+        assignLeadsToRep: true,
+      });
+      if (res.success) {
+        const foundUser = users.find((u) => u.id === selectedAssigneeId);
+        setAssignedRepId(selectedAssigneeId);
+        setAssignedRepName(foundUser?.name || "Sales Rep");
+        setAssignedRepEmail(foundUser?.email || null);
+        setIsChangingAssignee(false);
+      } else {
+        setError(res.error || "Failed to assign representative.");
+      }
+    } catch (err: unknown) {
+      setError((err as Error)?.message || "Failed to assign representative.");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   // Handle AI Study Action
   const handleStartStudy = async () => {
+    if (!assignedRepId) {
+      setError("Cannot study batch: Please assign a sales representative to do the job before AI can study or email leads.");
+      return;
+    }
     setIsStudying(true);
     setCurrentStep("STUDYING");
     setError(null);
@@ -224,6 +295,101 @@ export function AiBatchStudyModal({
           {/* STEP 1: CONFIGURATION */}
           {currentStep === "CONFIG" && (
             <div className="space-y-4">
+              {/* Assigned Sales Representative Safeguard */}
+              {assignedRepId ? (
+                <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-bold text-slate-900">
+                        Assigned Representative:{" "}
+                        <span className="text-blue-700">{assignedRepName || "Sales Rep"}</span>
+                      </span>
+                      {assignedRepEmail && (
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          ({assignedRepEmail})
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsChangingAssignee(!isChangingAssignee)}
+                      className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      {isChangingAssignee ? "Cancel" : "Change Rep"}
+                    </button>
+                  </div>
+
+                  {!isChangingAssignee ? (
+                    <p className="text-[11px] text-slate-600">
+                      AI will research each lead individually and craft outreach emails on behalf of{" "}
+                      <strong>{assignedRepName}</strong>. Replies and follow-up activities will be assigned directly to them.
+                    </p>
+                  ) : (
+                    <div className="pt-2 border-t border-blue-200/60 flex items-center gap-2">
+                      <select
+                        value={selectedAssigneeId}
+                        onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                        className="flex-1 text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-800 font-medium"
+                      >
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAssignRep}
+                        disabled={isAssigning}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-7 px-3"
+                      >
+                        {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-start gap-2 text-amber-800">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-900">
+                        Action Required: Batch Unassigned
+                      </h4>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        AI is strictly safeguarded against working on or picking unassigned leads. Please assign a sales representative to take ownership of this batch before running AI research or sending emails.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-amber-200/80 flex items-center gap-2">
+                    <select
+                      value={selectedAssigneeId}
+                      onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                      className="flex-1 text-xs rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-slate-800 font-medium"
+                    >
+                      <option value="" disabled>Select representative to assign...</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.email}) — {u.role}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAssignRep}
+                      disabled={isAssigning || !selectedAssigneeId}
+                      className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7 px-3 font-semibold"
+                    >
+                      {isAssigning ? <Loader2 className="w-3 h-3 animate-spin" /> : "Assign Rep & Enable AI"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -404,11 +570,15 @@ export function AiBatchStudyModal({
                 <Button
                   type="button"
                   onClick={handleStartStudy}
-                  disabled={isStudying}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs h-10 gap-2 shadow-xs"
+                  disabled={isStudying || !assignedRepId}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs h-10 gap-2 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Study All {batch.leadCount} Leads with AI &rarr;</span>
+                  <span>
+                    {!assignedRepId
+                      ? "Assign Sales Representative Above to Enable AI Study"
+                      : `Study All ${batch.leadCount} Leads with AI →`}
+                  </span>
                 </Button>
               </div>
             </div>

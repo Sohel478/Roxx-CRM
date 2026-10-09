@@ -8,6 +8,7 @@ import {
   mockMarketingBatchesStore,
   mockMarketingCampaignsStore,
   mockLeadsStore,
+  mockUsersStore,
   mockSmtpStore,
   MockMarketingBatch,
   MockMarketingCampaign,
@@ -22,6 +23,8 @@ import {
   CreateMarketingBatchInput,
   updateMarketingBatchSchema,
   UpdateMarketingBatchInput,
+  assignMarketingBatchSchema,
+  AssignMarketingBatchInput,
   sendBatchEmailSchema,
   SendBatchEmailInput,
   MarketingBatchItem,
@@ -41,6 +44,25 @@ function isUserAdminOrManager(session: any): boolean {
     roleUpper === "SALES_MANAGER" ||
     Boolean(session.isSuperAdmin)
   );
+}
+
+/**
+ * Helper to resolve user name and email from Prisma or mock store
+ */
+async function resolveUserInfo(
+  userId?: string | null
+): Promise<{ id: string; name: string; email: string } | null> {
+  if (!userId) return null;
+  try {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (dbUser) return dbUser;
+  } catch {}
+  const mockUser = mockUsersStore.find((u) => u.id === userId);
+  if (mockUser) return { id: mockUser.id, name: mockUser.name, email: mockUser.email };
+  return null;
 }
 
 /**
@@ -107,13 +129,19 @@ export async function getMarketingBatchesAction(): Promise<{
             }
           : null;
 
+        const assignedName = (b as any).assignedToName || (session.id === b.ownerId ? session.name : "Sales Rep");
+        const assignedEmail = (b as any).assignedToEmail || (session.id === b.ownerId ? session.email : null);
+
         return {
           id: b.id,
           organizationId: b.organizationId,
           name: b.name,
           description: b.description,
           ownerId: b.ownerId,
-          ownerName: session.id === b.ownerId ? session.name : "Sales Rep",
+          ownerName: assignedName,
+          assignedToId: (b as any).assignedToId || b.ownerId || null,
+          assignedToName: assignedName,
+          assignedToEmail: assignedEmail,
           leadIds,
           leadCount: b.leadCount || leadIds.length,
           createdAt: b.createdAt.toISOString(),
@@ -148,13 +176,19 @@ export async function getMarketingBatchesAction(): Promise<{
             }
           : null;
 
+        const assignedName = b.assignedToName || b.ownerName || (session.id === b.ownerId ? session.name : "Sales Rep");
+        const assignedEmail = b.assignedToEmail || (session.id === b.ownerId ? session.email : null);
+
         return {
           id: b.id,
           organizationId: b.organizationId,
           name: b.name,
           description: b.description,
           ownerId: b.ownerId,
-          ownerName: b.ownerName || (session.id === b.ownerId ? session.name : "Sales Rep"),
+          ownerName: assignedName,
+          assignedToId: b.assignedToId || b.ownerId || null,
+          assignedToName: assignedName,
+          assignedToEmail: assignedEmail,
           leadIds: b.leadIds,
           leadCount: b.leadCount || b.leadIds.length,
           createdAt: b.createdAt,
@@ -308,6 +342,8 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       status: l.status,
       rating: l.rating || "Warm",
       phone: l.phone || null,
+      ownerId: l.ownerId || (l as any).assignedToId || null,
+      ownerName: l.ownerName || null,
     }));
 
     const formattedCampaigns: MarketingCampaignItem[] = campaignRecords.map((c: any) => ({
@@ -329,13 +365,19 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       updatedAt: typeof c.updatedAt === "string" ? c.updatedAt : c.updatedAt.toISOString(),
     }));
 
+    const assignedName = batchRecord.assignedToName || batchRecord.ownerName || (session.id === batchRecord.ownerId ? session.name : "Sales Rep");
+    const assignedEmail = batchRecord.assignedToEmail || (session.id === batchRecord.ownerId ? session.email : null);
+
     const result: MarketingBatchDetail = {
       id: batchRecord.id,
       organizationId: batchRecord.organizationId,
       name: batchRecord.name,
       description: batchRecord.description,
       ownerId: batchRecord.ownerId,
-      ownerName: batchRecord.ownerName || (session.id === batchRecord.ownerId ? session.name : "Sales Rep"),
+      ownerName: assignedName,
+      assignedToId: batchRecord.assignedToId || batchRecord.ownerId || null,
+      assignedToName: assignedName,
+      assignedToEmail: assignedEmail,
       leadIds,
       leadCount: batchRecord.leadCount || leadIds.length,
       createdAt: typeof batchRecord.createdAt === "string" ? batchRecord.createdAt : batchRecord.createdAt.toISOString(),
@@ -378,22 +420,53 @@ export async function createMarketingBatchAction(
       };
     }
 
-    const { name, description, leadIds } = parsed.data;
+    const { name, description, leadIds, assignedToId, assignLeadsToRep } = parsed.data;
     const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date();
 
-    const newBatchData = {
+    // Resolve assigned representative if provided
+    let targetAssignee: { id: string; name: string; email: string } | null = null;
+    if (assignedToId) {
+      targetAssignee = await resolveUserInfo(assignedToId);
+    }
+
+    const finalOwnerId = targetAssignee?.id || (assignedToId === null ? null : (userId || session.id));
+    const finalOwnerName = targetAssignee?.name || (assignedToId === null ? null : (session.name || "Sales Rep"));
+    const finalAssignedEmail = targetAssignee?.email || (assignedToId === null ? null : (session.email || null));
+
+    const newBatchData: MockMarketingBatch = {
       id: batchId,
       organizationId,
       name: name.trim(),
       description: description?.trim() || null,
-      ownerId: userId || session.id,
-      ownerName: session.name || "Sales Rep",
+      ownerId: finalOwnerId || (userId || session.id),
+      ownerName: finalOwnerName,
+      assignedToId: finalOwnerId || null,
+      assignedToName: finalOwnerName,
+      assignedToEmail: finalAssignedEmail,
       leadIds,
       leadCount: leadIds.length,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
+
+    // If requested, also assign all member leads to this representative!
+    if (finalOwnerId && assignLeadsToRep !== false) {
+      try {
+        await prisma.lead.updateMany({
+          where: { id: { in: leadIds }, organizationId },
+          data: { ownerId: finalOwnerId },
+        });
+      } catch {}
+
+      mockLeadsStore.forEach((l) => {
+        if (leadIds.includes(l.id)) {
+          l.ownerId = finalOwnerId;
+          l.ownerName = finalOwnerName;
+          l.updatedAt = now.toISOString();
+        }
+      });
+    }
 
     try {
       await prisma.marketingBatch.create({
@@ -402,7 +475,7 @@ export async function createMarketingBatchAction(
           organizationId,
           name: name.trim(),
           description: description?.trim() || null,
-          ownerId: userId || session.id,
+          ownerId: finalOwnerId || (userId || session.id),
           leadIds,
           leadCount: leadIds.length,
           createdAt: now,
@@ -429,6 +502,90 @@ export async function createMarketingBatchAction(
     return {
       success: false,
       error: error?.message || "Failed to create marketing batch",
+    };
+  }
+}
+
+/**
+ * 4. Assign or reassign a marketing batch to a sales representative
+ */
+export async function assignMarketingBatchAction(
+  rawInput: AssignMarketingBatchInput
+): Promise<{
+  success: boolean;
+  message?: string;
+  data?: MarketingBatchItem;
+  error?: string;
+}> {
+  try {
+    const session = await requireAuth();
+    const { organizationId } = await resolveTenantContext(session);
+
+    const parsed = assignMarketingBatchSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message || "Invalid assignment data" };
+    }
+
+    const { batchId, assignedToId, assignLeadsToRep } = parsed.data;
+    const targetUser = await resolveUserInfo(assignedToId);
+    if (!targetUser) {
+      return { success: false, error: "The designated sales representative could not be found." };
+    }
+
+    const now = new Date();
+
+    // 1. Update in Prisma
+    try {
+      await prisma.marketingBatch.update({
+        where: { id: batchId },
+        data: {
+          ownerId: targetUser.id,
+          updatedAt: now,
+        },
+      });
+    } catch {}
+
+    // 2. Update in Mock Store
+    const batch = mockMarketingBatchesStore.find((b) => b.id === batchId && !b.deletedAt);
+    if (batch) {
+      batch.ownerId = targetUser.id;
+      batch.ownerName = targetUser.name;
+      batch.assignedToId = targetUser.id;
+      batch.assignedToName = targetUser.name;
+      batch.assignedToEmail = targetUser.email;
+      batch.updatedAt = now.toISOString();
+
+      // If assignLeadsToRep is true, assign all member leads to this representative
+      if (assignLeadsToRep !== false && Array.isArray(batch.leadIds)) {
+        try {
+          await prisma.lead.updateMany({
+            where: { id: { in: batch.leadIds }, organizationId },
+            data: { ownerId: targetUser.id },
+          });
+        } catch {}
+
+        mockLeadsStore.forEach((l) => {
+          if (batch.leadIds.includes(l.id)) {
+            l.ownerId = targetUser.id;
+            l.ownerName = targetUser.name;
+            l.updatedAt = now.toISOString();
+          }
+        });
+      }
+    }
+
+    revalidatePath("/marketing");
+    revalidatePath(`/marketing/${batchId}`);
+    revalidatePath("/leads");
+
+    return {
+      success: true,
+      message: `Batch successfully assigned to ${targetUser.name} (${targetUser.email}).`,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || "Failed to assign batch",
     };
   }
 }

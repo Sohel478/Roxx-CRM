@@ -92,6 +92,7 @@ export interface MockLead {
   ownerName: string | null;
   createdById?: string | null;
   createdAt: string;
+  updatedAt?: string;
   description?: string | null;
   convertedAt?: string | null;
   convertedCompanyId?: string | null;
@@ -975,6 +976,9 @@ export interface MockMarketingBatch {
   description?: string | null;
   ownerId: string;
   ownerName?: string | null;
+  assignedToId?: string | null;
+  assignedToName?: string | null;
+  assignedToEmail?: string | null;
   leadIds: string[];
   leadCount: number;
   createdAt: string;

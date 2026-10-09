@@ -230,6 +230,8 @@ Note: We strictly do not provide Hardware development, Crypto/NFT projects, or S
         companyName: "PayStream Global",
         email: "david@paystream.com",
         industry: "Fintech",
+        ownerId: "usr_matrix_tester",
+        ownerName: "Jordan Lee",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });

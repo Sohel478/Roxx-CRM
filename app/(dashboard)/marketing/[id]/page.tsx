@@ -18,10 +18,15 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getMarketingBatchByIdAction } from "@/actions/marketing";
+import {
+  getMarketingBatchByIdAction,
+  assignMarketingBatchAction,
+} from "@/actions/marketing";
+import { getUsersAction, type UserItem } from "@/actions/users";
 import type { MarketingBatchDetail } from "@/lib/validations/marketing";
 import { SendBatchEmailModal } from "@/features/marketing/components/send-batch-email-modal";
 import { AiBatchStudyModal } from "@/features/marketing/components/ai-batch-study-modal";
@@ -38,6 +43,13 @@ export default function MarketingBatchDetailPage() {
   const [isSendOpen, setIsSendOpen] = useState(false);
   const [isAiStudyOpen, setIsAiStudyOpen] = useState(false);
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+
+  const [isReassignOpen, setIsReassignOpen] = useState(false);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [newAssigneeId, setNewAssigneeId] = useState("");
+  const [reassignLeads, setReassignLeads] = useState(true);
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [reassignError, setReassignError] = useState<string | null>(null);
 
   const fetchBatch = useCallback(async () => {
     setIsLoading(true);
@@ -58,6 +70,43 @@ export default function MarketingBatchDetailPage() {
       setIsLoading(false);
     }
   }, [batchId]);
+
+  const handleOpenReassign = async () => {
+    setIsReassignOpen(true);
+    setReassignError(null);
+    try {
+      const res = await getUsersAction();
+      if (res.success && res.data) {
+        setUsers(res.data);
+        const currentAssignee = batch?.assignedToId || batch?.ownerId;
+        const found = res.data.find((u) => u.id === currentAssignee);
+        setNewAssigneeId(found ? found.id : res.data[0]?.id || "");
+      }
+    } catch {}
+  };
+
+  const handleConfirmReassign = async () => {
+    if (!newAssigneeId || !batch) return;
+    setIsReassigning(true);
+    setReassignError(null);
+    try {
+      const res = await assignMarketingBatchAction({
+        batchId: batch.id,
+        assignedToId: newAssigneeId,
+        assignLeadsToRep: reassignLeads,
+      });
+      if (res.success) {
+        setIsReassignOpen(false);
+        await fetchBatch();
+      } else {
+        setReassignError(res.error || "Failed to reassign batch");
+      }
+    } catch (err: unknown) {
+      setReassignError((err as Error)?.message || "Failed to reassign batch");
+    } finally {
+      setIsReassigning(false);
+    }
+  };
 
   useEffect(() => {
     if (batchId) {
@@ -124,7 +173,23 @@ export default function MarketingBatchDetailPage() {
             <p className="text-xs text-slate-500 max-w-2xl">{batch.description}</p>
           )}
           <div className="flex items-center gap-4 text-xs text-slate-400 pt-1 flex-wrap">
-            <span>Owner: <strong className="text-slate-700">{batch.ownerName || "Sales Rep"}</strong></span>
+            <span className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-200/60 px-2.5 py-1 rounded-lg text-slate-700">
+              <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+              <span>Assigned Rep:</span>
+              <strong className="text-blue-700 font-bold">
+                {batch.assignedToName || batch.ownerName || "Unassigned"}
+              </strong>
+              {batch.assignedToEmail && (
+                <span className="text-slate-500 font-normal">({batch.assignedToEmail})</span>
+              )}
+              <button
+                type="button"
+                onClick={handleOpenReassign}
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline ml-1 cursor-pointer"
+              >
+                Reassign
+              </button>
+            </span>
             <span>Created: <strong className="text-slate-700">{new Date(batch.createdAt).toLocaleDateString()}</strong></span>
             <span>Campaigns Dispatched: <strong className="text-slate-700">{batch.campaigns.length}</strong></span>
           </div>
@@ -481,6 +546,100 @@ export default function MarketingBatchDetailPage() {
             fetchBatch();
           }}
         />
+      )}
+
+      {/* Reassign Batch Modal */}
+      {isReassignOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Reassign Batch &amp; Leads</h3>
+                  <p className="text-[11px] text-slate-500">Designate the sales representative to do the job</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReassignOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            {reassignError && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{reassignError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                New Assigned Representative <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={newAssigneeId}
+                onChange={(e) => setNewAssigneeId(e.target.value)}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-800 font-medium"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.email}) — {u.role}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                AI research and email outreach will execute strictly on behalf of this representative.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer pt-2 border-t border-slate-100">
+              <input
+                type="checkbox"
+                checked={reassignLeads}
+                onChange={(e) => setReassignLeads(e.target.checked)}
+                className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 accent-blue-600"
+              />
+              <span className="text-xs text-slate-700 font-medium">
+                Also assign all {batch.leads.length} member leads to this representative
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsReassignOpen(false)}
+                disabled={isReassigning}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleConfirmReassign}
+                disabled={isReassigning || !newAssigneeId}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4"
+              >
+                {isReassigning ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <span>Reassigning...</span>
+                  </>
+                ) : (
+                  <span>Confirm Assignment</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

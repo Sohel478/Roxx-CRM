@@ -17,6 +17,8 @@ import {
   createMarketingBatchAction,
   getSelectableLeadsForBatchAction,
 } from "@/actions/marketing";
+import { getUsersAction, type UserItem } from "@/actions/users";
+import { UserCheck } from "lucide-react";
 
 interface CreateBatchModalProps {
   isOpen: boolean;
@@ -37,6 +39,10 @@ export function CreateBatchModal({
   const [description, setDescription] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [assignedToId, setAssignedToId] = useState<string>("");
+  const [assignLeadsToRep, setAssignLeadsToRep] = useState<boolean>(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [leads, setLeads] = useState<
     {
       id: string;
@@ -52,7 +58,7 @@ export function CreateBatchModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync state and load leads ONLY when modal opens
+  // Sync state and load leads & users ONLY when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -66,19 +72,31 @@ export function CreateBatchModal({
 
     let isMounted = true;
     setIsLoadingLeads(true);
+    setIsLoadingUsers(true);
 
-    getSelectableLeadsForBatchAction({ limit: 400 })
-      .then((res) => {
-        if (isMounted && res.success && res.data) {
-          setLeads(res.data);
+    Promise.all([
+      getSelectableLeadsForBatchAction({ limit: 400 }),
+      getUsersAction(),
+    ])
+      .then(([leadsRes, usersRes]) => {
+        if (!isMounted) return;
+        if (leadsRes.success && leadsRes.data) {
+          setLeads(leadsRes.data);
+        }
+        if (usersRes.success && usersRes.data) {
+          setUsers(usersRes.data);
+          if (usersRes.data.length > 0 && !assignedToId) {
+            setAssignedToId(usersRes.data[0].id);
+          }
         }
       })
       .catch((err) => {
-        console.warn("Failed to fetch leads for batch picker:", err);
+        console.warn("Failed to fetch leads/users for batch picker:", err);
       })
       .finally(() => {
         if (isMounted) {
           setIsLoadingLeads(false);
+          setIsLoadingUsers(false);
         }
       });
 
@@ -123,6 +141,10 @@ export function CreateBatchModal({
       setError("Please enter a name for the batch (e.g. 'New Year Email').");
       return;
     }
+    if (!assignedToId) {
+      setError("Please assign a sales representative to do the job for this batch.");
+      return;
+    }
     if (selectedIds.length === 0) {
       setError("Please select at least 1 lead for this batch.");
       return;
@@ -135,6 +157,8 @@ export function CreateBatchModal({
       const res = await createMarketingBatchAction({
         name: name.trim(),
         description: description.trim() || undefined,
+        assignedToId: assignedToId || undefined,
+        assignLeadsToRep,
         leadIds: selectedIds,
       });
 
@@ -222,6 +246,58 @@ export function CreateBatchModal({
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-700"
               />
+            </div>
+
+            {/* Assigned Representative (Required to do the job) */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Assigned Representative (To Do The Job)</span>
+                  <span className="text-red-500">*</span>
+                </label>
+                <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50/50 text-[10px]">
+                  Required for AI
+                </Badge>
+              </div>
+
+              <div>
+                {isLoadingUsers ? (
+                  <div className="text-xs text-slate-400 py-1 flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                    <span>Loading team members...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={assignedToId}
+                    onChange={(e) => setAssignedToId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
+                    required
+                  >
+                    <option value="" disabled>Select sales representative to assign...</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.email}) — {u.role}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[11px] text-slate-500 mt-1">
+                  AI will strictly research and dispatch outreach emails on behalf of this representative. AI will not run on unassigned batches.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer pt-1 border-t border-slate-200/60">
+                <input
+                  type="checkbox"
+                  checked={assignLeadsToRep}
+                  onChange={(e) => setAssignLeadsToRep(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 accent-blue-600"
+                />
+                <span className="text-xs text-slate-700 font-medium">
+                  Also assign all included leads to this representative
+                </span>
+              </label>
             </div>
 
             {/* Lead Selection Section */}

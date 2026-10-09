@@ -6,6 +6,8 @@ export const createMarketingBatchSchema = z.object({
     .min(1, "Batch name is required")
     .max(100, "Batch name cannot exceed 100 characters"),
   description: z.string().max(500).optional().nullable(),
+  assignedToId: z.string().optional().nullable(),
+  assignLeadsToRep: z.boolean().optional(),
   leadIds: z
     .array(z.string())
     .min(1, "At least one lead must be selected for the batch"),
@@ -20,10 +22,20 @@ export const updateMarketingBatchSchema = z.object({
     .min(1, "Batch name is required")
     .max(100, "Batch name cannot exceed 100 characters"),
   description: z.string().max(500).optional().nullable(),
+  assignedToId: z.string().optional().nullable(),
+  assignLeadsToRep: z.boolean().optional(),
   leadIds: z.array(z.string()).optional(),
 });
 
 export type UpdateMarketingBatchInput = z.infer<typeof updateMarketingBatchSchema>;
+
+export const assignMarketingBatchSchema = z.object({
+  batchId: z.string().min(1, "Batch ID is required"),
+  assignedToId: z.string().min(1, "Assignee ID is required"),
+  assignLeadsToRep: z.boolean().optional().default(true),
+});
+
+export type AssignMarketingBatchInput = z.infer<typeof assignMarketingBatchSchema>;
 
 export const sendBatchEmailSchema = z.object({
   batchId: z.string().min(1, "Batch ID is required"),
@@ -71,6 +83,9 @@ export interface MarketingBatchItem {
   description?: string | null;
   ownerId: string;
   ownerName?: string | null;
+  assignedToId?: string | null;
+  assignedToName?: string | null;
+  assignedToEmail?: string | null;
   leadIds: string[];
   leadCount: number;
   createdAt: string;
@@ -99,6 +114,8 @@ export interface MarketingBatchDetail extends MarketingBatchItem {
     status: string;
     rating: string;
     phone: string | null;
+    ownerId?: string | null;
+    ownerName?: string | null;
   }[];
   campaigns: MarketingCampaignItem[];
 }

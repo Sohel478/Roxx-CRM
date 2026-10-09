@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
   mockLeadsStore,
+  mockUsersStore,
   mockActivitiesStore,
   mockMarketingBatchesStore,
   mockSmtpStore,
@@ -107,6 +108,27 @@ export async function generateLeadAiEmailAction(
       }
     }
 
+    // Strict Guardrail: Lead must be assigned to an active sales representative
+    const assignedRepId = lead.ownerId || (lead as any).assignedToId;
+    if (!assignedRepId) {
+      return {
+        success: false,
+        error:
+          "Cannot generate AI email: This lead is unassigned. Please assign an owner or sales representative to this lead before AI can research and email them.",
+      };
+    }
+
+    let repName = session.name || "Sales Representative";
+    let repEmail = session.email || "";
+
+    if (assignedRepId && assignedRepId !== session.id) {
+      const u = mockUsersStore.find((user) => user.id === assignedRepId);
+      if (u) {
+        repName = u.name;
+        repEmail = u.email;
+      }
+    }
+
     // Fetch AI config
     const aiConfig = await getAiConfigAction();
     const configData = aiConfig.data;
@@ -127,8 +149,8 @@ export async function generateLeadAiEmailAction(
       rating: lead.rating,
       description: lead.description,
       companyIndustry: lead.industry,
-      repName: session.name || "Sales Representative",
-      repEmail: session.email || "",
+      repName,
+      repEmail,
       organizationName: session.organizationName || "Roxx CRM",
       pastActivitiesSummary,
       companyMatrix: configData?.companyMatrix,
@@ -212,6 +234,30 @@ export async function studyMarketingBatchAiAction(
       return { success: false, error: "Marketing batch not found" };
     }
 
+    // Strict Guardrail: Batch must be assigned to an active sales representative
+    const assignedRepId = batchRecord.assignedToId || batchRecord.ownerId;
+    if (!assignedRepId) {
+      return {
+        success: false,
+        error:
+          "Cannot study batch: This batch is not assigned to any sales representative. You must assign a team member to do the job before AI can study or email leads.",
+      };
+    }
+
+    let assignedRepName = batchRecord.assignedToName || batchRecord.ownerName || "";
+    let assignedRepEmail = batchRecord.assignedToEmail || "";
+
+    if (!assignedRepName || !assignedRepEmail) {
+      const u = mockUsersStore.find((user) => user.id === assignedRepId);
+      if (u) {
+        if (!assignedRepName) assignedRepName = u.name;
+        if (!assignedRepEmail) assignedRepEmail = u.email;
+      } else if (session.id === assignedRepId) {
+        if (!assignedRepName) assignedRepName = session.name;
+        if (!assignedRepEmail) assignedRepEmail = session.email;
+      }
+    }
+
     const leadIds: string[] = Array.isArray(batchRecord.leadIds)
       ? batchRecord.leadIds
       : [];
@@ -264,8 +310,8 @@ export async function studyMarketingBatchAiAction(
       tone: tone as any,
       valueProposition: valueProposition || configData?.defaultCompanyPitch || undefined,
       customInstruction,
-      repName: session.name || "Sales Rep",
-      repEmail: session.email || "",
+      repName: assignedRepName || session.name || "Sales Rep",
+      repEmail: assignedRepEmail || session.email || "",
       organizationName: session.organizationName || "Roxx CRM",
       enableFollowUp,
       followUpDays,
@@ -326,6 +372,9 @@ export async function scheduleAiBatchCampaignAction(
     const batch = mockMarketingBatchesStore.find((b) => b.id === batchId);
     if (batch) batchName = batch.name;
 
+    const assignedRepId = batch?.assignedToId || batch?.ownerId || userId || session.id;
+    const assignedRepName = batch?.assignedToName || batch?.ownerName || session.name || "Sales Rep";
+
     const campaignId = `aicamp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const baseStartTime = startDate === "now" ? Date.now() : new Date(startDate).getTime();
 
@@ -361,8 +410,8 @@ export async function scheduleAiBatchCampaignAction(
       batchId,
       batchName,
       name: campaignName,
-      creatorId: userId || session.id,
-      creatorName: session.name || "Sales Rep",
+      creatorId: assignedRepId,
+      creatorName: assignedRepName,
       objective,
       tone,
       status: "SCHEDULED",

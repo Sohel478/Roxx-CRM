@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Sparkles,
   RefreshCw,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -290,7 +291,7 @@ export default function MarketingPage() {
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-4">Batch Name</th>
                   <th className="py-3 px-4">Leads</th>
-                  <th className="py-3 px-4">Created By</th>
+                  <th className="py-3 px-4">Assigned Rep</th>
                   <th className="py-3 px-4">Last Campaign Status</th>
                   <th className="py-3 px-4">Created Date</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -328,9 +329,21 @@ export default function MarketingPage() {
                       </Badge>
                     </td>
 
-                    {/* Owner */}
+                    {/* Assigned Representative */}
                     <td className="py-3.5 px-4 text-xs font-medium text-slate-700">
-                      {batch.ownerName || "Sales Rep"}
+                      <div className="flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">
+                            {batch.assignedToName || batch.ownerName || "Unassigned"}
+                          </p>
+                          {batch.assignedToEmail && (
+                            <p className="text-[11px] text-slate-400 font-normal truncate">
+                              {batch.assignedToEmail}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Last Campaign Status */}
