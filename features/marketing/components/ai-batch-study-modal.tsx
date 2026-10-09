@@ -24,6 +24,7 @@ import {
   SlidersHorizontal,
   Mail,
   Layers,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -323,6 +324,16 @@ export function AiBatchStudyModal({
       leads: updatedLeads,
     });
     setEditingLead(null);
+  };
+
+  const handleExcludeLeadFromStudy = (leadId: string) => {
+    if (!studyResult) return;
+    const updatedLeads = studyResult.leads.filter((l) => l.leadId !== leadId);
+    setStudyResult({
+      ...studyResult,
+      leads: updatedLeads,
+      totalStudied: updatedLeads.length,
+    });
   };
 
   // Final Scheduling Action (from SCHEDULE_TIMING step)
@@ -857,16 +868,26 @@ export function AiBatchStudyModal({
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenEdit(item)}
-                            className="text-[11px] h-7 px-2.5 text-slate-700 hover:text-blue-600 cursor-pointer"
-                          >
-                            <Edit2 className="w-3 h-3 mr-1" />
-                            Inspect / Edit
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenEdit(item)}
+                              className="text-[11px] h-7 px-2.5 text-slate-700 hover:text-blue-600 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3 mr-1" />
+                              Inspect / Edit
+                            </Button>
+                            <button
+                              type="button"
+                              title="Exclude lead from this study"
+                              onClick={() => handleExcludeLeadFromStudy(item.leadId)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

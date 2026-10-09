@@ -37,6 +37,13 @@ export const assignMarketingBatchSchema = z.object({
 
 export type AssignMarketingBatchInput = z.infer<typeof assignMarketingBatchSchema>;
 
+export const removeLeadsFromBatchSchema = z.object({
+  batchId: z.string().min(1, "Batch ID is required"),
+  leadIds: z.array(z.string().min(1)).min(1, "At least one lead ID is required"),
+});
+
+export type RemoveLeadsFromBatchInput = z.infer<typeof removeLeadsFromBatchSchema>;
+
 export const sendBatchEmailSchema = z.object({
   batchId: z.string().min(1, "Batch ID is required"),
   subject: z.string().min(1, "Subject line is required"),

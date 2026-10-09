@@ -19,6 +19,7 @@ import { decryptSecret } from "@/lib/crypto/encryption";
 import * as mailer from "@/lib/email/mailer";
 import { applyMergeTags } from "@/lib/templates/email-templates";
 import { logActivityAction } from "@/actions/activities";
+import { resolveCleanCompanyName } from "@/lib/ai/lead-researcher";
 import {
   createMarketingBatchSchema,
   CreateMarketingBatchInput,
@@ -26,6 +27,8 @@ import {
   UpdateMarketingBatchInput,
   assignMarketingBatchSchema,
   AssignMarketingBatchInput,
+  removeLeadsFromBatchSchema,
+  RemoveLeadsFromBatchInput,
   sendBatchEmailSchema,
   SendBatchEmailInput,
   MarketingBatchItem,
@@ -417,6 +420,7 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
           phone: true,
           companyName: true,
           jobTitle: true,
+          sourceDetail: true,
           status: true,
           rating: true,
         },
@@ -425,21 +429,28 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       memberLeads = mockLeadsStore.filter((l) => leadIds.includes(l.id));
     }
 
-    const formattedLeads = memberLeads.map((l: any) => ({
-      id: l.id,
-      leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
-      firstName: l.firstName,
-      lastName: l.lastName || null,
-      fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
-      email: l.email || l.supportEmail || null,
-      companyName: l.companyName || null,
-      jobTitle: l.jobTitle || null,
-      status: l.status,
-      rating: l.rating || "Warm",
-      phone: l.phone || null,
-      ownerId: l.ownerId || (l as any).assignedToId || null,
-      ownerName: l.ownerName || null,
-    }));
+    const formattedLeads = memberLeads.map((l: any) => {
+      const cleanCompany = resolveCleanCompanyName(
+        l.companyName,
+        l.website || l.sourceDetail,
+        l.email || l.supportEmail
+      ).cleanName;
+      return {
+        id: l.id,
+        leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
+        firstName: l.firstName,
+        lastName: l.lastName || null,
+        fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
+        email: l.email || l.supportEmail || null,
+        companyName: cleanCompany || l.companyName || null,
+        jobTitle: l.jobTitle || null,
+        status: l.status,
+        rating: l.rating || "Warm",
+        phone: l.phone || null,
+        ownerId: l.ownerId || (l as any).assignedToId || null,
+        ownerName: l.ownerName || null,
+      };
+    });
 
     const formattedCampaigns: MarketingCampaignItem[] = campaignRecords.map((c: any) => ({
       id: c.id,
@@ -770,7 +781,109 @@ export async function updateMarketingBatchAction(
 }
 
 /**
- * 5. Delete / Soft-delete a marketing batch
+ * 5. Remove one or multiple leads from a marketing batch without deleting the leads from CRM
+ */
+export async function removeLeadsFromMarketingBatchAction(
+  rawInput: RemoveLeadsFromBatchInput
+): Promise<{
+  success: boolean;
+  leadCount?: number;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const session = await requireAuth();
+    const { userId } = await resolveTenantContext(session);
+    const isAdminOrManager = isUserAdminOrManager(session);
+
+    const parsed = removeLeadsFromBatchSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.errors[0]?.message || "Invalid input parameters",
+      };
+    }
+
+    const { batchId, leadIds } = parsed.data;
+
+    let batchRecord: any = null;
+    try {
+      batchRecord = await prisma.marketingBatch.findUnique({
+        where: { id: batchId },
+      });
+    } catch {
+      batchRecord = mockMarketingBatchesStore.find((b) => b.id === batchId && !b.deletedAt);
+    }
+
+    if (!batchRecord && mockMarketingBatchesStore.length > 0) {
+      batchRecord = mockMarketingBatchesStore.find((b) => b.id === batchId && !b.deletedAt);
+    }
+
+    if (!batchRecord || batchRecord.deletedAt) {
+      return { success: false, error: "Marketing batch not found" };
+    }
+
+    // Role check: non-admin/managers can only modify batches assigned to or owned by them
+    if (
+      !isAdminOrManager &&
+      batchRecord.ownerId !== session.id &&
+      batchRecord.ownerId !== userId &&
+      batchRecord.assignedToId !== session.id &&
+      batchRecord.assignedToId !== userId
+    ) {
+      return {
+        success: false,
+        error: "Unauthorized: You do not have permission to modify this batch.",
+      };
+    }
+
+    const currentLeadIds: string[] = Array.isArray(batchRecord.leadIds)
+      ? batchRecord.leadIds
+      : [];
+
+    const leadIdsToRemoveSet = new Set(leadIds);
+    const updatedLeadIds = currentLeadIds.filter((id) => !leadIdsToRemoveSet.has(id));
+    const newLeadCount = updatedLeadIds.length;
+    const now = new Date();
+
+    try {
+      await prisma.marketingBatch.update({
+        where: { id: batchId },
+        data: {
+          leadIds: updatedLeadIds,
+          leadCount: newLeadCount,
+          updatedAt: now,
+        },
+      });
+    } catch (dbErr) {
+      console.warn("[removeLeadsFromMarketingBatchAction] Prisma update error:", dbErr);
+    }
+
+    const existingMock = mockMarketingBatchesStore.find((b) => b.id === batchId);
+    if (existingMock) {
+      existingMock.leadIds = updatedLeadIds;
+      existingMock.leadCount = newLeadCount;
+      existingMock.updatedAt = now.toISOString();
+    }
+
+    revalidatePath("/marketing");
+    revalidatePath(`/marketing/${batchId}`);
+
+    return {
+      success: true,
+      leadCount: newLeadCount,
+      message: `Successfully removed ${leadIds.length} lead${leadIds.length > 1 ? "s" : ""} from batch.`,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || "Failed to remove lead(s) from batch",
+    };
+  }
+}
+
+/**
+ * 6. Delete / Soft-delete a marketing batch
  */
 export async function deleteMarketingBatchAction(batchId: string): Promise<{
   success: boolean;

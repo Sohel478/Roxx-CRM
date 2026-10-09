@@ -19,12 +19,15 @@ import {
   ChevronUp,
   Sparkles,
   UserCheck,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   getMarketingBatchByIdAction,
   assignMarketingBatchAction,
+  removeLeadsFromMarketingBatchAction,
 } from "@/actions/marketing";
 import { processScheduledAiQueueAction } from "@/actions/ai-email";
 import { getUsersAction, type UserItem } from "@/actions/users";
@@ -52,6 +55,13 @@ export default function MarketingBatchDetailPage() {
   const [reassignLeads, setReassignLeads] = useState(true);
   const [isReassigning, setIsReassigning] = useState(false);
   const [reassignError, setReassignError] = useState<string | null>(null);
+
+  // Lead removal state
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [leadToRemove, setLeadToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [isBulkRemoveOpen, setIsBulkRemoveOpen] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [removeFeedback, setRemoveFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fetchBatch = useCallback(async () => {
     setIsLoading(true);
@@ -119,6 +129,69 @@ export default function MarketingBatchDetailPage() {
       setReassignError((err as Error)?.message || "Failed to reassign batch");
     } finally {
       setIsReassigning(false);
+    }
+  };
+
+  const handleSelectAllLeads = (checked: boolean) => {
+    if (!batch) return;
+    if (checked) {
+      setSelectedLeadIds(batch.leads.map((l) => l.id));
+    } else {
+      setSelectedLeadIds([]);
+    }
+  };
+
+  const handleToggleLead = (leadId: string) => {
+    setSelectedLeadIds((prev) =>
+      prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
+    );
+  };
+
+  const handleConfirmRemoveSingle = async () => {
+    if (!leadToRemove || !batch) return;
+    setIsRemoving(true);
+    setRemoveFeedback(null);
+    try {
+      const res = await removeLeadsFromMarketingBatchAction({
+        batchId: batch.id,
+        leadIds: [leadToRemove.id],
+      });
+      if (res.success) {
+        setSelectedLeadIds((prev) => prev.filter((id) => id !== leadToRemove.id));
+        setLeadToRemove(null);
+        setRemoveFeedback({ type: "success", text: res.message || "Lead removed from batch." });
+        await fetchBatch();
+      } else {
+        setRemoveFeedback({ type: "error", text: res.error || "Failed to remove lead from batch" });
+      }
+    } catch (err: unknown) {
+      setRemoveFeedback({ type: "error", text: (err as Error)?.message || "Failed to remove lead" });
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const handleConfirmRemoveBulk = async () => {
+    if (!batch || selectedLeadIds.length === 0) return;
+    setIsRemoving(true);
+    setRemoveFeedback(null);
+    try {
+      const res = await removeLeadsFromMarketingBatchAction({
+        batchId: batch.id,
+        leadIds: selectedLeadIds,
+      });
+      if (res.success) {
+        setSelectedLeadIds([]);
+        setIsBulkRemoveOpen(false);
+        setRemoveFeedback({ type: "success", text: res.message || "Selected leads removed from batch." });
+        await fetchBatch();
+      } else {
+        setRemoveFeedback({ type: "error", text: res.error || "Failed to remove selected leads" });
+      }
+    } catch (err: unknown) {
+      setRemoveFeedback({ type: "error", text: (err as Error)?.message || "Failed to remove selected leads" });
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -264,110 +337,210 @@ export default function MarketingBatchDetailPage() {
 
       {/* Tab 1: Member Leads List */}
       {activeTab === "leads" && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Lead</th>
-                  <th className="py-3 px-4">Company &amp; Title</th>
-                  <th className="py-3 px-4">Email</th>
-                  <th className="py-3 px-4">Phone</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Rating</th>
-                  <th className="py-3 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {batch.leads.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
-                      No leads present in this batch.
-                    </td>
-                  </tr>
+        <div className="space-y-3">
+          {removeFeedback && (
+            <div
+              className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                removeFeedback.type === "success"
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {removeFeedback.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 ) : (
-                  batch.leads.map((lead) => (
-                    <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="font-bold text-slate-900 hover:text-blue-600 transition-colors flex items-center gap-1 group"
-                        >
-                          <span className="group-hover:underline">{lead.fullName}</span>
-                          <ExternalLink className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </Link>
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {lead.leadNumber}
-                        </span>
-                      </td>
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>{removeFeedback.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRemoveFeedback(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        {lead.companyName && (
-                          <div className="font-medium text-slate-800 flex items-center gap-1">
-                            <Building2 className="w-3 h-3 text-slate-400" />
-                            <span>{lead.companyName}</span>
-                          </div>
-                        )}
-                        {lead.jobTitle && (
-                          <span className="text-slate-400 text-[11px]">{lead.jobTitle}</span>
-                        )}
-                      </td>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            {/* Bulk Action Bar */}
+            {selectedLeadIds.length > 0 && (
+              <div className="bg-blue-50/90 border-b border-blue-200 px-4 py-2.5 flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-900">
+                  {selectedLeadIds.length} lead{selectedLeadIds.length > 1 ? "s" : ""} selected
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedLeadIds([])}
+                    className="text-xs h-7 px-2.5 text-slate-600 bg-white"
+                  >
+                    Clear Selection
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsBulkRemoveOpen(true)}
+                    className="text-xs h-7 px-3 bg-red-600 hover:bg-red-700 text-white font-medium flex items-center gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove Selected from Batch</span>
+                  </Button>
+                </div>
+              </div>
+            )}
 
-                      <td className="py-3.5 px-4 text-xs text-slate-700 font-mono">
-                        {lead.email ? (
-                          <div className="flex items-center gap-1">
-                            <Mail className="w-3 h-3 text-slate-400" />
-                            <span>{lead.email}</span>
-                          </div>
-                        ) : (
-                          <span className="text-amber-600 italic">No email</span>
-                        )}
-                      </td>
-
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        {lead.phone ? (
-                          <div className="flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-slate-400" />
-                            <span>{lead.phone}</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <Badge variant="secondary" className="text-[10px] font-semibold">
-                          {lead.status}
-                        </Badge>
-                      </td>
-
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            lead.rating === "Hot"
-                              ? "bg-red-50 text-red-600"
-                              : lead.rating === "Warm"
-                              ? "bg-amber-50 text-amber-600"
-                              : "bg-blue-50 text-blue-600"
-                          }`}
-                        >
-                          {lead.rating}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          View Lead
-                        </Link>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all leads"
+                        checked={
+                          batch.leads.length > 0 &&
+                          selectedLeadIds.length === batch.leads.length
+                        }
+                        onChange={(e) => handleSelectAllLeads(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 accent-blue-600 cursor-pointer"
+                      />
+                    </th>
+                    <th className="py-3 px-4">Lead</th>
+                    <th className="py-3 px-4">Company &amp; Title</th>
+                    <th className="py-3 px-4">Email</th>
+                    <th className="py-3 px-4">Phone</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Rating</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {batch.leads.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-xs text-slate-400">
+                        No leads present in this batch.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    batch.leads.map((lead) => {
+                      const isSelected = selectedLeadIds.includes(lead.id);
+                      return (
+                        <tr
+                          key={lead.id}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            isSelected ? "bg-blue-50/30" : ""
+                          }`}
+                        >
+                          <td className="py-3.5 px-4 w-10">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${lead.fullName}`}
+                              checked={isSelected}
+                              onChange={() => handleToggleLead(lead.id)}
+                              className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 accent-blue-600 cursor-pointer"
+                            />
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <Link
+                              href={`/leads/${lead.id}`}
+                              className="font-bold text-slate-900 hover:text-blue-600 transition-colors flex items-center gap-1 group"
+                            >
+                              <span className="group-hover:underline">{lead.fullName}</span>
+                              <ExternalLink className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </Link>
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              {lead.leadNumber}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-xs text-slate-600">
+                            {lead.companyName && (
+                              <div className="font-medium text-slate-800 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-slate-400" />
+                                <span>{lead.companyName}</span>
+                              </div>
+                            )}
+                            {lead.jobTitle && (
+                              <span className="text-slate-400 text-[11px]">{lead.jobTitle}</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-xs text-slate-700 font-mono">
+                            {lead.email ? (
+                              <div className="flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-slate-400" />
+                                <span>{lead.email}</span>
+                              </div>
+                            ) : (
+                              <span className="text-amber-600 italic">No email</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-xs text-slate-600">
+                            {lead.phone ? (
+                              <div className="flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-slate-400" />
+                                <span>{lead.phone}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <Badge variant="secondary" className="text-[10px] font-semibold">
+                              {lead.status}
+                            </Badge>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                lead.rating === "Hot"
+                                  ? "bg-red-50 text-red-600"
+                                  : lead.rating === "Warm"
+                                  ? "bg-amber-50 text-amber-600"
+                                  : "bg-blue-50 text-blue-600"
+                              }`}
+                            >
+                              {lead.rating}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/leads/${lead.id}`}
+                                className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                View Lead
+                              </Link>
+                              <button
+                                type="button"
+                                title="Remove lead from batch"
+                                onClick={() =>
+                                  setLeadToRemove({ id: lead.id, name: lead.fullName })
+                                }
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -675,6 +848,142 @@ export default function MarketingBatchDetailPage() {
                   </>
                 ) : (
                   <span>Confirm Assignment</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Single Lead Confirmation Modal */}
+      {leadToRemove && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Remove Lead from Batch</h3>
+                  <p className="text-[11px] text-slate-500">Unlink lead from this marketing campaign</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLeadToRemove(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Confirm removal of &ldquo;{leadToRemove.name}&rdquo;</span>
+              </p>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                This lead will be removed from this marketing batch and will not receive any campaign emails sent to this batch.
+              </p>
+              <p className="text-[11px] text-slate-500 pt-1.5 border-t border-amber-200/60">
+                <strong>Safety guarantee:</strong> The lead profile and all contact information will remain safe and intact in your CRM Leads database.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setLeadToRemove(null)}
+                disabled={isRemoving}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleConfirmRemoveSingle}
+                disabled={isRemoving}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 cursor-pointer"
+              >
+                {isRemoving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <span>Removing...</span>
+                  </>
+                ) : (
+                  <span>Remove from Batch</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Bulk Leads Confirmation Modal */}
+      {isBulkRemoveOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Remove Selected Leads</h3>
+                  <p className="text-[11px] text-slate-500">Unlink multiple leads from this batch</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkRemoveOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Remove {selectedLeadIds.length} lead{selectedLeadIds.length > 1 ? "s" : ""} from this batch?</span>
+              </p>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                The {selectedLeadIds.length} selected leads will be removed from this marketing batch and will not receive any campaign outreach scheduled for this batch.
+              </p>
+              <p className="text-[11px] text-slate-500 pt-1.5 border-t border-amber-200/60">
+                <strong>Safety guarantee:</strong> None of these leads will be deleted from your CRM. Their records, notes, and activity history remain fully preserved.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkRemoveOpen(false)}
+                disabled={isRemoving}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleConfirmRemoveBulk}
+                disabled={isRemoving}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 cursor-pointer"
+              >
+                {isRemoving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    <span>Removing {selectedLeadIds.length}...</span>
+                  </>
+                ) : (
+                  <span>Remove {selectedLeadIds.length} Leads</span>
                 )}
               </Button>
             </div>

@@ -47,6 +47,7 @@ import {
   deleteMarketingBatchAction,
   sendBatchEmailAction,
   getSelectableLeadsForBatchAction,
+  removeLeadsFromMarketingBatchAction,
 } from "@/actions/marketing";
 
 describe("Marketing Module: Lead Batches & Bulk Email Campaigns", () => {
@@ -371,6 +372,95 @@ describe("Marketing Module: Lead Batches & Bulk Email Campaigns", () => {
       expect(res.success).toBe(true);
       expect(res.data?.length).toBe(1);
       expect(res.data![0].fullName).toBe("Alice Wonder");
+    });
+  });
+
+  describe("Removing Leads from Marketing Batch (Safe Unlinking)", () => {
+    it("successfully unlinks a single lead from batch without deleting it from CRM", async () => {
+      const created = await createMarketingBatchAction({
+        name: "Spring Outreach",
+        leadIds: ["lead_101", "lead_102", "lead_103"],
+      });
+      const batchId = created.data!.id;
+
+      // Remove single lead: lead_102
+      const removeRes = await removeLeadsFromMarketingBatchAction({
+        batchId,
+        leadIds: ["lead_102"],
+      });
+
+      expect(removeRes.success).toBe(true);
+      expect(removeRes.leadCount).toBe(2);
+
+      // Verify batch in store
+      const batchInStore = mockMarketingBatchesStore.find((b) => b.id === batchId);
+      expect(batchInStore?.leadIds).toEqual(["lead_101", "lead_103"]);
+      expect(batchInStore?.leadCount).toBe(2);
+
+      // Verify the lead still exists in CRM database
+      const lead102InCrm = mockLeadsStore.find((l) => l.id === "lead_102");
+      expect(lead102InCrm).toBeDefined();
+      expect(lead102InCrm?.firstName).toBe("Bob");
+
+      // Verify batch detail query reflects the removal
+      const detailRes = await getMarketingBatchByIdAction(batchId);
+      expect(detailRes.success).toBe(true);
+      expect(detailRes.data?.leads.length).toBe(2);
+      expect(detailRes.data?.leads.map((l) => l.id)).toEqual(["lead_101", "lead_103"]);
+    });
+
+    it("successfully removes multiple leads in bulk", async () => {
+      const created = await createMarketingBatchAction({
+        name: "Bulk Unlink Test",
+        leadIds: ["lead_101", "lead_102", "lead_103"],
+      });
+      const batchId = created.data!.id;
+
+      // Bulk remove: lead_101 and lead_103
+      const removeRes = await removeLeadsFromMarketingBatchAction({
+        batchId,
+        leadIds: ["lead_101", "lead_103"],
+      });
+
+      expect(removeRes.success).toBe(true);
+      expect(removeRes.leadCount).toBe(1);
+
+      const batchInStore = mockMarketingBatchesStore.find((b) => b.id === batchId);
+      expect(batchInStore?.leadIds).toEqual(["lead_102"]);
+      expect(batchInStore?.leadCount).toBe(1);
+
+      // All leads still exist in CRM leads
+      expect(mockLeadsStore.length).toBe(3);
+    });
+
+    it("prevents unauthorized users from removing leads from a batch", async () => {
+      const created = await createMarketingBatchAction({
+        name: "Alex Private Batch",
+        leadIds: ["lead_101", "lead_102"],
+      });
+      const batchId = created.data!.id;
+
+      // Switch session to another rep who does not own the batch
+      mockSessionUser = {
+        id: "usr_rep_stranger",
+        organizationId: "org_marketing_test",
+        email: "stranger@roxx-crm.com",
+        name: "Stranger Rep",
+        role: "SALES_REP",
+        permissions: ["activity:create", "lead:create"],
+      };
+
+      const removeRes = await removeLeadsFromMarketingBatchAction({
+        batchId,
+        leadIds: ["lead_101"],
+      });
+
+      expect(removeRes.success).toBe(false);
+      expect(removeRes.error).toContain("Unauthorized");
+
+      // Batch remains unchanged
+      const batchInStore = mockMarketingBatchesStore.find((b) => b.id === batchId);
+      expect(batchInStore?.leadIds.length).toBe(2);
     });
   });
 });
