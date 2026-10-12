@@ -124,13 +124,46 @@ export async function extractTextFromUrl(rawUrl: string): Promise<{ success: boo
  * Strips HTML noise and gathers readable textual context
  */
 export function extractReadableTextFromHtml(html: string): string {
-  // Extract meta tags
+  // 1. Extract JSON-LD structured organization metadata
+  const jsonLdBlocks: string[] = [];
+  const jsonLdRegex = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let jsonMatch: RegExpExecArray | null;
+  while ((jsonMatch = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (obj) {
+        if (obj.name) jsonLdBlocks.push(`Structured Organization Name: ${obj.name}`);
+        if (obj.description) jsonLdBlocks.push(`Structured Description: ${obj.description}`);
+        if (obj.address) {
+          const addr = typeof obj.address === "object"
+            ? [obj.address.streetAddress, obj.address.addressLocality, obj.address.addressRegion, obj.address.postalCode, obj.address.addressCountry].filter(Boolean).join(", ")
+            : String(obj.address);
+          jsonLdBlocks.push(`Structured Address/Location: ${addr}`);
+        }
+      }
+    } catch {
+      // Ignore malformed JSON-LD
+    }
+  }
+
+  // 2. Extract meta tags
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const metaDescMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
   const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
 
   const title = titleMatch ? titleMatch[1].trim() : "";
   const metaDesc = metaDescMatch ? metaDescMatch[1].trim() : ogDescMatch ? ogDescMatch[1].trim() : "";
+
+  // 3. Extract street address, city, state, or ZIP
+  const locationMatch = html.match(/(?:[0-9]{1,5}\s+[A-Za-z0-9.,\s#]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way)[^<>\n]{0,80})?([A-Z][a-zA-Z\s.-]+,\s*[A-Z]{2}\s+[0-9]{5}(?:-[0-9]{4})?)/i);
+  let detectedLocation = locationMatch ? locationMatch[0].replace(/<[^>]+>/g, " ").trim() : "";
+  if (!detectedLocation) {
+    const cityStateMatch = html.match(/\b([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|Massachusetts|California|New York|Texas|Florida|Illinois|Ohio|Georgia|North Carolina|Michigan|Washington|Arizona|Virginia|Colorado|Pennsylvania|USA|United States))\b/);
+    if (cityStateMatch) {
+      detectedLocation = cityStateMatch[1].trim();
+    }
+  }
 
   // Remove scripts, styles, svgs, and nav noise
   let body = html
@@ -157,16 +190,18 @@ export function extractReadableTextFromHtml(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ");
 
-  // Normalize spaces
+  // Normalize spaces and filter lines
   const lines = body
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l.length > 20); // filter out tiny navigation snippets
+    .filter((l) => l.length > 15 || /[0-9]{5}|@|\d{3}-\d{3}-\d{4}/.test(l));
 
   const textBlocks: string[] = [];
   if (title) textBlocks.push(`Company Title: ${title}`);
   if (metaDesc) textBlocks.push(`Company Overview: ${metaDesc}`);
-  textBlocks.push(...lines.slice(0, 150)); // Take top informative lines
+  if (detectedLocation) textBlocks.push(`Company Location / Address: ${detectedLocation}`);
+  if (jsonLdBlocks.length > 0) textBlocks.push(...jsonLdBlocks);
+  textBlocks.push(...lines.slice(0, 150));
 
   return textBlocks.join("\n\n");
 }

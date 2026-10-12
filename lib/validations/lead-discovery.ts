@@ -11,10 +11,22 @@ export const fitAssessmentSchema = z.object({
 
 export type FitAssessment = z.infer<typeof fitAssessmentSchema>;
 
+export const companyOverviewDetailsSchema = z.object({
+  companyName: z.string().optional().nullable(),
+  industry: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  businessHistory: z.string().optional().nullable(),
+  businessModel: z.string().optional().nullable(),
+  digitalOperationsSummary: z.string().optional().nullable(),
+});
+
+export type CompanyOverviewDetails = z.infer<typeof companyOverviewDetailsSchema>;
+
 export const leadDiscoverySchema = z.object({
   leadId: z.string(),
   clientBusiness: z.string().min(1, "Client business is required"),
   businessSummary: z.string().min(1, "Business summary is required"),
+  companyOverviewDetails: companyOverviewDetailsSchema.optional().nullable(),
   currentNeeds: z.array(z.string()).min(1, "At least one discovery need is required"),
   recommendations: z.array(z.string()).min(1, "At least one recommendation is required"),
   targetOffering: z.string().min(1, "Target offering is required"),

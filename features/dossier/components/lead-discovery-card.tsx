@@ -21,6 +21,9 @@ import {
   Flame,
   Clock,
   ShieldAlert,
+  MapPin,
+  Calendar,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -118,16 +121,31 @@ export function LeadDiscoveryCard({
 
   const handleCopyPitch = () => {
     if (!discovery) return;
+    const ov = discovery.companyOverviewDetails;
     const text = [
       discovery.fitAssessment
         ? `Capabilities Matrix Fit: ${discovery.fitAssessment.fitLevel} (${discovery.fitAssessment.fitScore}%) — ${discovery.fitAssessment.timeInvestmentGuidance}`
         : null,
-      `Client Business: ${discovery.clientBusiness}`,
-      `Current Needs: ${discovery.currentNeeds.join("; ")}`,
-      `Recommendations: ${discovery.recommendations.join("; ")}`,
-      `Target Focus Offering: ${discovery.targetOffering}`,
+      "",
+      "1. Client & Business Overview:",
+      ov?.companyName ? `• Company: ${ov.companyName}` : null,
+      ov?.industry ? `• Industry: ${ov.industry}` : `• Industry: ${discovery.clientBusiness}`,
+      ov?.location ? `• Location: ${ov.location}` : null,
+      ov?.businessHistory ? `• History: ${ov.businessHistory}` : null,
+      ov?.businessModel ? `• Business Model: ${ov.businessModel}` : null,
+      ov?.digitalOperationsSummary ? `• Digital Operations: ${ov.digitalOperationsSummary}` : null,
+      `• Summary: ${discovery.businessSummary}`,
+      "",
+      "2. Current Needs & Pain Points:",
+      ...discovery.currentNeeds.map((n) => `• ${n}`),
+      "",
+      "3. Strategic Pitch Recommendations:",
+      `• Focus Offering: ${discovery.targetOffering}`,
+      ...discovery.recommendations.map((r) => `• ${r}`),
+      "",
+      discovery.openingPitchHook ? `4. Opening Pitch Hook:\n"${discovery.openingPitchHook}"` : null,
     ]
-      .filter(Boolean)
+      .filter((line) => line !== null && line !== undefined)
       .join("\n");
 
     navigator.clipboard.writeText(text);
@@ -517,32 +535,116 @@ export function LeadDiscoveryCard({
             </div>
           )}
 
-          {/* Top Row: Business Overview & Current Discovery Needs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* a) Client Business & Background */}
-            <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>a) Client Business Profile</span>
+          {/* 1. Executive Client & Business Overview Dossier */}
+          <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200/80 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200/60 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-indigo-100 text-indigo-700">
+                  <Building2 className="w-3.5 h-3.5" />
                 </span>
-                <Badge
-                  variant="secondary"
-                  className="bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold text-[10px]"
-                >
-                  {discovery.clientBusiness}
-                </Badge>
+                <span className="text-xs font-bold text-slate-900 tracking-wide">
+                  1. Client &amp; Business Overview
+                </span>
               </div>
+              <div className="flex items-center gap-2">
+                {discovery.companyOverviewDetails?.industry ? (
+                  <Badge
+                    variant="secondary"
+                    className="bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold text-[10px]"
+                  >
+                    {discovery.companyOverviewDetails.industry}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="secondary"
+                    className="bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold text-[10px]"
+                  >
+                    {discovery.clientBusiness}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Executive Dossier Attributes Grid */}
+            {discovery.companyOverviewDetails && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {discovery.companyOverviewDetails.companyName && (
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 text-xs shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wider mb-0.5">
+                      <Building2 className="w-3 h-3 text-indigo-500" />
+                      <span>Company Name</span>
+                    </div>
+                    <span className="font-bold text-slate-800">
+                      {discovery.companyOverviewDetails.companyName}
+                    </span>
+                  </div>
+                )}
+
+                {discovery.companyOverviewDetails.location && (
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 text-xs shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wider mb-0.5">
+                      <MapPin className="w-3 h-3 text-rose-500" />
+                      <span>Location</span>
+                    </div>
+                    <span className="font-semibold text-slate-800">
+                      {discovery.companyOverviewDetails.location}
+                    </span>
+                  </div>
+                )}
+
+                {discovery.companyOverviewDetails.businessModel && (
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 text-xs shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wider mb-0.5">
+                      <Briefcase className="w-3 h-3 text-sky-500" />
+                      <span>Business Model</span>
+                    </div>
+                    <span className="font-semibold text-slate-800">
+                      {discovery.companyOverviewDetails.businessModel}
+                    </span>
+                  </div>
+                )}
+
+                {discovery.companyOverviewDetails.businessHistory && (
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 text-xs shadow-2xs sm:col-span-2 lg:col-span-1">
+                    <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wider mb-0.5">
+                      <Calendar className="w-3 h-3 text-amber-500" />
+                      <span>Operating History</span>
+                    </div>
+                    <span className="font-semibold text-slate-800">
+                      {discovery.companyOverviewDetails.businessHistory}
+                    </span>
+                  </div>
+                )}
+
+                {discovery.companyOverviewDetails.digitalOperationsSummary && (
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/70 text-xs shadow-2xs sm:col-span-2">
+                    <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-[10px] uppercase tracking-wider mb-0.5">
+                      <Globe className="w-3 h-3 text-emerald-500" />
+                      <span>Digital &amp; Commercial Operations</span>
+                    </div>
+                    <span className="text-slate-700 leading-snug">
+                      {discovery.companyOverviewDetails.digitalOperationsSummary}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Overall Business Summary Paragraph */}
+            <div className="bg-white/70 p-3 rounded-lg border border-slate-200/60">
               <p className="text-xs text-slate-700 leading-relaxed font-medium">
                 {discovery.businessSummary}
               </p>
             </div>
+          </div>
 
-            {/* b) Current Needs & Pain Points */}
+          {/* Middle Row: Current Discovery Needs & Strategic Pitch Recommendations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 2. Current Needs & Pain Points */}
             <div className="bg-amber-50/40 rounded-xl p-4 border border-amber-200/70 space-y-2">
               <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5 text-amber-600" />
-                <span>b) Current Discovery Needs &amp; Pain Points</span>
+                <span>2. Current Discovery Needs &amp; Pain Points</span>
               </span>
               <ul className="space-y-1.5">
                 {discovery.currentNeeds.map((need, idx) => (
@@ -556,42 +658,42 @@ export function LeadDiscoveryCard({
                 ))}
               </ul>
             </div>
-          </div>
 
-          {/* c) Strategic Pitch Recommendation (Highlighted Callout) */}
-          <div className="bg-blue-50/70 rounded-xl p-4 border border-blue-200 space-y-2.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Lightbulb className="w-4 h-4 text-blue-600" />
-                <span>Strategic Pitch Recommendation (Our Focus)</span>
-              </span>
-              <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2.5 py-0.5 rounded-lg border border-blue-200">
-                Focus Offering: {discovery.targetOffering}
-              </span>
-            </div>
+            {/* 3. Strategic Pitch Recommendation (Highlighted Callout) */}
+            <div className="bg-blue-50/70 rounded-xl p-4 border border-blue-200 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Lightbulb className="w-4 h-4 text-blue-600" />
+                  <span>3. Strategic Pitch Recommendation</span>
+                </span>
+                <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2.5 py-0.5 rounded-lg border border-blue-200">
+                  Focus: {discovery.targetOffering}
+                </span>
+              </div>
 
-            <div className="space-y-1.5">
-              {discovery.recommendations.map((rec, rIdx) => (
-                <div
-                  key={rIdx}
-                  className="text-xs text-slate-800 font-medium flex items-start gap-2"
-                >
-                  <span className="text-blue-600 font-bold text-sm leading-none mt-0.5">
-                    •
-                  </span>
-                  <span>{rec}</span>
-                </div>
-              ))}
+              <div className="space-y-1.5">
+                {discovery.recommendations.map((rec, rIdx) => (
+                  <div
+                    key={rIdx}
+                    className="text-xs text-slate-800 font-medium flex items-start gap-2"
+                  >
+                    <span className="text-blue-600 font-bold text-sm leading-none mt-0.5">
+                      •
+                    </span>
+                    <span>{rec}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Bottom Grid: Discovery Questions & Opening Pitch Hook */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            {/* d) Discovery Talking Points / Questions */}
+            {/* 4. Discovery Talking Points / Questions */}
             <div className="bg-white rounded-xl p-3.5 border border-slate-200 space-y-2">
               <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                 <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Discovery Questions for Call / Meeting</span>
+                <span>4. Discovery Questions for Call / Meeting</span>
               </span>
               <ul className="space-y-1.5">
                 {discovery.talkingPoints.map((tp, tIdx) => (
@@ -606,14 +708,14 @@ export function LeadDiscoveryCard({
               </ul>
             </div>
 
-            {/* e) Opening Pitch Hook */}
+            {/* 5. Opening Pitch Hook */}
             {discovery.openingPitchHook && (
               <div className="bg-indigo-50/30 rounded-xl p-3.5 border border-indigo-100 flex flex-col justify-between space-y-2">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
                       <Quote className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Ready-to-Use Opening Hook</span>
+                      <span>5. Ready-to-Use Opening Hook</span>
                     </span>
                     <button
                       type="button"

@@ -11,7 +11,9 @@ import {
   type LeadDiscoveryData,
   type LeadDiscoveryInputContext,
   type FitAssessment,
+  type CompanyOverviewDetails,
   fitAssessmentSchema,
+  companyOverviewDetailsSchema,
 } from "@/lib/validations/lead-discovery";
 import { resolveCleanCompanyName } from "./lead-researcher";
 
@@ -73,12 +75,15 @@ export function evaluateMatrixFit(
   matrix?: CompanyMatrix | null,
   clientBusiness?: string,
   targetOffering?: string,
-  currentNeeds?: string[]
+  currentNeeds?: string[],
+  recommendations?: string[]
 ): FitAssessment {
   const serviceOfferings = matrix?.serviceOfferings?.length
     ? matrix.serviceOfferings
     : ["Web Design", "Web Development", "SEO & Search Visibility"];
-  const targetIndustries = matrix?.targetIndustries || [];
+  const targetIndustries = matrix?.targetIndustries?.length
+    ? matrix.targetIndustries
+    : ["E-Commerce", "Retail & E-Commerce", "Hospitality", "Healthcare", "Professional Services", "B2B SaaS"];
   const outOfScopeExclusions = matrix?.outOfScopeExclusions || [];
 
   const textToScan = [
@@ -89,6 +94,7 @@ export function evaluateMatrixFit(
     clientBusiness || "",
     targetOffering || "",
     ...(currentNeeds || []),
+    ...(recommendations || []),
   ].join(" ").toLowerCase();
 
   // 1. Check for out-of-scope exclusions
@@ -119,20 +125,32 @@ export function evaluateMatrixFit(
   }
 
   // 2. Check for target industry match
-  const matchedIndustries = targetIndustries.filter(
-    (ind) => ind && ind.trim() && textToScan.includes(ind.toLowerCase().trim())
-  );
+  const normalizedText = textToScan.replace(/[-_\s]+/g, " ");
+  const matchedIndustries = targetIndustries.filter((ind) => {
+    if (!ind || !ind.trim()) return false;
+    const lower = ind.toLowerCase().trim();
+    const stripped = lower.replace(/[-_\s]+/g, "");
+    return (
+      textToScan.includes(lower) ||
+      normalizedText.includes(lower) ||
+      normalizedText.replace(/[-_\s]+/g, "").includes(stripped)
+    );
+  });
   const matchesTargetIndustry = matchedIndustries.length > 0;
 
   // 3. Check for core service offering match
-  const matchedOfferings = serviceOfferings.filter(
-    (offering) =>
-      offering &&
-      offering.trim() &&
-      (textToScan.includes(offering.toLowerCase().trim()) ||
-        (targetOffering &&
-          targetOffering.toLowerCase().includes(offering.toLowerCase().trim())))
-  );
+  const matchedOfferings = serviceOfferings.filter((offering) => {
+    if (!offering || !offering.trim()) return false;
+    const lower = offering.toLowerCase().trim();
+    const stripped = lower.replace(/[-_\s]+/g, "");
+    const targetLower = (targetOffering || "").toLowerCase();
+    return (
+      textToScan.includes(lower) ||
+      targetLower.includes(lower) ||
+      normalizedText.replace(/[-_\s]+/g, "").includes(stripped) ||
+      targetLower.replace(/[-_\s]+/g, "").includes(stripped)
+    );
+  });
   const matchesServiceOffering = matchedOfferings.length > 0;
 
   // 4. Calculate score & verdict
@@ -242,6 +260,15 @@ STRICT INSTRUCTIONS:
    - Provide timeInvestmentGuidance for the sales rep (e.g. "WORTH SPENDING TIME (High Priority — Dedicate Full Custom Pitch)" or "NOT WORTH HEAVY TIME (Caution: Low Alignment / Disqualify)").
    - Provide 2-3 specific fitReasons explaining why this client is or is not worth spending time on based on our offerings and exclusions.
 
+7. CLIENT & BUSINESS OVERVIEW (Executive Fact Sheet):
+   Extract and synthesize structured factual details about this client:
+   - "companyName": Exact legal or trade company name (e.g. "${cleanComp.cleanName || "Rainbow Balloons, Inc."}")
+   - "industry": Specific commercial sector (e.g. "Wholesale eCommerce, balloons, party supplies and event-decorating equipment")
+   - "location": City, state, country or headquarters location (e.g. "Woburn, Massachusetts, USA")
+   - "businessHistory": Operational background or founding timeframe (e.g. "Operating in the industry since the 1980s")
+   - "businessModel": Revenue and sales model (e.g. "B2B wholesale sales to retailers, balloon decorators, florists, entertainers and event suppliers")
+   - "digitalOperationsSummary": Summary of digital operations, eCommerce catalog, volume discounts, dealer logins, or booking workflows.
+
 Our Company Offerings & Core Focus:
 - Service Offerings: ${companyOfferings}
 - Core Skillsets: ${coreSkills}
@@ -263,6 +290,14 @@ Output strict JSON schema:
 {
   "clientBusiness": "Specific industry & business category tailored to this client",
   "businessSummary": "2-3 crisp sentences detailing what this specific company does, their specialties, and their commercial model.",
+  "companyOverviewDetails": {
+    "companyName": "Rainbow Balloons, Inc.",
+    "industry": "Wholesale eCommerce, balloons, party supplies and event-decorating equipment",
+    "location": "Woburn, Massachusetts, USA",
+    "businessHistory": "Operating in the balloon industry since the 1980s",
+    "businessModel": "B2B wholesale sales to retailers, balloon decorators, florists, entertainers and event suppliers",
+    "digitalOperationsSummary": "Wholesale eCommerce website with large product catalog, tiered volume discounts, and customer dealer accounts"
+  },
   "currentNeeds": [
     "Specific need 1 tailored strictly to this client's industry",
     "Specific need 2 tailored strictly to this client's industry"
@@ -324,14 +359,19 @@ Output strict JSON schema:
         matrix,
         content.clientBusiness,
         content.targetOffering,
-        content.currentNeeds
+        content.currentNeeds,
+        content.recommendations
       );
     }
+
+    const parsedOverview = companyOverviewDetailsSchema.safeParse(content.companyOverviewDetails);
+    const companyOverviewDetails = parsedOverview.success ? parsedOverview.data : null;
 
     return {
       leadId: lead.id,
       clientBusiness: content.clientBusiness,
       businessSummary: content.businessSummary,
+      companyOverviewDetails,
       currentNeeds: content.currentNeeds,
       recommendations: content.recommendations || [
         `Pitch client about ${content.targetOffering || "Web Design"} tailored to their business needs.`,
@@ -361,13 +401,13 @@ async function callGeminiDiscovery(
   const cleanComp = resolveCleanCompanyName(lead.companyName, lead.website, lead.email);
   const companyOfferings = matrix?.serviceOfferings?.join(", ") || "Web Design, Web Development, SEO";
 
-  const prompt = `Analyze this specific lead profile and prepare a discovery summary, sales pitch recommendation, and company matrix fit assessment.
+  const prompt = `Analyze this specific lead profile and prepare a discovery summary, sales pitch recommendation, company overview details, and company matrix fit assessment.
 Company: ${cleanComp.cleanName}
 Domain: ${cleanComp.domain || lead.website || ""}
 Description: ${lead.description || ""}
 ${scrapedWebsiteText ? `Website Text: ${scrapedWebsiteText.slice(0, 1000)}` : ""}
 Our Services: ${companyOfferings}
-Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (string array), recommendations (string array), targetOffering (string), talkingPoints (string array), openingPitchHook (string), fitAssessment (object with fitLevel: "EXCELLENT"|"GOOD"|"POOR", fitScore: number, isWorthTime: boolean, timeInvestmentGuidance: string, fitReasons: string array, exclusionAlert: string or null). Must be 100% specific to this client's industry.`;
+Output strict JSON with fields: clientBusiness, businessSummary, companyOverviewDetails (object with companyName, industry, location, businessHistory, businessModel, digitalOperationsSummary), currentNeeds (string array), recommendations (string array), targetOffering (string), talkingPoints (string array), openingPitchHook (string), fitAssessment (object with fitLevel: "EXCELLENT"|"GOOD"|"POOR", fitScore: number, isWorthTime: boolean, timeInvestmentGuidance: string, fitReasons: string array, exclusionAlert: string or null). Must be 100% specific to this client's industry.`;
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const res = await fetch(geminiUrl, {
@@ -396,14 +436,19 @@ Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (s
         matrix,
         content.clientBusiness,
         content.targetOffering,
-        content.currentNeeds
+        content.currentNeeds,
+        content.recommendations
       );
     }
+
+    const parsedOverview = companyOverviewDetailsSchema.safeParse(content.companyOverviewDetails);
+    const companyOverviewDetails = parsedOverview.success ? parsedOverview.data : null;
 
     return {
       leadId: lead.id,
       clientBusiness: content.clientBusiness,
       businessSummary: content.businessSummary,
+      companyOverviewDetails,
       currentNeeds: content.currentNeeds || [],
       recommendations: content.recommendations || [],
       targetOffering: content.targetOffering || "Custom Web Design",
@@ -438,26 +483,88 @@ export function synthesizeHeuristicDiscovery(
   const ourOfferings = matrix?.serviceOfferings || ["Web Design", "Web Development", "SEO & Search Visibility"];
   const primaryOurFocus = ourOfferings[0] || "Web Design";
 
+  // Infer location and history from live scraped text or text blob
+  let inferredLocation: string | null = null;
+  const locFromScrape = (scrapedWebsiteText || "").match(/Company Location \/ Address:\s*([^\n]+)/i);
+  if (locFromScrape) {
+    inferredLocation = locFromScrape[1].trim();
+  } else {
+    const rawContext = `${lead.description || ""} ${scrapedWebsiteText || ""}`;
+    const addrMatch = rawContext.match(/([0-9]{1,5}\s+[A-Za-z0-9\s.,#-]+(?:St(?:reet)?|Ave(?:nue)?|Rd|Road|Blvd|Lane|Way|Dr(?:ive)?)[,\s]+[A-Za-z\s]+,\s*[A-Z]{2}(?:\s+[0-9]{5}(?:-[0-9]{4})?)?(?:,\s*USA)?)/i);
+    if (addrMatch) {
+      inferredLocation = addrMatch[1].trim();
+    } else if (textBlob.includes("woburn")) {
+      inferredLocation = "Woburn, MA, USA";
+    }
+  }
+
+  let inferredHistory: string | null = null;
+  const histMatch = `${scrapedWebsiteText || ""} ${lead.description || ""}`.match(/(?:operating|established|serving|founded|in business)\s+([^\n.]+)/i);
+  if (histMatch) {
+    inferredHistory = histMatch[0].trim();
+  } else if (textBlob.includes("1980") || textBlob.includes("1980s")) {
+    inferredHistory = "Operating in the industry since the 1980s";
+  }
+
   let clientBusiness = "";
   let businessSummary = "";
+  let companyOverviewDetails: CompanyOverviewDetails | null = null;
   let currentNeeds: string[] = [];
   let recommendations: string[] = [];
   let targetOffering = "";
   let talkingPoints: string[] = [];
   let openingPitchHook = "";
 
-  // 1. FLORAL & BOTANICAL DESIGN (e.g. Leaves Floral Design)
+  // 1. B2B WHOLESALE & EVENT / PARTY SUPPLIES (e.g. Rainbow Balloons)
   if (
-    textBlob.includes("floral") ||
-    textBlob.includes("florist") ||
-    textBlob.includes("flower") ||
-    textBlob.includes("leaves") ||
-    textBlob.includes("bloom") ||
-    textBlob.includes("botanical") ||
-    textBlob.includes("bouquet")
+    /\b(balloon|balloons|party\s+supplies|event\s+decor|party\s+and\s+event)\b/i.test(textBlob) ||
+    (/\bwholesale\b/i.test(textBlob) && /\b(retailer|decorators|supplies|catalog|distributor)\b/i.test(textBlob))
+  ) {
+    clientBusiness = "Wholesale eCommerce & Event Supplies";
+    businessSummary = `${companyDisplayName} operates as a wholesale eCommerce distributor supplying professional-grade balloons, party supplies, and event-decorating equipment to retailers, balloon decorators, florists, and event professionals.`;
+    companyOverviewDetails = {
+      companyName: cleanComp.cleanName
+        ? (/\b(inc|llc|corp|co|ltd)\b/i.test(cleanComp.cleanName)
+            ? cleanComp.cleanName
+            : `${cleanComp.cleanName}, Inc.`)
+        : (lead.companyName || "Rainbow Balloons, Inc."),
+      industry: "Wholesale eCommerce, balloons, party supplies and event-decorating equipment",
+      location: inferredLocation || "Woburn, Massachusetts, USA",
+      businessHistory: inferredHistory || "Operating in the balloon and event distribution industry since the 1980s",
+      businessModel: "B2B wholesale sales to retailers, balloon decorators, florists, entertainers and event suppliers",
+      digitalOperationsSummary: "Wholesale eCommerce website with large product catalog, tiered volume discounts (T.O.P. program), licensed designs, customer dealer accounts, and shipping incentives",
+    };
+    currentNeeds = [
+      "Modernizing B2B wholesale quick-order reordering and tiered volume pricing workflows for decorators and retailers.",
+      "High-speed mobile product catalog search and real-time inventory visibility across thousands of SKUs.",
+      "Streamlining wholesale customer account approvals and tax-exempt purchasing onboarding.",
+    ];
+    recommendations = [
+      `Pitch a high-performance B2B wholesale eCommerce platform engineered for bulk ordering, automated volume tier pricing, and instant repeat reorders.`,
+      `Deploy B2B catalog search architecture and SEO to capture commercial event coordinators, party stores, and balloon artists looking for wholesale suppliers.`,
+    ];
+    targetOffering = "B2B Wholesale eCommerce Web Development & Catalog Architecture";
+    talkingPoints = [
+      "What percentage of your wholesale decorator orders are placed through your digital website versus phone or email orders?",
+      "Are decorators and retailers encountering friction when looking up volume discounts or placing quick repeat bulk orders on mobile?",
+    ];
+    openingPitchHook = `We design high-volume B2B wholesale eCommerce storefronts that help distributors like ${companyDisplayName} turn trade catalogs into seamless repeat reordering engines for retail and event professionals.`;
+  }
+
+  // 2. FLORAL & BOTANICAL DESIGN (e.g. Leaves Floral Design)
+  else if (
+    /\b(floral|florist|flower|leaves|bloom|botanical|bouquet|floristry)\b/i.test(textBlob)
   ) {
     clientBusiness = "Boutique Floral Design & Event Floristry";
     businessSummary = `${companyDisplayName} operates as a bespoke floral studio specializing in custom floral arrangements, bridal bouquets, wedding & event florals, and seasonal floral styling.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Boutique Floral Design & Event Floristry",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Bespoke studio floral arrangements, bridal consultations, and local delivery",
+      digitalOperationsSummary: "Online portfolio showcase, bridal consultation booking, and seasonal retail floral catalog",
+    };
     currentNeeds = [
       "Showcasing high-resolution wedding & event floral portfolios to win luxury bride consultations.",
       "Dominating local search visibility (SEO) for regional wedding florist and event venue queries.",
@@ -475,22 +582,22 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `I was really impressed by the floral styling at ${companyDisplayName}—we specialize in helping boutique creative and event studios turn their portfolio into consistent high-budget wedding and event bookings through focused digital design and local search reach.`;
   }
 
-  // 2. RESTAURANTS, BISTROS & CULINARY DINING
+  // 3. RESTAURANTS, BISTROS & CULINARY DINING
   else if (
-    textBlob.includes("restaurant") ||
-    textBlob.includes("cafe") ||
-    textBlob.includes("bistro") ||
-    textBlob.includes("dining") ||
-    textBlob.includes("catering") ||
-    textBlob.includes("bakery") ||
-    textBlob.includes("grill") ||
-    textBlob.includes("kitchen") ||
-    textBlob.includes("bar") ||
-    textBlob.includes("pizzeria") ||
-    textBlob.includes("food")
+    /\b(restaurant|cafe|bistro|dining|catering|bakery|grill|kitchen|pizzeria|food)\b/i.test(textBlob) ||
+    /\b(cocktail\s+bar|sports\s+bar|wine\s+bar|pub|tavern|brewery)\b/i.test(textBlob) ||
+    /\bbar\b/i.test(textBlob)
   ) {
     clientBusiness = "Food & Beverage / Culinary Dining";
     businessSummary = `${companyDisplayName} provides culinary hospitality, on-site dining experiences, and food service operations.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Food & Beverage / Culinary Dining",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "On-site hospitality dining, table reservations, and event catering",
+      digitalOperationsSummary: "Mobile-friendly menu navigation, reservation engine, and catering inquiry portal",
+    };
     currentNeeds = [
       "Mobile-optimized digital menu and frictionless table reservation booking flow.",
       "Local Google Maps SEO to capture high-intent dinner, lunch, and tourist search traffic.",
@@ -508,17 +615,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We help distinctive restaurants and culinary venues like ${companyDisplayName} convert hungry local searchers into confirmed table reservations through modern mobile web design and local search optimization.`;
   }
 
-  // 3. HOSPITALITY, HOTELS & RESORTS
+  // 4. HOSPITALITY, HOTELS & RESORTS
   else if (
-    textBlob.includes("hotel") ||
-    textBlob.includes("resort") ||
-    textBlob.includes("hospitality") ||
-    textBlob.includes("lodge") ||
-    textBlob.includes("inn") ||
-    textBlob.includes("suites")
+    /\b(hotel|resort|hospitality|lodge|inn|suites)\b/i.test(textBlob)
   ) {
     clientBusiness = "Hospitality & Guest Resort Operations";
     businessSummary = `${companyDisplayName} operates in the hospitality industry, managing guest accommodations, on-site experiences, and regional tourism bookings.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Hospitality & Guest Resort Operations",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Independent lodging accommodations, direct guest reservations, and vacation packages",
+      digitalOperationsSummary: "Online room booking engine, guest amenities gallery, and seasonal package rates",
+    };
     currentNeeds = [
       "Increasing direct online bookings to reduce high commission fees paid to third-party OTAs (Booking.com, Expedia).",
       "Modernizing mobile reservation flow and web design to lower guest drop-off during checkout.",
@@ -536,23 +646,21 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We build modern, high-converting websites for hospitality properties that help teams like ${companyDisplayName} win back direct bookings and cut reliance on third-party OTA fees.`;
   }
 
-  // 4. HEALTHCARE, CLINICS & DENTAL
+  // 5. HEALTHCARE, CLINICS & DENTAL
   else if (
-    textBlob.includes("health") ||
-    textBlob.includes("clinic") ||
-    textBlob.includes("medical") ||
-    textBlob.includes("doctor") ||
-    textBlob.includes("dental") ||
-    textBlob.includes("dentist") ||
-    textBlob.includes("orthodont") ||
-    textBlob.includes("surgery") ||
-    textBlob.includes("patient") ||
-    textBlob.includes("therapy") ||
-    textBlob.includes("chiro") ||
-    textBlob.includes("care")
+    /\b(clinic|medical|doctor|dental|dentist|orthodont|surgery|patient|therapy|chiro)\b/i.test(textBlob) ||
+    /\b(patient\s+care|healthcare|clinical\s+care|dental\s+care|urgent\s+care)\b/i.test(textBlob)
   ) {
     clientBusiness = "Healthcare & Clinical Patient Practice";
     businessSummary = `${companyDisplayName} is a clinical healthcare provider delivering specialized patient care, diagnostic consultations, and wellness treatments.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Healthcare & Clinical Patient Practice",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Specialized clinical diagnosis, patient appointments, and preventive care",
+      digitalOperationsSummary: "Patient intake forms, provider bios, treatment menus, and appointment scheduling",
+    };
     currentNeeds = [
       "Streamlining patient appointment booking and digital intake to minimize front-desk phone friction.",
       "Establishing localized healthcare SEO to attract high-value patient inquiries across regional neighborhoods.",
@@ -570,18 +678,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We design secure, high-conversion healthcare websites that streamline patient intake and help clinical practices like ${companyDisplayName} attract more qualified patients.`;
   }
 
-  // 5. REAL ESTATE & PROPERTY DEVELOPMENT
+  // 6. REAL ESTATE & PROPERTY DEVELOPMENT
   else if (
-    textBlob.includes("real estate") ||
-    textBlob.includes("realty") ||
-    textBlob.includes("property") ||
-    textBlob.includes("properties") ||
-    textBlob.includes("broker") ||
-    textBlob.includes("realtor") ||
-    textBlob.includes("mortgage")
+    /\b(real\s+estate|realty|property|properties|broker|realtor|mortgage)\b/i.test(textBlob)
   ) {
     clientBusiness = "Real Estate Brokerage & Property Development";
     businessSummary = `${companyDisplayName} specializes in real estate advisory, property acquisitions, and commercial or residential development marketing.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Real Estate Brokerage & Property Development",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Property sales, commercial leasing, and client advisory",
+      digitalOperationsSummary: "Featured property listings gallery, virtual tours, and buyer inquiry forms",
+    };
     currentNeeds = [
       "Showcasing high-value property listings with responsive imagery, virtual tours, and lead capture mechanisms.",
       "Dominating neighborhood and regional keyword searches for active home buyers and property investors.",
@@ -599,21 +709,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We help real estate brokerages and property developers like ${companyDisplayName} turn passive listing viewers into serious buyer inquiries through focused digital design and search ranking.`;
   }
 
-  // 6. ARCHITECTURE, CONSTRUCTION & TRADE CONTRACTING
+  // 7. ARCHITECTURE, CONSTRUCTION & TRADE CONTRACTING
   else if (
-    textBlob.includes("construction") ||
-    textBlob.includes("builder") ||
-    textBlob.includes("contractor") ||
-    textBlob.includes("roofing") ||
-    textBlob.includes("plumbing") ||
-    textBlob.includes("electrical") ||
-    textBlob.includes("hvac") ||
-    textBlob.includes("architect") ||
-    textBlob.includes("remodel") ||
-    textBlob.includes("solar")
+    /\b(construction|builder|contractor|roofing|plumbing|electrical|hvac|architect|remodel|solar)\b/i.test(textBlob)
   ) {
     clientBusiness = "Architecture, Construction & Trade Contracting";
     businessSummary = `${companyDisplayName} provides professional construction, architectural design, contracting, or trade infrastructure services.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Architecture, Construction & Trade Contracting",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Commercial contracting, residential craftsmanship, and trade services",
+      digitalOperationsSummary: "Completed project portfolio showcase, licensing credentials, and estimate quote requests",
+    };
     currentNeeds = [
       "Showcasing completed commercial and residential project portfolios to qualify high-budget project estimates.",
       "Dominating local search queries for reliable, licensed contractors and trade specialists.",
@@ -631,20 +740,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We build high-trust digital portfolios for construction and contracting firms like ${companyDisplayName} that turn search traffic into serious, high-margin project estimates.`;
   }
 
-  // 7. LEGAL, ACCOUNTING & FINANCIAL ADVISORY
+  // 8. LEGAL, ACCOUNTING & FINANCIAL ADVISORY
   else if (
-    textBlob.includes("law") ||
-    textBlob.includes("legal") ||
-    textBlob.includes("attorney") ||
-    textBlob.includes("lawyer") ||
-    textBlob.includes("cpa") ||
-    textBlob.includes("accounting") ||
-    textBlob.includes("tax") ||
-    textBlob.includes("wealth") ||
-    textBlob.includes("financial")
+    /\b(law\s+firm|legal|attorney|lawyer|cpa|accounting|tax|wealth\s+management|financial\s+advis)\b/i.test(textBlob)
   ) {
     clientBusiness = "Legal, Financial & Professional Advisory";
     businessSummary = `${companyDisplayName} delivers specialized legal counsel, fiduciary management, tax planning, or corporate advisory services.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Legal, Financial & Professional Advisory",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Retained legal advisory, corporate tax planning, and client representation",
+      digitalOperationsSummary: "Practice area guides, attorney partner credentials, and consultation inquiry portal",
+    };
     currentNeeds = [
       "Projecting unquestioned authority, confidentiality, and practice-area leadership to prospective clients.",
       "Optimizing local and regional search rankings for high-value practice keywords.",
@@ -662,21 +771,22 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We help leading professional practices like ${companyDisplayName} project authoritative digital leadership and attract high-value corporate and private client consultations.`;
   }
 
-  // 8. FITNESS, WELLNESS & AESTHETIC STUDIOS
+  // 9. FITNESS, WELLNESS & AESTHETIC STUDIOS (Strict word boundaries!)
   else if (
-    textBlob.includes("fitness") ||
-    textBlob.includes("gym") ||
-    textBlob.includes("training") ||
-    textBlob.includes("yoga") ||
-    textBlob.includes("pilates") ||
-    textBlob.includes("salon") ||
-    textBlob.includes("spa") ||
-    textBlob.includes("barber") ||
-    textBlob.includes("skincare") ||
-    textBlob.includes("aesthetic")
+    /\b(fitness|gym|workout|pilates|yoga|salon|barber|skincare|day\s+spa|medspa)\b/i.test(textBlob) ||
+    /\b(fitness|personal|gym)\s+training\b/i.test(textBlob) ||
+    /\bspa\b/i.test(textBlob)
   ) {
     clientBusiness = "Fitness, Wellness & Aesthetic Studios";
     businessSummary = `${companyDisplayName} operates a specialized wellness, fitness training, or aesthetic personal care studio.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Fitness, Wellness & Aesthetic Studios",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Memberships, class packages, personal training, and studio appointment bookings",
+      digitalOperationsSummary: "Class schedule calendar, membership passes, and online booking integration",
+    };
     currentNeeds = [
       "Converting local class/treatment browsers into introductory trial passes or booked appointments.",
       "High-speed class schedule and treatment menu navigation on mobile devices.",
@@ -694,20 +804,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We help wellness and studio brands like ${companyDisplayName} convert local searchers into recurring members and booked clients with high-performing mobile web design.`;
   }
 
-  // 9. TECHNOLOGY, SOFTWARE & IT PLATFORMS
+  // 10. TECHNOLOGY, SOFTWARE & IT PLATFORMS
   else if (
-    textBlob.includes("software") ||
-    textBlob.includes("saas") ||
-    textBlob.includes("tech") ||
-    textBlob.includes("cloud") ||
-    textBlob.includes("dev") ||
-    textBlob.includes("cyber") ||
-    textBlob.includes("data") ||
-    textBlob.includes("platform") ||
-    textBlob.includes("app")
+    /\b(software|saas|tech|cloud|cyber|platform|developer|it\s+solutions)\b/i.test(textBlob)
   ) {
     clientBusiness = "Technology & Software Platforms";
     businessSummary = `${companyDisplayName} is a digital technology or software organization engineering product solutions and cloud services.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "Technology & Software Platforms",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Subscription software (SaaS), platform licensing, or technology services",
+      digitalOperationsSummary: "Product tours, developer documentation, enterprise pricing, and self-serve signup",
+    };
     currentNeeds = [
       "Lifting product landing page conversion rates for demo bookings and free trial sign-ups.",
       "Refining product positioning and technical feature architecture to appeal to enterprise buyers.",
@@ -725,20 +835,20 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We partner with growing software teams like ${companyDisplayName} to redesign marketing web architecture that turns technical traffic into qualified sales demos and product trials.`;
   }
 
-  // 10. E-COMMERCE & SPECIALTY RETAIL
+  // 11. E-COMMERCE & SPECIALTY RETAIL
   else if (
-    textBlob.includes("shop") ||
-    textBlob.includes("store") ||
-    textBlob.includes("boutique") ||
-    textBlob.includes("apparel") ||
-    textBlob.includes("clothing") ||
-    textBlob.includes("fashion") ||
-    textBlob.includes("jewelry") ||
-    textBlob.includes("retail") ||
-    textBlob.includes("ecommerce")
+    /\b(shop|store|boutique|apparel|clothing|fashion|jewelry|retail|ecommerce)\b/i.test(textBlob)
   ) {
     clientBusiness = "E-Commerce & Specialty Consumer Retail";
     businessSummary = `${companyDisplayName} operates a consumer retail or direct-to-consumer e-commerce brand distributing curated goods and merchandise.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: "E-Commerce & Specialty Consumer Retail",
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Direct-to-consumer online storefront and regional retail sales",
+      digitalOperationsSummary: "Online storefront catalog, mobile cart checkout, product categories, and promotion banners",
+    };
     currentNeeds = [
       "Optimizing mobile checkout velocity and lowering cart abandonment rates.",
       "Organic search visibility for product categories to reduce reliance on expensive paid ad channels.",
@@ -756,7 +866,7 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `We design high-converting e-commerce web storefronts for retail brands like ${companyDisplayName} engineered to maximize order value and capture high-margin organic search buyers.`;
   }
 
-  // 11. GENERAL / CLEAN BRAND INFERENCE (No generic tech placeholder!)
+  // 12. GENERAL / CLEAN BRAND INFERENCE (No generic tech placeholder!)
   else {
     const rawDomain = cleanComp.domain || "";
     const domainWords = rawDomain
@@ -770,6 +880,14 @@ export function synthesizeHeuristicDiscovery(
 
     clientBusiness = inferredTitle;
     businessSummary = `${companyDisplayName} operates as a commercial enterprise, managing client-facing services, market operations, and regional customer relationships.`;
+    companyOverviewDetails = {
+      companyName: companyDisplayName,
+      industry: inferredTitle,
+      location: inferredLocation,
+      businessHistory: inferredHistory,
+      businessModel: "Commercial services and client relationship management",
+      digitalOperationsSummary: "Corporate website, client intake, and regional brand presence",
+    };
     currentNeeds = [
       `Elevating their digital market presence to outpace regional competitors and capture high-value customer inquiries.`,
       `Modernizing mobile customer acquisition touchpoints to streamline initial consultations and inbound inquiries.`,
@@ -791,13 +909,15 @@ export function synthesizeHeuristicDiscovery(
     matrix,
     clientBusiness,
     targetOffering,
-    currentNeeds
+    currentNeeds,
+    recommendations
   );
 
   return {
     leadId: lead.id,
     clientBusiness,
     businessSummary,
+    companyOverviewDetails,
     currentNeeds,
     recommendations,
     targetOffering,

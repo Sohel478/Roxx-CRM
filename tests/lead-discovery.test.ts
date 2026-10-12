@@ -328,4 +328,47 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
     expect(discovery.fitAssessment?.fitLevel).toBe("EXCELLENT");
     expect(discovery.fitAssessment?.isWorthTime).toBe(true);
   });
+
+  it("accurately classifies Rainbow Balloons as B2B Wholesale eCommerce and extracts location & business model without studio misclassification", () => {
+    const rainbowLead = {
+      id: "lead_rainbow_balloons_1",
+      fullName: "Rainbow Balloons Contact",
+      firstName: "Rainbow",
+      lastName: "Balloons",
+      companyName: "Rainbow Balloons, Inc.",
+      email: "info@rainbowballoons.com",
+      website: "https://rainbowballoons.com/",
+      description:
+        "Website: https://rainbowballoons.com/\nWholesale distributor of balloons and party supplies, Qualatex latex, foil balloons, decorator training and party supplies.\nHeadquarters: 65 Holton St., Woburn, MA 01801, USA\nOperating for over 40 years as a premier wholesale distributor.",
+    };
+
+    const discovery = synthesizeHeuristicDiscovery(rainbowLead);
+
+    // 1. Must identify B2B Wholesale / Event & Party Supply
+    expect(discovery.clientBusiness.toLowerCase()).toMatch(/wholesale|event|party/);
+    expect(discovery.clientBusiness.toLowerCase()).not.toContain("fitness");
+    expect(discovery.clientBusiness.toLowerCase()).not.toContain("wellness");
+    expect(discovery.clientBusiness.toLowerCase()).not.toContain("studio");
+
+    // 2. Executive Company Overview Details must be populated
+    expect(discovery.companyOverviewDetails).toBeDefined();
+    expect(discovery.companyOverviewDetails?.companyName).toBe("Rainbow Balloons, Inc.");
+    expect(discovery.companyOverviewDetails?.industry?.toLowerCase()).toMatch(/wholesale|party|event/);
+    expect(discovery.companyOverviewDetails?.location).toContain("Woburn, MA");
+    expect(discovery.companyOverviewDetails?.businessModel?.toLowerCase()).toContain("b2b");
+    expect(discovery.companyOverviewDetails?.businessHistory).toBeTruthy();
+    expect(discovery.companyOverviewDetails?.digitalOperationsSummary).toBeTruthy();
+
+    // 3. Needs and recommendations must focus on B2B wholesale eCommerce / catalog / portal
+    const needsBlob = discovery.currentNeeds.join(" ").toLowerCase();
+    expect(needsBlob).toMatch(/ecommerce|b2b|wholesale|portal|ordering/);
+
+    const recsBlob = discovery.recommendations.join(" ").toLowerCase();
+    expect(recsBlob).toMatch(/ecommerce|wholesale|b2b|portal/);
+
+    // 4. Matrix Fit & Worth Time
+    expect(discovery.fitAssessment?.fitLevel).toBe("EXCELLENT");
+    expect(discovery.fitAssessment?.isWorthTime).toBe(true);
+    expect(discovery.fitAssessment?.fitScore).toBeGreaterThanOrEqual(80);
+  });
 });
