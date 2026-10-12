@@ -33,7 +33,9 @@ import {
 import {
   generateLeadDiscovery,
   synthesizeHeuristicDiscovery,
+  calculateQualificationRubric,
 } from "@/lib/ai/lead-discovery-engine";
+import { isSafePublicUrl } from "@/lib/ai/company-matrix-extractor";
 
 describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
   beforeEach(() => {
@@ -370,5 +372,143 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
     expect(discovery.fitAssessment?.fitLevel).toBe("EXCELLENT");
     expect(discovery.fitAssessment?.isWorthTime).toBe(true);
     expect(discovery.fitAssessment?.fitScore).toBeGreaterThanOrEqual(80);
+  });
+
+  describe("SSRF Protection (isSafePublicUrl)", () => {
+    it("blocks private IPs, localhost, and cloud metadata endpoints", () => {
+      // Loopback
+      expect(isSafePublicUrl("http://localhost:3000")).toBe(false);
+      expect(isSafePublicUrl("http://localhost/admin")).toBe(false);
+      expect(isSafePublicUrl("http://127.0.0.1:8080")).toBe(false);
+      expect(isSafePublicUrl("http://127.0.0.2")).toBe(false);
+
+      // Cloud Metadata / Link Local
+      expect(isSafePublicUrl("http://169.254.169.254/latest/meta-data")).toBe(false);
+      expect(isSafePublicUrl("http://169.254.1.1")).toBe(false);
+
+      // RFC 1918 Private Subnets
+      expect(isSafePublicUrl("http://10.0.0.1/dashboard")).toBe(false);
+      expect(isSafePublicUrl("http://10.255.255.255")).toBe(false);
+      expect(isSafePublicUrl("http://172.16.0.1")).toBe(false);
+      expect(isSafePublicUrl("http://172.31.255.255")).toBe(false);
+      expect(isSafePublicUrl("http://192.168.1.1/internal")).toBe(false);
+
+      // Internal / Local TLDs
+      expect(isSafePublicUrl("http://myserver.local")).toBe(false);
+      expect(isSafePublicUrl("http://internal.service.lan")).toBe(false);
+      expect(isSafePublicUrl("http://corp.internal")).toBe(false);
+
+      // Unsupported protocols
+      expect(isSafePublicUrl("file:///etc/passwd")).toBe(false);
+      expect(isSafePublicUrl("ftp://files.example.com")).toBe(false);
+      expect(isSafePublicUrl("javascript:alert(1)")).toBe(false);
+    });
+
+    it("permits legitimate, safe public domains and URLs", () => {
+      expect(isSafePublicUrl("https://rainbowballoons.com")).toBe(true);
+      expect(isSafePublicUrl("https://www.leavesfloraldesign.com/")).toBe(true);
+      expect(isSafePublicUrl("https://techfluxsolutions.com/portfolio")).toBe(true);
+      expect(isSafePublicUrl("https://subdomain.agency.co.uk")).toBe(true);
+    });
+  });
+
+  describe("100-Point Lead Qualification Rubric", () => {
+    it("transparently scores dimensions and treats unprovided fields as Unknown without penalty", () => {
+      const minimalLead = {
+        id: "lead_rubric_test_1",
+        companyName: "Acme Regional Supply",
+        jobTitle: "Operations Manager",
+        description: "Looking to modernize wholesale order management portal.",
+        source: "Inbound Inquiry",
+        rating: "Warm",
+      };
+
+      const rubric = calculateQualificationRubric(
+        minimalLead,
+        null,
+        "Wholesale Distribution",
+        "Custom Web Portal",
+        ["Modernizing customer intake portal"]
+      );
+
+      // Total score must be between 0 and 100
+      expect(rubric.totalScore).toBeGreaterThanOrEqual(0);
+      expect(rubric.totalScore).toBeLessThanOrEqual(100);
+
+      // Category should be assigned
+      expect(["High Priority", "Medium Priority", "Low Priority", "Insufficient Information"]).toContain(rubric.category);
+
+      // Check all 7 dimensions exist
+      expect(rubric.dimensionScores.fitWithServices).toBeGreaterThan(0);
+      expect(rubric.dimensionScores.evidenceOfNeed).toBeGreaterThan(0);
+      expect(rubric.dimensionScores.buyingIntent).toBeGreaterThan(0);
+      expect(rubric.dimensionScores.decisionMakerAccess).toBeGreaterThan(0);
+
+      // Unprovided fields must default to Unknown
+      expect(rubric.timelineStatus).toBe("Unknown");
+      expect(rubric.budgetStatus).toBe("Unknown");
+
+      // Rationale must explain that missing fields are discovery agenda items, not penalties
+      const rationaleText = rubric.rationale.join(" ").toLowerCase();
+      expect(rationaleText).toContain("discovery");
+      expect(rationaleText).toContain("not negative penalty");
+
+      // Recommended next action must be present
+      expect(rubric.recommendedNextAction).toBeTruthy();
+    });
+  });
+
+  describe("Evidence Status Tagging & Conservative Project Estimation", () => {
+    it("tags discovery opportunities with explicit evidence status and defaults project estimate to Not enough information", () => {
+      const testLead = {
+        id: "lead_evidence_test",
+        fullName: "Marcus Vance",
+        companyName: "Vance Architecture Group",
+        jobTitle: "Principal Architect",
+        email: "marcus@vancearch.com",
+        description: "Architecture firm interested in showcasing high-end commercial projects to regional developers.",
+        source: "Referral",
+      };
+
+      const discovery = synthesizeHeuristicDiscovery(testLead);
+
+      // 1. Discovery Opportunities must have explicit evidence status and validation questions
+      expect(discovery.discoveryOpportunities).toBeDefined();
+      expect(discovery.discoveryOpportunities!.length).toBeGreaterThan(0);
+      discovery.discoveryOpportunities!.forEach((opp) => {
+        expect(["Verified Fact", "Reasonable Hypothesis", "Needs Client Confirmation"]).toContain(
+          opp.evidenceStatus
+        );
+        expect(["High", "Medium", "Low"]).toContain(opp.confidence);
+        expect(opp.clientValidationQuestion).toBeTruthy();
+      });
+
+      // 2. 5 Priority Discovery Questions for call agenda
+      expect(discovery.discoveryQuestions).toBeDefined();
+      expect(discovery.discoveryQuestions!.priorityQuestions.length).toBe(5);
+      expect(discovery.discoveryQuestions!.followUpQuestions.length).toBeGreaterThanOrEqual(2);
+
+      // 3. Conservative Project Estimate
+      expect(discovery.projectEstimate).toBeDefined();
+      expect(discovery.projectEstimate!.status).toBe("Not enough information");
+      expect(discovery.projectEstimate!.reason).toBe(
+        "Requirements and implementation scope have not been confirmed"
+      );
+      expect(discovery.projectEstimate!.valueRange).toBeNull();
+      expect(discovery.projectEstimate!.confidence).toBe("Low");
+
+      // 4. Grounded Opening Hook (eliminating exaggerated antipatterns)
+      expect(discovery.openingHookDetails).toBeDefined();
+      expect(discovery.openingHookDetails!.text).toBeTruthy();
+      expect(discovery.openingHookDetails!.text.toLowerCase()).not.toContain(
+        "tremendous growth potential"
+      );
+      expect(discovery.openingHookDetails!.avoidedAntipatterns.length).toBeGreaterThan(0);
+
+      // 5. Research Metadata & Sources
+      expect(discovery.researchMetadata).toBeDefined();
+      expect(discovery.researchMetadata!.limitations.length).toBeGreaterThan(0);
+      expect(discovery.researchMetadata!.promptVersion).toBe("lead-discovery-v2");
+    });
   });
 });

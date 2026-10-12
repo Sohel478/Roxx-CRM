@@ -80,43 +80,196 @@ const INDUSTRY_PATTERNS = [
 ];
 
 /**
- * 1. Safe HTML Text Scraper for URLs
+ * Strict SSRF Guard
+ * Validates that a URL is a legitimate public web address and not targeting
+ * localhost, cloud metadata endpoints, or private/internal network ranges.
  */
-export async function extractTextFromUrl(rawUrl: string): Promise<{ success: boolean; text?: string; error?: string }> {
+export function isSafePublicUrl(rawUrl: string): boolean {
+  try {
+    let target = rawUrl.trim();
+    if (!target.startsWith("http://") && !target.startsWith("https://")) {
+      target = `https://${target}`;
+    }
+
+    const parsed = new URL(target);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // 1. Block common loopback names & internal TLDs
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".lan")
+    ) {
+      return false;
+    }
+
+    // 2. IPv6 loopback / unique local / link-local
+    if (
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname.startsWith("fe80:") ||
+      hostname.startsWith("[fe80:") ||
+      hostname.startsWith("fc00:") ||
+      hostname.startsWith("[fc00:") ||
+      hostname.startsWith("fd00:") ||
+      hostname.startsWith("[fd00:")
+    ) {
+      return false;
+    }
+
+    // 3. IPv4 checks (direct or dotted)
+    const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const ipMatch = hostname.match(ipv4Regex);
+    if (ipMatch) {
+      const o1 = Number(ipMatch[1]);
+      const o2 = Number(ipMatch[2]);
+      const o3 = Number(ipMatch[3]);
+      const o4 = Number(ipMatch[4]);
+
+      // Validate octets range
+      if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return false;
+
+      // 0.0.0.0/8 (Broadcast/this host)
+      if (o1 === 0) return false;
+
+      // 127.0.0.0/8 (Loopback)
+      if (o1 === 127) return false;
+
+      // 10.0.0.0/8 (Private RFC1918)
+      if (o1 === 10) return false;
+
+      // 172.16.0.0/12 (Private RFC1918: 172.16 - 172.31)
+      if (o1 === 172 && o2 >= 16 && o2 <= 31) return false;
+
+      // 192.168.0.0/16 (Private RFC1918)
+      if (o1 === 192 && o2 === 168) return false;
+
+      // 169.254.0.0/16 (Link Local / Cloud Metadata 169.254.169.254)
+      if (o1 === 169 && o2 === 254) return false;
+
+      // 100.64.0.0/10 (CGNAT)
+      if (o1 === 100 && o2 >= 64 && o2 <= 127) return false;
+
+      // 224.0.0.0/4 (Multicast) & 240.0.0.0/4 (Reserved)
+      if (o1 >= 224) return false;
+    }
+
+    // Check integer IP representation
+    if (/^\d+$/.test(hostname)) {
+      return false;
+    }
+
+    // Must have at least one dot in hostname for public domains
+    if (!hostname.includes(".")) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 1. Safe HTML Text Scraper for URLs with SSRF protection
+ */
+export async function extractTextFromUrl(rawUrl: string): Promise<{
+  success: boolean;
+  text?: string;
+  title?: string;
+  url?: string;
+  accessedAt?: string;
+  error?: string;
+}> {
   try {
     let targetUrl = rawUrl.trim();
     if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
       targetUrl = `https://${targetUrl}`;
     }
 
+    if (!isSafePublicUrl(targetUrl)) {
+      return {
+        success: false,
+        error: "URL blocked by security policy (private IP, internal host, or invalid protocol)",
+        url: targetUrl,
+        accessedAt: new Date().toISOString(),
+      };
+    }
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(targetUrl, {
       signal: controller.signal,
+      redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
 
     clearTimeout(timeout);
 
-    if (!response.ok) {
-      return { success: false, error: `Website returned HTTP status ${response.status} (${response.statusText})` };
+    // Verify redirected URL is also safe
+    if (response.url && !isSafePublicUrl(response.url)) {
+      return {
+        success: false,
+        error: "Redirected URL blocked by security policy (private or unsafe address)",
+        url: response.url,
+        accessedAt: new Date().toISOString(),
+      };
     }
 
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `Website returned HTTP status ${response.status} (${response.statusText})`,
+        url: targetUrl,
+        accessedAt: new Date().toISOString(),
+      };
+    }
+
+    // Limit read size to 2MB to prevent memory exhaustion
     const html = await response.text();
-    const cleanText = extractReadableTextFromHtml(html);
+    const safeHtml = html.slice(0, 2 * 1024 * 1024);
+
+    const titleMatch = safeHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : undefined;
+
+    const cleanText = extractReadableTextFromHtml(safeHtml);
 
     if (!cleanText || cleanText.length < 50) {
-      return { success: false, error: "Unable to extract readable content from the provided website URL." };
+      return {
+        success: false,
+        error: "Unable to extract readable content from the provided website URL.",
+        title,
+        url: targetUrl,
+        accessedAt: new Date().toISOString(),
+      };
     }
 
-    return { success: true, text: cleanText };
+    return {
+      success: true,
+      text: cleanText,
+      title,
+      url: targetUrl,
+      accessedAt: new Date().toISOString(),
+    };
   } catch (err: unknown) {
     const message = (err as Error)?.message || "Failed to fetch website URL";
-    return { success: false, error: message };
+    return {
+      success: false,
+      error: message,
+      url: rawUrl,
+      accessedAt: new Date().toISOString(),
+    };
   }
 }
 

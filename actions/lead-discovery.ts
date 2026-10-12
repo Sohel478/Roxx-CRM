@@ -189,15 +189,32 @@ export async function generateLeadDiscoveryAction(
     leadInput.website = resolvedWebsite;
 
     let scrapedWebsiteText: string | null = null;
+    let researchSourceInfo: {
+      url?: string;
+      title?: string;
+      accessedAt?: string;
+      error?: string;
+    } | null = null;
+
     if (resolvedWebsite) {
       try {
         const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
         const textRes = await extractTextFromUrl(resolvedWebsite);
+        researchSourceInfo = {
+          url: textRes.url || resolvedWebsite,
+          title: textRes.title,
+          accessedAt: textRes.accessedAt,
+          error: textRes.error,
+        };
         if (textRes.success && textRes.text) {
           scrapedWebsiteText = textRes.text;
         }
-      } catch {
-        // Offline or unreachable URL fallback
+      } catch (err: any) {
+        researchSourceInfo = {
+          url: resolvedWebsite,
+          error: err?.message || "Failed to reach website",
+          accessedAt: new Date().toISOString(),
+        };
       }
     }
 
@@ -215,6 +232,7 @@ export async function generateLeadDiscoveryAction(
       aiConfig,
       companyMatrix,
       scrapedWebsiteText,
+      researchSourceInfo,
       forceRefresh: options?.forceRefresh,
     });
 

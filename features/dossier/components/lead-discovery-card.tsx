@@ -24,6 +24,11 @@ import {
   MapPin,
   Calendar,
   Briefcase,
+  Scale,
+  CheckSquare,
+  DollarSign,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +38,11 @@ import {
   generateLeadDiscoveryAction,
 } from "@/actions/lead-discovery";
 import { saveAiConfigAction, getAiConfigAction } from "@/actions/ai-email";
-import type { LeadDiscoveryData } from "@/lib/validations/lead-discovery";
+import type {
+  LeadDiscoveryData,
+  EvidenceStatus,
+  ConfidenceLevel,
+} from "@/lib/validations/lead-discovery";
 
 interface LeadDiscoveryCardProps {
   leadId: string;
@@ -41,6 +50,52 @@ interface LeadDiscoveryCardProps {
   companyName?: string | null;
   initialDiscovery?: LeadDiscoveryData | null;
   onDiscoveryGenerated?: (discovery: LeadDiscoveryData) => void;
+}
+
+function EvidenceBadge({ status }: { status?: string | null }) {
+  if (status === "Verified Fact") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+        Verified Fact
+      </span>
+    );
+  }
+  if (status === "Reasonable Hypothesis") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
+        <Lightbulb className="w-3 h-3 text-sky-600" />
+        Reasonable Hypothesis
+      </span>
+    );
+  }
+  if (status === "Needs Client Confirmation") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+        <HelpCircle className="w-3 h-3 text-amber-600" />
+        Needs Confirmation
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
+      Unverified
+    </span>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence?: string | null }) {
+  const color =
+    confidence === "High"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : confidence === "Medium"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : "bg-slate-50 text-slate-600 border-slate-200";
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${color}`}>
+      {confidence || "Low"} Conf.
+    </span>
+  );
 }
 
 export function LeadDiscoveryCard({
@@ -55,6 +110,9 @@ export function LeadDiscoveryCard({
   );
   const [isPending, startTransition] = useTransition();
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isRubricExpanded, setIsRubricExpanded] = useState(false);
+  const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(false);
+  const [isSourcesExpanded, setIsSourcesExpanded] = useState(false);
   const [copiedPitch, setCopiedPitch] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialDiscovery));
@@ -122,9 +180,19 @@ export function LeadDiscoveryCard({
   const handleCopyPitch = () => {
     if (!discovery) return;
     const ov = discovery.companyOverviewDetails;
+    const qs = discovery.qualificationSummary;
+    const opps = discovery.discoveryOpportunities;
+    const sr = discovery.strategicRecommendation;
+    const dq = discovery.discoveryQuestions;
+    const est = discovery.projectEstimate;
+
     const text = [
+      "=== TECHFLUX CRM LEAD DISCOVERY BRIEF ===",
       discovery.fitAssessment
         ? `Capabilities Matrix Fit: ${discovery.fitAssessment.fitLevel} (${discovery.fitAssessment.fitScore}%) — ${discovery.fitAssessment.timeInvestmentGuidance}`
+        : null,
+      qs
+        ? `100-Point Qualification Rubric: ${qs.totalScore}/100 (${qs.category}) | Next Action: ${qs.recommendedNextAction}`
         : null,
       "",
       "1. Client & Business Overview:",
@@ -136,14 +204,29 @@ export function LeadDiscoveryCard({
       ov?.digitalOperationsSummary ? `• Digital Operations: ${ov.digitalOperationsSummary}` : null,
       `• Summary: ${discovery.businessSummary}`,
       "",
-      "2. Current Needs & Pain Points:",
-      ...discovery.currentNeeds.map((n) => `• ${n}`),
+      "2. Discovery Opportunities & Needs (Evidence-Tagged):",
+      ...(opps && opps.length > 0
+        ? opps.map(
+            (o) =>
+              `• [${o.evidenceStatus} | Confidence: ${o.confidence}] ${o.title}: ${o.observationOrHypothesis}\n  Validation Question: "${o.clientValidationQuestion}"`
+          )
+        : discovery.currentNeeds.map((n) => `• ${n}`)),
       "",
-      "3. Strategic Pitch Recommendations:",
-      `• Focus Offering: ${discovery.targetOffering}`,
-      ...discovery.recommendations.map((r) => `• ${r}`),
+      "3. Strategic Pitch Recommendation:",
+      sr
+        ? `• Primary Service: ${sr.primaryService}\n• Relevance: ${sr.whyRelevant}\n• Expected Benefit: ${sr.expectedBenefit}\n• What Must Be Confirmed: ${sr.whatMustBeConfirmed.join("; ")}`
+        : `• Focus Offering: ${discovery.targetOffering}\n${discovery.recommendations.map((r) => `• ${r}`).join("\n")}`,
       "",
-      discovery.openingPitchHook ? `4. Opening Pitch Hook:\n"${discovery.openingPitchHook}"` : null,
+      "4. Discovery Questions for Call:",
+      ...(dq && dq.priorityQuestions && dq.priorityQuestions.length > 0
+        ? dq.priorityQuestions.map((q, idx) => `Q${idx + 1}: "${q}"`)
+        : discovery.talkingPoints.map((q, idx) => `Q${idx + 1}: "${q}"`)),
+      "",
+      discovery.openingPitchHook ? `5. Opening Pitch Hook:\n"${discovery.openingPitchHook}"` : null,
+      "",
+      est
+        ? `6. Commercial Project Estimate: ${est.status} (${est.reason})\n• Scope: ${est.scopeAssumptions.join(" ")}`
+        : null,
     ]
       .filter((line) => line !== null && line !== undefined)
       .join("\n");
@@ -423,7 +506,185 @@ export function LeadDiscoveryCard({
       {/* Card Content */}
       {isExpanded && discovery && (
         <div className="p-5 space-y-4">
-          {/* 0. Company Matrix Fit & Time-Worthiness Verdict Banner */}
+          {/* 0A. 100-Point Lead Qualification Rubric Banner */}
+          {discovery.qualificationSummary && (
+            <div className="rounded-xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/70 via-white to-sky-50/40 p-4 space-y-3.5 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-indigo-600 text-white shadow-xs shrink-0">
+                    <Scale className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        100-Point Qualification Rubric
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs font-bold border ${
+                          discovery.qualificationSummary.category === "High Priority"
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            : discovery.qualificationSummary.category === "Medium Priority"
+                            ? "bg-sky-100 text-sky-800 border-sky-300"
+                            : discovery.qualificationSummary.category === "Low Priority"
+                            ? "bg-amber-100 text-amber-800 border-amber-300"
+                            : "bg-slate-100 text-slate-700 border-slate-300"
+                        }`}
+                      >
+                        {discovery.qualificationSummary.category}
+                      </Badge>
+                      <span className="text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                        Score: {discovery.qualificationSummary.totalScore} / 100
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 font-medium mt-1">
+                      <span className="font-bold text-slate-900">Recommended Next Step: </span>
+                      {discovery.qualificationSummary.recommendedNextAction}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsRubricExpanded(!isRubricExpanded)}
+                    className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 inline-flex items-center gap-1 bg-white px-2.5 py-1.5 rounded-lg border border-indigo-200 shadow-2xs transition-colors"
+                  >
+                    <span>{isRubricExpanded ? "Hide Scoring Breakdown" : "View 7-Dimension Breakdown"}</span>
+                    {isRubricExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Chips Row */}
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <div className="bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1.5">
+                  <span className="text-slate-400 font-semibold">Intent:</span>
+                  <span className="font-bold text-slate-800">{discovery.qualificationSummary.buyingIntentStatus}</span>
+                </div>
+                <div className="bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1.5">
+                  <span className="text-slate-400 font-semibold">Need Scope:</span>
+                  <span className="font-bold text-slate-800">{discovery.qualificationSummary.requirementStatus}</span>
+                </div>
+                <div className="bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1.5">
+                  <span className="text-slate-400 font-semibold">Decision-Maker:</span>
+                  <span className="font-bold text-slate-800">{discovery.qualificationSummary.decisionMakerStatus}</span>
+                </div>
+                <div
+                  className="bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1.5"
+                  title="Unprovided timeline is treated as discovery agenda item, not negative penalty"
+                >
+                  <span className="text-slate-400 font-semibold">Timeline:</span>
+                  <span className={discovery.qualificationSummary.timelineStatus === "Unknown" ? "text-slate-500 font-medium italic" : "font-bold text-slate-800"}>
+                    {discovery.qualificationSummary.timelineStatus}
+                  </span>
+                </div>
+                <div
+                  className="bg-white px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium flex items-center gap-1.5"
+                  title="Unprovided budget is treated as discovery agenda item, not negative penalty"
+                >
+                  <span className="text-slate-400 font-semibold">Budget:</span>
+                  <span className={discovery.qualificationSummary.budgetStatus === "Unknown" ? "text-slate-500 font-medium italic" : "font-bold text-slate-800"}>
+                    {discovery.qualificationSummary.budgetStatus}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expandable 7-Dimension Breakdown */}
+              {isRubricExpanded && (
+                <div className="pt-2 border-t border-indigo-100 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Service Fit</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.fitWithServices} / 25</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.fitWithServices / 25) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Need Evidence</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.evidenceOfNeed} / 20</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.evidenceOfNeed / 20) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Buying Intent</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.buyingIntent} / 20</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.buyingIntent / 20) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Decision Maker</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.decisionMakerAccess} / 10</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.decisionMakerAccess / 10) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Timeline Clarity</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.timelineClarity} / 10</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.timelineClarity / 10) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Budget Clarity</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.budgetClarity} / 10</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.budgetClarity / 10) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2 rounded-lg border border-slate-200 sm:col-span-2 lg:col-span-2">
+                      <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                        <span>Research Completeness</span>
+                        <span className="font-bold text-indigo-700">{discovery.qualificationSummary.dimensionScores.researchReliability} / 5</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${(discovery.qualificationSummary.dimensionScores.researchReliability / 5) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dimension Rationale List */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Evidence-Based Rubric Rationales:
+                    </span>
+                    <ul className="space-y-1 mt-1 text-xs text-slate-700">
+                      {discovery.qualificationSummary.rationale.map((r, rIdx) => (
+                        <li key={rIdx} className="flex items-start gap-1.5">
+                          <span className="text-indigo-500 font-bold">•</span>
+                          <span>{r}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 0B. Company Capabilities Matrix Fit Banner */}
           {discovery.fitAssessment && (
             <div
               className={`rounded-xl p-4 border transition-all ${
@@ -638,79 +899,186 @@ export function LeadDiscoveryCard({
             </div>
           </div>
 
-          {/* Middle Row: Current Discovery Needs & Strategic Pitch Recommendations */}
+          {/* Middle Row: Discovery Opportunities & Strategic Pitch Recommendations */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 2. Current Needs & Pain Points */}
-            <div className="bg-amber-50/40 rounded-xl p-4 border border-amber-200/70 space-y-2">
-              <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Target className="w-3.5 h-3.5 text-amber-600" />
-                <span>2. Current Discovery Needs &amp; Pain Points</span>
-              </span>
-              <ul className="space-y-1.5">
-                {discovery.currentNeeds.map((need, idx) => (
-                  <li
-                    key={idx}
-                    className="text-xs text-slate-700 flex items-start gap-2"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
-                    <span>{need}</span>
-                  </li>
-                ))}
-              </ul>
+            {/* 2. Current Needs & Opportunities with Evidence Badges */}
+            <div className="bg-amber-50/40 rounded-xl p-4 border border-amber-200/70 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-amber-600" />
+                  <span>2. Discovery Opportunities &amp; Pain Points</span>
+                </span>
+                <span className="text-[10px] text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded font-medium">
+                  Evidence-Labeled
+                </span>
+              </div>
+
+              {discovery.discoveryOpportunities && discovery.discoveryOpportunities.length > 0 ? (
+                <div className="space-y-2.5">
+                  {discovery.discoveryOpportunities.map((opp, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white p-3 rounded-lg border border-amber-200/80 shadow-2xs space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-bold text-slate-900">
+                          {opp.title}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <EvidenceBadge status={opp.evidenceStatus} />
+                          <ConfidenceBadge confidence={opp.confidence} />
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                        {opp.observationOrHypothesis}
+                      </p>
+                      {opp.potentialBusinessImpact && (
+                        <p className="text-[11px] text-slate-500">
+                          <span className="font-semibold text-slate-700">Impact: </span>
+                          {opp.potentialBusinessImpact}
+                        </p>
+                      )}
+                      {opp.clientValidationQuestion && (
+                        <div className="bg-amber-50/60 p-2 rounded-md border border-amber-200/60 text-[11px] text-amber-900 mt-1">
+                          <span className="font-bold">Ask Prospect to Validate: </span>
+                          <span className="italic">&ldquo;{opp.clientValidationQuestion}&rdquo;</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {discovery.currentNeeds.map((need, idx) => (
+                    <li
+                      key={idx}
+                      className="text-xs text-slate-700 flex items-start gap-2 bg-white p-2 rounded-lg border border-amber-100"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                      <span>{need}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
-            {/* 3. Strategic Pitch Recommendation (Highlighted Callout) */}
-            <div className="bg-blue-50/70 rounded-xl p-4 border border-blue-200 space-y-2.5">
+            {/* 3. Strategic Pitch Recommendation */}
+            <div className="bg-blue-50/70 rounded-xl p-4 border border-blue-200 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                   <Lightbulb className="w-4 h-4 text-blue-600" />
                   <span>3. Strategic Pitch Recommendation</span>
                 </span>
                 <span className="text-xs font-bold text-blue-700 bg-blue-100/80 px-2.5 py-0.5 rounded-lg border border-blue-200">
-                  Focus: {discovery.targetOffering}
+                  Focus: {discovery.strategicRecommendation?.primaryService || discovery.targetOffering}
                 </span>
               </div>
 
-              <div className="space-y-1.5">
-                {discovery.recommendations.map((rec, rIdx) => (
-                  <div
-                    key={rIdx}
-                    className="text-xs text-slate-800 font-medium flex items-start gap-2"
-                  >
-                    <span className="text-blue-600 font-bold text-sm leading-none mt-0.5">
-                      •
-                    </span>
-                    <span>{rec}</span>
+              {discovery.strategicRecommendation ? (
+                <div className="space-y-2.5 text-xs">
+                  <div className="bg-white p-3 rounded-lg border border-blue-200/70 shadow-2xs space-y-1.5">
+                    <p className="text-slate-800 font-semibold">
+                      {discovery.strategicRecommendation.whyRelevant}
+                    </p>
+                    <p className="text-slate-600 text-[11px]">
+                      <span className="font-bold text-slate-700">Expected Commercial Benefit: </span>
+                      {discovery.strategicRecommendation.expectedBenefit}
+                    </p>
                   </div>
-                ))}
-              </div>
+
+                  {discovery.strategicRecommendation.whatMustBeConfirmed?.length > 0 && (
+                    <div className="bg-white/90 p-2.5 rounded-lg border border-blue-100 text-[11px] space-y-1">
+                      <span className="font-bold text-blue-900 flex items-center gap-1">
+                        <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                        Must Confirm Before Formal Proposal:
+                      </span>
+                      <ul className="space-y-1 pl-4 list-disc text-slate-700">
+                        {discovery.strategicRecommendation.whatMustBeConfirmed.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {discovery.strategicRecommendation.alternatives?.length > 0 && (
+                    <div className="text-[11px] text-slate-600 pt-0.5">
+                      <span className="font-semibold text-slate-700">Alternatives Considered: </span>
+                      {discovery.strategicRecommendation.alternatives.join(", ")}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {discovery.recommendations.map((rec, rIdx) => (
+                    <div
+                      key={rIdx}
+                      className="text-xs text-slate-800 font-medium flex items-start gap-2 bg-white p-2 rounded-lg border border-blue-100"
+                    >
+                      <span className="text-blue-600 font-bold text-sm leading-none mt-0.5">•</span>
+                      <span>{rec}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Bottom Grid: Discovery Questions & Opening Pitch Hook */}
+          {/* Bottom Grid: Priority Discovery Questions & Opening Pitch Hook */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            {/* 4. Discovery Talking Points / Questions */}
-            <div className="bg-white rounded-xl p-3.5 border border-slate-200 space-y-2">
-              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
-                <span>4. Discovery Questions for Call / Meeting</span>
-              </span>
-              <ul className="space-y-1.5">
-                {discovery.talkingPoints.map((tp, tIdx) => (
-                  <li
-                    key={tIdx}
-                    className="text-xs text-slate-600 flex items-start gap-2 italic"
+            {/* 4. Priority Discovery Questions for First Call */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>4. Priority Discovery Questions (Call Agenda)</span>
+                </span>
+                {discovery.discoveryQuestions?.followUpQuestions && discovery.discoveryQuestions.followUpQuestions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsFollowUpsExpanded(!isFollowUpsExpanded)}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1"
                   >
-                    <span className="text-indigo-500 font-bold not-italic">Q{tIdx + 1}:</span>
-                    <span>&ldquo;{tp}&rdquo;</span>
-                  </li>
+                    <span>{isFollowUpsExpanded ? "Hide Contingency" : `+${discovery.discoveryQuestions.followUpQuestions.length} Follow-ups`}</span>
+                    {isFollowUpsExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {(discovery.discoveryQuestions?.priorityQuestions || discovery.talkingPoints).map((tp, tIdx) => (
+                  <div
+                    key={tIdx}
+                    className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 flex items-start gap-2"
+                  >
+                    <span className="font-bold text-indigo-600 shrink-0">Q{tIdx + 1}:</span>
+                    <span className="italic leading-relaxed">&ldquo;{tp}&rdquo;</span>
+                  </div>
                 ))}
-              </ul>
+              </div>
+
+              {isFollowUpsExpanded && discovery.discoveryQuestions?.followUpQuestions && (
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Contingency &amp; Follow-up Discovery Questions:
+                  </span>
+                  <div className="space-y-1.5">
+                    {discovery.discoveryQuestions.followUpQuestions.map((fq, fIdx) => (
+                      <div
+                        key={fIdx}
+                        className="text-[11px] text-slate-600 bg-white p-2 rounded-md border border-slate-200 flex items-start gap-1.5"
+                      >
+                        <span className="font-semibold text-slate-400">F{fIdx + 1}:</span>
+                        <span className="italic">&ldquo;{fq}&rdquo;</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* 5. Opening Pitch Hook */}
+            {/* 5. Ready-to-Use Natural Opening Hook */}
             {discovery.openingPitchHook && (
-              <div className="bg-indigo-50/30 rounded-xl p-3.5 border border-indigo-100 flex flex-col justify-between space-y-2">
+              <div className="bg-indigo-50/30 rounded-xl p-4 border border-indigo-100 flex flex-col justify-between space-y-3">
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -735,16 +1103,111 @@ export function LeadDiscoveryCard({
                       )}
                     </button>
                   </div>
-                  <p className="text-xs text-slate-700 italic mt-1.5 leading-relaxed bg-white/80 p-2.5 rounded-lg border border-indigo-50">
-                    &ldquo;{discovery.openingPitchHook}&rdquo;
-                  </p>
+
+                  <div className="mt-2 bg-white p-3 rounded-lg border border-indigo-100 shadow-2xs space-y-1.5">
+                    <p className="text-xs text-slate-800 italic leading-relaxed">
+                      &ldquo;{discovery.openingPitchHook}&rdquo;
+                    </p>
+                    {discovery.openingHookDetails?.avoidedAntipatterns && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100 text-[10px] text-slate-500">
+                        <span className="font-semibold text-slate-600">Grounded:</span>
+                        <span>Eliminated exaggerated praise; focused on observed workflow.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
                   <span>Speak this in opening 30 seconds of phone call or email intro</span>
+                  <span>Channel: Phone &amp; Email</span>
                 </div>
               </div>
             )}
           </div>
+
+          {/* 6. Conservative Commercial Project Estimate Status */}
+          {discovery.projectEstimate && (
+            <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>6. Commercial Project Estimate Status</span>
+                </span>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] font-bold bg-amber-50 text-amber-800 border-amber-200"
+                >
+                  {discovery.projectEstimate.status}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-700 font-medium">
+                <span className="font-semibold text-slate-900">Reason: </span>
+                {discovery.projectEstimate.reason}
+              </p>
+              {discovery.projectEstimate.scopeAssumptions?.length > 0 && (
+                <div className="text-[11px] text-slate-500">
+                  <span className="font-semibold text-slate-600">Guideline: </span>
+                  {discovery.projectEstimate.scopeAssumptions.join(" ")}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 7. Research Sources & Verification Limitations */}
+          {discovery.researchMetadata && (
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Research Sources &amp; Audit Limitations</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSourcesExpanded(!isSourcesExpanded)}
+                  className="text-[11px] text-slate-500 hover:text-slate-700 font-medium inline-flex items-center gap-1"
+                >
+                  <span>{isSourcesExpanded ? "Hide Sources" : "View Sources & Disclaimers"}</span>
+                  {isSourcesExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+
+              {isSourcesExpanded && (
+                <div className="pt-2 border-t border-slate-100 space-y-2.5 text-[11px]">
+                  {discovery.researchMetadata.sources.length > 0 ? (
+                    <div className="space-y-1">
+                      <span className="font-semibold text-slate-700">Verified Sources:</span>
+                      {discovery.researchMetadata.sources.map((s, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-slate-50 p-2 rounded border border-slate-200">
+                          <div className="flex items-center gap-2">
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                            <span className="font-medium text-slate-800">{s.title || s.url}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <EvidenceBadge status={s.evidenceStatus} />
+                            <span className="text-slate-400 text-[10px]">
+                              Accessed: {new Date(s.dateAccessed).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500 italic">No external website source accessed; intelligence derived from CRM record.</p>
+                  )}
+
+                  {discovery.researchMetadata.limitations.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <span className="font-semibold text-slate-700">Audit Limitations &amp; Disclaimers:</span>
+                      <ul className="list-disc pl-4 text-slate-500 space-y-0.5">
+                        {discovery.researchMetadata.limitations.map((lim, idx) => (
+                          <li key={idx}>{lim}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
