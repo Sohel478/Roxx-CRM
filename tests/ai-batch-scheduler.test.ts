@@ -632,4 +632,69 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
     const lead2 = studyRes.data!.leads.find((l) => l.leadId === "cohort_2");
     expect(lead2?.companyName).toBe("Mattresses For Less");
   });
+
+  it("leverages lead discovery intelligence in AI batch run to craft tailored meeting outreach", async () => {
+    const hospitalityLead = {
+      id: "lead_batch_hosp_1",
+      leadNumber: "LD-9001",
+      organizationId: "org_ai_batch_test",
+      firstName: "Johnny",
+      lastName: "Huynh",
+      fullName: "Johnny Huynh",
+      email: "johnny@bayviewsuites.com",
+      companyName: "Bayview Luxury Suites & Hospitality",
+      jobTitle: "General Manager",
+      description: "Looking to modernize guest reservations and drive direct bookings.",
+      status: "NEW",
+      assignedToId: "usr_rep_1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    mockLeadsStore.push(hospitalityLead as any);
+
+    const batchId = "batch_discovery_powered_1";
+    mockMarketingBatchesStore.push({
+      id: batchId,
+      name: "Hospitality Direct Booking Batch",
+      organizationId: "org_ai_batch_test",
+      description: "Batch of hospitality leads",
+      ownerId: "usr_rep_1",
+      ownerName: "Alex Sales",
+      assignedToId: "usr_rep_1",
+      assignedToName: "Alex Sales",
+      assignedToEmail: "alex@vanguard.com",
+      status: "READY",
+      leadIds: [hospitalityLead.id],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const studyRes = await studyMarketingBatchAiAction({
+      batchId,
+      objective: "INITIAL_OUTREACH",
+      tone: "PROFESSIONAL",
+    });
+
+    expect(studyRes.success).toBe(true);
+    expect(studyRes.data).toBeDefined();
+    expect(studyRes.data?.leads.length).toBe(1);
+
+    const studiedLead = studyRes.data!.leads[0];
+    expect(studiedLead.leadName).toBe("Johnny Huynh");
+    expect(studiedLead.initialEmail.subject).toBeTruthy();
+    expect(studiedLead.initialEmail.body).toBeTruthy();
+
+    // Verify email copy incorporates hospitality discovery context and low-friction meeting ask
+    const emailBody = studiedLead.initialEmail.body.toLowerCase();
+    expect(emailBody).toContain("johnny");
+    expect(emailBody).toContain("bayview");
+    expect(emailBody).toMatch(/10(?:-|\s*)15\s*minute|10\s*minute/i);
+    expect(emailBody).toMatch(/conversation|chat|notes|fit/i);
+
+    // Verify primary deliverability rating
+    expect(["PRIMARY_INBOX", "NEEDS_IMPROVEMENT"]).toContain(
+      studiedLead.initialEmail.deliverabilityRating
+    );
+  });
 });

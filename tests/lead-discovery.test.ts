@@ -511,4 +511,44 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       expect(discovery.researchMetadata!.promptVersion).toBe("lead-discovery-v2");
     });
   });
+
+  describe("Tailored Sales Outreach Email Draft (Quick Meeting Invite)", () => {
+    it("generates bespoke, human-sounding outreach email draft with low-friction meeting CTA", () => {
+      const testLead = {
+        id: "lead_email_test_1",
+        firstName: "Johnny",
+        fullName: "Johnny Huynh",
+        companyName: "Bayview Luxury Suites & Hospitality",
+        jobTitle: "General Manager",
+        email: "johnny@bayviewsuites.com",
+        description: "Boutique luxury resort seeking to increase direct reservations.",
+        source: "Referral",
+      };
+
+      const discovery = synthesizeHeuristicDiscovery(testLead);
+
+      expect(discovery.outreachEmailDraft).toBeDefined();
+      const draft = discovery.outreachEmailDraft!;
+
+      // Subject must be human and mention first name or company
+      expect(draft.subject).toBeTruthy();
+      expect(draft.subject.toLowerCase()).toContain("johnny");
+
+      // Body must be human, concise, and contain a low-friction meeting CTA
+      expect(draft.body).toBeTruthy();
+      expect(draft.body).toContain("Johnny");
+      expect(draft.body.toLowerCase()).toContain("bayview");
+      expect(draft.body.toLowerCase()).toMatch(/10(?:-|\s*)15\s*minute|10\s*minute/i);
+      expect(draft.body.toLowerCase()).toMatch(/conversation|chat|notes/i);
+
+      // Purpose & suggested CTA
+      expect(draft.purpose).toBe("Introductory Discovery & Quick Meeting Request");
+      expect(draft.suggestedMeetingCta).toBe("10-15 minute introductory conversation");
+
+      // Verify concise word count (under 120 words)
+      const wordCount = draft.body.trim().split(/\s+/).length;
+      expect(wordCount).toBeLessThan(120);
+      expect(wordCount).toBeGreaterThan(30);
+    });
+  });
 });

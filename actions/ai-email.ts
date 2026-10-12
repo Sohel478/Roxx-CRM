@@ -13,11 +13,13 @@ import {
   mockSmtpStore,
   mockAiCampaignsStore,
   mockAiConfigsStore,
+  mockLeadDiscoveriesStore,
   MockMarketingCampaign,
   MockAiCampaign,
   MockAiLeadSchedule,
   MockAiConfig,
 } from "@/lib/db/mock-store";
+import { getLeadDiscoveryAction } from "@/actions/lead-discovery";
 import { decryptSecret } from "@/lib/crypto/encryption";
 import { getPersistedAiConfig, persistAiConfig } from "@/lib/db/file-storage";
 import * as mailer from "@/lib/email/mailer";
@@ -136,6 +138,16 @@ export async function generateLeadAiEmailAction(
     const aiConfig = await getAiConfigAction();
     const configData = aiConfig.data;
 
+    let leadDiscovery: any = null;
+    try {
+      const discRes = await getLeadDiscoveryAction(lead.id);
+      if (discRes.success && discRes.data) {
+        leadDiscovery = discRes.data;
+      }
+    } catch {
+      leadDiscovery = mockLeadDiscoveriesStore[lead.id] || null;
+    }
+
     const context: LeadResearchContext = {
       leadId: lead.id,
       firstName: lead.firstName,
@@ -157,6 +169,8 @@ export async function generateLeadAiEmailAction(
       organizationName: configData?.companyMatrix?.companyName || session.organizationName || "Roxx CRM",
       pastActivitiesSummary,
       companyMatrix: configData?.companyMatrix,
+      discovery: leadDiscovery,
+      leadDiscovery,
     };
 
     const brief = buildLeadResearchBrief(context);
@@ -307,6 +321,31 @@ export async function studyMarketingBatchAiAction(
     const aiConfig = await getAiConfigAction();
     const configData = aiConfig.data;
 
+    // Retrieve any existing lead discoveries for batch leads
+    const discoveriesByLeadId: Record<string, any> = {};
+    for (const leadId of leadIds) {
+      if (mockLeadDiscoveriesStore[leadId]) {
+        discoveriesByLeadId[leadId] = mockLeadDiscoveriesStore[leadId];
+      }
+    }
+
+    try {
+      const dbSettings = await prisma.systemSetting.findMany({
+        where: {
+          organizationId,
+          key: { in: leadIds.map((id) => `lead_discovery_${id}`) },
+        },
+      });
+      for (const s of dbSettings) {
+        if (s.value) {
+          const lId = s.key.replace("lead_discovery_", "");
+          try {
+            discoveriesByLeadId[lId] = JSON.parse(s.value);
+          } catch {}
+        }
+      }
+    } catch {}
+
     const config: BatchStudyConfig = {
       batchId,
       objective: objective as any,
@@ -321,6 +360,7 @@ export async function studyMarketingBatchAiAction(
       companyMatrix: configData?.companyMatrix,
       aiProvider: configData?.aiProvider || "builtin",
       apiKey: configData?.apiKey || null,
+      discoveriesByLeadId,
     };
 
     const studyResult = await studyMarketingBatch(leadsForStudy, config);

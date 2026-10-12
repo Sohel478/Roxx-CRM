@@ -16,6 +16,8 @@ import {
   resolveCleanCompanyName,
 } from "./lead-researcher";
 import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
+import type { LeadDiscoveryData } from "@/lib/validations/lead-discovery";
+import { synthesizeHeuristicDiscovery } from "./lead-discovery-engine";
 
 export interface BatchStudyLeadInput {
   id: string;
@@ -32,6 +34,7 @@ export interface BatchStudyLeadInput {
   industry?: string | null;
   phone?: string | null;
   rating?: string | null;
+  leadDiscovery?: LeadDiscoveryData | null;
 }
 
 export interface StudiedLeadItem {
@@ -78,6 +81,7 @@ export interface BatchStudyConfig {
   companyMatrix?: import("@/lib/validations/marketing").CompanyMatrix | null;
   aiProvider?: "builtin" | "openai" | "gemini";
   apiKey?: string | null;
+  discoveriesByLeadId?: Record<string, LeadDiscoveryData>;
 }
 
 /**
@@ -134,6 +138,31 @@ export async function studyMarketingBatch(
 
     const cleanCompany = resolveCleanCompanyName(lead.companyName, lead.website, lead.email).cleanName;
 
+    // Resolve or synthesize discovery intelligence for this batch lead
+    let leadDiscovery: LeadDiscoveryData | null =
+      lead.leadDiscovery ||
+      (config.discoveriesByLeadId && config.discoveriesByLeadId[lead.id]) ||
+      null;
+
+    if (!leadDiscovery) {
+      leadDiscovery = synthesizeHeuristicDiscovery(
+        {
+          id: lead.id,
+          fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          companyName: cleanCompany || lead.companyName,
+          jobTitle: lead.jobTitle,
+          email: lead.email,
+          phone: lead.phone,
+          website: lead.website,
+          description: lead.description,
+          rating: lead.rating,
+        },
+        config.companyMatrix
+      );
+    }
+
     const context: LeadResearchContext = {
       leadId: lead.id,
       firstName: lead.firstName,
@@ -152,6 +181,8 @@ export async function studyMarketingBatch(
       repEmail,
       organizationName: orgName,
       companyMatrix: config.companyMatrix,
+      discovery: leadDiscovery,
+      leadDiscovery,
     };
 
     const researchBrief = buildLeadResearchBrief(context);

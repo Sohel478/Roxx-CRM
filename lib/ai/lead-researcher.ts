@@ -7,6 +7,7 @@
 
 import { analyzeEmailDeliverability } from "@/lib/email/deliverability-analyzer";
 import type { CompanyMatrix } from "@/lib/validations/marketing";
+import type { LeadDiscoveryData } from "@/lib/validations/lead-discovery";
 
 export type AiEmailObjective =
   | "INITIAL_OUTREACH"
@@ -58,6 +59,8 @@ export interface LeadResearchContext {
   organizationName?: string | null;
   pastActivitiesSummary?: string | null;
   companyMatrix?: CompanyMatrix | null;
+  discovery?: LeadDiscoveryData | null;
+  leadDiscovery?: LeadDiscoveryData | null;
 }
 
 export type LeadProfileInput = LeadResearchContext;
@@ -403,7 +406,7 @@ export function buildLeadResearchBrief(context: LeadResearchContext): LeadResear
   }
 
   // 2. Company Focus
-  const companyFocus = `${companyAnalysis.cleanName} operates in ${context.companyIndustry || companyAnalysis.likelyIndustry}. ${
+  let companyFocus = `${companyAnalysis.cleanName} operates in ${context.companyIndustry || companyAnalysis.likelyIndustry}. ${
     context.companyDescription
       ? context.companyDescription
       : `Scaling their client relationships and commercial pipeline in competitive market conditions.`
@@ -427,6 +430,23 @@ export function buildLeadResearchBrief(context: LeadResearchContext): LeadResear
     `Preventing high-intent leads from dropping through the cracks`,
     `Ensuring outbound sales correspondence reaches the Primary Inbox directly`,
   ];
+
+  // Enrich with lead discovery intelligence if available
+  const disc = context.leadDiscovery || context.discovery;
+  if (disc) {
+    if (disc.businessSummary) {
+      companyFocus = `${companyAnalysis.cleanName}: ${disc.businessSummary}`;
+    }
+    if (disc.openingPitchHook) {
+      personalizedHook = disc.openingPitchHook;
+    }
+    if (disc.currentNeeds && disc.currentNeeds.length > 0) {
+      detectedPainPoints.unshift(...disc.currentNeeds.slice(0, 2));
+    }
+    if (disc.targetOffering && matchedSkillset) {
+      matchedSkillset.primaryCapability = disc.targetOffering;
+    }
+  }
 
   // 5. Recommended Angle
   let recommendedAngle = "";
@@ -649,14 +669,36 @@ export async function generatePersonalizedLeadEmail(
     }
   }
 
+  // If discovery outreach email draft is available for cold outreach, leverage it directly
+  const disc = context.leadDiscovery || context.discovery;
+  if (
+    disc?.outreachEmailDraft &&
+    (objective === "INITIAL_OUTREACH" || objective === "MEETING_INVITE") &&
+    !options.customInstruction
+  ) {
+    const emailBody = disc.outreachEmailDraft.body
+      .replace(/Account Representative/g, repName)
+      .replace(/Techflux Solutions/g, repOrg);
+    return {
+      subject: disc.outreachEmailDraft.subject,
+      body: emailBody,
+      researchBrief,
+      objective,
+      tone,
+    };
+  }
+
   // Built-in Advanced Synthesis Engine
   const matched = researchBrief.matchedSkillset;
   const caseStudyWin = matched?.matchedCaseStudy
     ? ` (recently helped a team in your sector achieve ${matched.matchedCaseStudy.metric ? `${matched.matchedCaseStudy.metric}` : "major efficiency"})`
     : "";
 
-  const customPitch = options.valueProposition?.trim() ||
-    (matched
+  const customPitch =
+    options.valueProposition?.trim() ||
+    (disc?.targetOffering
+      ? `${disc.targetOffering.toLowerCase()}${caseStudyWin}`
+      : matched
       ? `${matched.primaryCapability.toLowerCase()}${caseStudyWin}`
       : `helping modern teams streamline their pipeline management and automate high-touch lead follow-ups without landing in spam`);
 
@@ -696,7 +738,7 @@ export async function generatePersonalizedLeadEmail(
           `Hi ${firstName},`,
           `${researchBrief.personalizedHook}`,
           `Teams in ${companyAnalysis.likelyIndustry} frequently run into friction with ${researchBrief.detectedPainPoints[0]?.toLowerCase() || "pipeline momentum"}. We help teams solve this by ${customPitch}.`,
-          `Curious if this is currently a priority for ${companyRef}. Do you have a few minutes for a quick chat later this week?`,
+          `Curious if this is currently a priority for ${companyRef}. Would you have 10 minutes for a quick chat later this week to compare notes?`,
           `Warm regards,\n${repName}\n${repOrg}`,
         ];
       } else {
@@ -704,7 +746,7 @@ export async function generatePersonalizedLeadEmail(
           `Hi ${firstName},`,
           `Noticed your role ${leadRoleText} at ${companyRef} and wanted to share a quick perspective.`,
           `At ${repOrg}, we focus on ${customPitch}. Given your focus on team delivery and conversion, I wanted to see if our approach aligns with what you're building.`,
-          `Happy to send over a concise 2-minute overview or jump on a brief call if you are open to comparing notes.`,
+          `Happy to send over a concise overview or jump on a brief 10-minute introductory call if you are open to comparing notes.`,
           `Best,\n${repName}\n${repOrg}`,
         ];
       }
@@ -797,6 +839,17 @@ async function callExternalLlm(
   const companyAnalysis = resolveCleanCompanyName(context.companyName, context.website, context.email);
   const cleanCompany = companyAnalysis.cleanName || (context.companyName && context.companyName.toLowerCase() !== "organization" ? context.companyName.trim() : "their team");
 
+  const disc = context.leadDiscovery || context.discovery;
+  const discoveryPromptSection = disc
+    ? `\nLead Discovery Intelligence (Use these verified facts & opportunities):
+- Client Specific Industry: ${disc.clientBusiness}
+- Discovered Business Overview: ${disc.businessSummary}
+- Observed Needs & Friction: ${disc.currentNeeds.join("; ")}
+- Natural Opening Hook: ${disc.openingPitchHook}
+- Recommended Service to Position: ${disc.targetOffering}
+- Primary Meeting Goal: Request a polite 10-15 minute introductory conversation or quick call to compare notes.`
+    : "";
+
   const prompt = `You are an elite B2B sales development strategist for ${context.organizationName || "Roxx CRM"}.
 Draft a highly personalized, authentic 1-on-1 human email to this lead.
 
@@ -827,7 +880,7 @@ Lead Context:
 - Objective: ${options.objective || "INITIAL_OUTREACH"}
 - Tone: ${options.tone || "PROFESSIONAL"}
 - Rep Name: ${context.repName || "Account Rep"}
-- Custom Instructions: ${options.customInstruction || "None"}`;
+- Custom Instructions: ${options.customInstruction || "None"}${discoveryPromptSection}`;
 
   if (options.aiProvider === "openai") {
     try {

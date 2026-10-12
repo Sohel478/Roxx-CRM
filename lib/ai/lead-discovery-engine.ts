@@ -15,6 +15,7 @@ import {
   type CompanyOverviewDetails,
   type QualificationRubric,
   type DiscoveryOpportunity,
+  type OutreachEmailDraft,
   fitAssessmentSchema,
   companyOverviewDetailsSchema,
   qualificationRubricSchema,
@@ -24,6 +25,7 @@ import {
   openingHookDetailsSchema,
   projectEstimateDetailsSchema,
   researchMetadataSchema,
+  outreachEmailDraftSchema,
 } from "@/lib/validations/lead-discovery";
 import { resolveCleanCompanyName } from "./lead-researcher";
 
@@ -524,6 +526,14 @@ CRITICAL SECURITY AND REASONING DIRECTIVES:
    - budgetClarity (0-10)
    - researchReliability (0-5)
    Missing data must be designated "Unknown" (e.g. budgetStatus: "Unknown", timelineStatus: "Unknown") and NOT treated as negative evidence against the company.
+10. TAILORED OUTREACH EMAIL DRAFT (FOR SALES REP QUICK MEETING REQUEST):
+    Draft an authentic, human, 1-on-1 cold outreach email tailored for this lead (${lead.fullName || lead.firstName} at ${cleanComp.cleanName || "their team"}):
+    - Subject: Natural, bespoke, human (e.g., "Quick question, ${lead.firstName}", "Idea for ${cleanComp.cleanName || "your team"}'s customer operations"). Strictly avoid spammy formulas or generic templates.
+    - Body: 3 short paragraphs (50-110 words total) in a respectful peer tone.
+      1) Natural observation about their company/digital touchpoints.
+      2) Concise value mention of our relevant Techflux service offering without hype.
+      3) Low-friction meeting ask: requesting a brief 10-15 minute introductory conversation this Thursday or Friday to compare notes.
+    - Include purpose and suggestedMeetingCta fields.
 
 Techflux Solutions Company Capabilities:
 - Service Offerings: ${companyOfferings}
@@ -670,6 +680,12 @@ Output strict JSON object matching this structure:
       "Public website observations are not a substitute for a technical audit."
     ],
     "promptVersion": "lead-discovery-v2"
+  },
+  "outreachEmailDraft": {
+    "subject": "Quick question, ${lead.firstName || "there"}",
+    "body": "Hi ${lead.firstName || "there"},\\n\\nI came across ${cleanComp.cleanName || "your team"}'s operations and wanted to reach out regarding your digital touchpoints.\\n\\nAt Techflux Solutions, we specialize in ${companyOfferings.split(",")[0] || "Custom Digital Solutions"}. We work with teams in your space to eliminate customer friction and scale conversions.\\n\\nWould you be open to a brief 10-minute introductory conversation this Thursday or Friday to compare notes?\\n\\nBest regards,\\nAccount Representative\\nTechflux Solutions",
+    "purpose": "Introductory Discovery & Quick Meeting Request",
+    "suggestedMeetingCta": "10-15 minute introductory conversation"
   }
 }`;
 }
@@ -787,6 +803,28 @@ function parseAiDiscoveryOutput(
     promptVersion: "lead-discovery-v2",
   };
 
+  const parsedEmailDraft = outreachEmailDraftSchema.safeParse(content.outreachEmailDraft);
+  const companyDisplayName = cleanComp.cleanName || lead.companyName || "your team";
+  const firstName = (lead.firstName || "there").trim();
+  const outreachEmailDraft: OutreachEmailDraft = parsedEmailDraft.success
+    ? parsedEmailDraft.data
+    : {
+        subject: `Quick question, ${firstName !== "there" ? firstName : companyDisplayName}`,
+        body: [
+          `Hi ${firstName},`,
+          "",
+          `I was reviewing ${companyDisplayName}'s public digital presence and wanted to reach out regarding your customer operations.`,
+          "",
+          `At Techflux Solutions, we specialize in ${targetOffering.toLowerCase()}. We partner with teams in your space to streamline digital customer touchpoints and scale results.`,
+          "",
+          `Would you be open to a brief 10-minute introductory conversation this Thursday or Friday to explore if there might be a mutual fit?`,
+          "",
+          `Best regards,\nAccount Representative\nTechflux Solutions`,
+        ].join("\n"),
+        purpose: "Introductory Discovery & Quick Meeting Request",
+        suggestedMeetingCta: "10-15 minute introductory conversation",
+      };
+
   return {
     leadId: lead.id,
     clientBusiness,
@@ -816,6 +854,7 @@ function parseAiDiscoveryOutput(
     openingHookDetails,
     projectEstimate,
     researchMetadata,
+    outreachEmailDraft,
     provider,
     modelUsed,
     analyzedAt: new Date().toISOString(),
@@ -1476,6 +1515,35 @@ export function synthesizeHeuristicDiscovery(
     promptVersion: "lead-discovery-v2",
   };
 
+  const firstName = (lead.firstName || "there").trim();
+  const outreachSubject =
+    firstName !== "there"
+      ? `Quick question, ${firstName}`
+      : `Idea for ${companyDisplayName}'s customer operations`;
+
+  const topObservation =
+    openingPitchHook ||
+    `I was reviewing ${companyDisplayName}'s public digital footprint and wanted to reach out regarding your customer operations in ${clientBusiness.toLowerCase()}.`;
+
+  const outreachBody = [
+    `Hi ${firstName},`,
+    "",
+    topObservation,
+    "",
+    `At Techflux Solutions, our focus is ${targetOffering.toLowerCase()}. We partner with teams in your space to streamline digital customer touchpoints, eliminate workflow bottlenecks, and drive measurable revenue.`,
+    "",
+    `Would you be open to a brief 10-15 minute introductory conversation this Thursday or Friday to compare notes and explore if there might be a mutual fit?`,
+    "",
+    `Best regards,\nAccount Representative\nTechflux Solutions`,
+  ].join("\n");
+
+  const outreachEmailDraft: OutreachEmailDraft = {
+    subject: outreachSubject,
+    body: outreachBody,
+    purpose: "Introductory Discovery & Quick Meeting Request",
+    suggestedMeetingCta: "10-15 minute introductory conversation",
+  };
+
   return {
     leadId: lead.id,
     clientBusiness,
@@ -1494,6 +1562,7 @@ export function synthesizeHeuristicDiscovery(
     openingHookDetails,
     projectEstimate,
     researchMetadata,
+    outreachEmailDraft,
     provider: "builtin",
     modelUsed: "neural-heuristic",
     analyzedAt: new Date().toISOString(),

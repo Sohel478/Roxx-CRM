@@ -177,6 +177,17 @@ export const researchMetadataSchema = z.object({
 
 export type ResearchMetadata = z.infer<typeof researchMetadataSchema>;
 
+export const outreachEmailDraftSchema = z.object({
+  subject: z.string(),
+  body: z.string(),
+  purpose: z.string().default("Introductory Discovery & Quick Meeting Request"),
+  suggestedMeetingCta: z
+    .string()
+    .default("10-15 minute introductory conversation"),
+});
+
+export type OutreachEmailDraft = z.infer<typeof outreachEmailDraftSchema>;
+
 export const leadDiscoverySchema = z.object({
   leadId: z.string(),
   clientBusiness: z.string().min(1, "Client business is required"),
@@ -207,6 +218,7 @@ export const leadDiscoverySchema = z.object({
   openingHookDetails: openingHookDetailsSchema.optional().nullable(),
   projectEstimate: projectEstimateDetailsSchema.optional().nullable(),
   researchMetadata: researchMetadataSchema.optional().nullable(),
+  outreachEmailDraft: outreachEmailDraftSchema.optional().nullable(),
 
   provider: z.enum(["builtin", "openai", "gemini"]).default("builtin"),
   modelUsed: z.string().default("neural-heuristic"),

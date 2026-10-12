@@ -29,6 +29,9 @@ import {
   DollarSign,
   ExternalLink,
   ShieldCheck,
+  Mail,
+  Edit3,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -115,6 +118,12 @@ export function LeadDiscoveryCard({
   const [isSourcesExpanded, setIsSourcesExpanded] = useState(false);
   const [copiedPitch, setCopiedPitch] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const [copiedEmailSubject, setCopiedEmailSubject] = useState(false);
+  const [copiedEmailBody, setCopiedEmailBody] = useState(false);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [draftSubject, setDraftSubject] = useState("");
+  const [draftBody, setDraftBody] = useState("");
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialDiscovery));
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [openAiKeyInput, setOpenAiKeyInput] = useState("");
@@ -134,6 +143,13 @@ export function LeadDiscoveryCard({
       setHasLoaded(true);
     }
   }, [leadId, initialDiscovery]);
+
+  useEffect(() => {
+    if (discovery?.outreachEmailDraft) {
+      setDraftSubject(discovery.outreachEmailDraft.subject);
+      setDraftBody(discovery.outreachEmailDraft.body);
+    }
+  }, [discovery]);
 
   const handleGenerateOrRefresh = (force = true) => {
     startTransition(async () => {
@@ -185,6 +201,7 @@ export function LeadDiscoveryCard({
     const sr = discovery.strategicRecommendation;
     const dq = discovery.discoveryQuestions;
     const est = discovery.projectEstimate;
+    const email = discovery.outreachEmailDraft;
 
     const text = [
       "=== TECHFLUX CRM LEAD DISCOVERY BRIEF ===",
@@ -224,8 +241,12 @@ export function LeadDiscoveryCard({
       "",
       discovery.openingPitchHook ? `5. Opening Pitch Hook:\n"${discovery.openingPitchHook}"` : null,
       "",
+      email
+        ? `6. Tailored Outreach Email (Quick Meeting Invite):\nSubject: ${draftSubject || email.subject}\n\n${draftBody || email.body}`
+        : null,
+      "",
       est
-        ? `6. Commercial Project Estimate: ${est.status} (${est.reason})\n• Scope: ${est.scopeAssumptions.join(" ")}`
+        ? `7. Commercial Project Estimate: ${est.status} (${est.reason})\n• Scope: ${est.scopeAssumptions.join(" ")}`
         : null,
     ]
       .filter((line) => line !== null && line !== undefined)
@@ -234,6 +255,40 @@ export function LeadDiscoveryCard({
     navigator.clipboard.writeText(text);
     setCopiedPitch(true);
     setTimeout(() => setCopiedPitch(false), 2000);
+  };
+
+  const handleCopyFullEmail = () => {
+    const subject = draftSubject || discovery?.outreachEmailDraft?.subject || "";
+    const body = draftBody || discovery?.outreachEmailDraft?.body || "";
+    if (!subject && !body) return;
+    const text = `Subject: ${subject}\n\n${body}`;
+    navigator.clipboard.writeText(text);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
+  };
+
+  const handleCopyEmailSubject = () => {
+    const subject = draftSubject || discovery?.outreachEmailDraft?.subject || "";
+    if (!subject) return;
+    navigator.clipboard.writeText(subject);
+    setCopiedEmailSubject(true);
+    setTimeout(() => setCopiedEmailSubject(false), 2000);
+  };
+
+  const handleCopyEmailBody = () => {
+    const body = draftBody || discovery?.outreachEmailDraft?.body || "";
+    if (!body) return;
+    navigator.clipboard.writeText(body);
+    setCopiedEmailBody(true);
+    setTimeout(() => setCopiedEmailBody(false), 2000);
+  };
+
+  const handleResetDraft = () => {
+    if (discovery?.outreachEmailDraft) {
+      setDraftSubject(discovery.outreachEmailDraft.subject);
+      setDraftBody(discovery.outreachEmailDraft.body);
+      setIsEditingDraft(false);
+    }
   };
 
   const handleCopyHook = () => {
@@ -1124,13 +1179,168 @@ export function LeadDiscoveryCard({
             )}
           </div>
 
-          {/* 6. Conservative Commercial Project Estimate Status */}
+          {/* 6. Tailored Sales Outreach Email (Quick Meeting Invite) */}
+          {discovery.outreachEmailDraft && (
+            <div className="bg-gradient-to-br from-indigo-50/70 via-white to-sky-50/40 rounded-xl p-4 border border-indigo-200/90 shadow-2xs space-y-3.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>6. Tailored Sales Outreach Email Draft</span>
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 border-indigo-200"
+                  >
+                    {discovery.outreachEmailDraft.suggestedMeetingCta || "10-15 Min Intro Meeting"}
+                  </Badge>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Ready to Review &amp; Send
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingDraft(!isEditingDraft)}
+                    className="h-7 px-2 text-[11px] font-medium text-slate-600 hover:text-indigo-700 hover:bg-indigo-50"
+                  >
+                    <Edit3 className="w-3 h-3 mr-1" />
+                    <span>{isEditingDraft ? "Done Editing" : "Edit Email"}</span>
+                  </Button>
+
+                  {(draftSubject !== discovery.outreachEmailDraft.subject ||
+                    draftBody !== discovery.outreachEmailDraft.body) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleResetDraft}
+                      className="h-7 px-2 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+                      title="Reset to original AI draft"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      <span>Reset</span>
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCopyFullEmail}
+                    className={`h-7 px-2.5 text-[11px] font-semibold transition-all ${
+                      copiedEmail
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    }`}
+                  >
+                    {copiedEmail ? (
+                      <>
+                        <Check className="w-3 h-3 mr-1" />
+                        <span>Copied Email</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 mr-1" />
+                        <span>Copy Full Email</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 bg-white p-3.5 rounded-lg border border-indigo-100 shadow-2xs">
+                {/* Subject Line */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span>Subject:</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyEmailSubject}
+                      className="text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 text-[10px]"
+                    >
+                      {copiedEmailSubject ? (
+                        <>
+                          <Check className="w-2.5 h-2.5 text-emerald-600" />
+                          <span className="text-emerald-700">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-2.5 h-2.5" />
+                          <span>Copy Subject</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {isEditingDraft ? (
+                    <Input
+                      value={draftSubject}
+                      onChange={(e) => setDraftSubject(e.target.value)}
+                      className="text-xs font-medium text-slate-800 h-8 border-indigo-200 focus-visible:ring-indigo-500"
+                      placeholder="Enter email subject line..."
+                    />
+                  ) : (
+                    <div className="text-xs font-semibold text-slate-900 bg-slate-50/70 px-2.5 py-1.5 rounded border border-slate-200/70">
+                      {draftSubject || discovery.outreachEmailDraft.subject}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email Body */}
+                <div className="space-y-1 pt-1.5 border-t border-slate-100">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <span>Email Body (Human 1-on-1 Peer Tone):</span>
+                    <button
+                      type="button"
+                      onClick={handleCopyEmailBody}
+                      className="text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 text-[10px]"
+                    >
+                      {copiedEmailBody ? (
+                        <>
+                          <Check className="w-2.5 h-2.5 text-emerald-600" />
+                          <span className="text-emerald-700">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-2.5 h-2.5" />
+                          <span>Copy Body</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {isEditingDraft ? (
+                    <textarea
+                      value={draftBody}
+                      onChange={(e) => setDraftBody(e.target.value)}
+                      rows={7}
+                      className="w-full text-xs font-normal text-slate-800 p-2.5 rounded border border-indigo-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
+                      placeholder="Enter customized email body..."
+                    />
+                  ) : (
+                    <div className="text-xs text-slate-700 whitespace-pre-line leading-relaxed bg-slate-50/50 p-2.5 rounded border border-slate-200/60 font-sans">
+                      {draftBody || discovery.outreachEmailDraft.body}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Purpose: {discovery.outreachEmailDraft.purpose}</span>
+                <span>Low-friction CTA for quick meeting reply</span>
+              </div>
+            </div>
+          )}
+
+          {/* 7. Conservative Commercial Project Estimate Status */}
           {discovery.projectEstimate && (
             <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200/80 space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>6. Commercial Project Estimate Status</span>
+                  <span>7. Commercial Project Estimate Status</span>
                 </span>
                 <Badge
                   variant="outline"
