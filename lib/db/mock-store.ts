@@ -1056,5 +1056,4 @@ export interface MockAiConfig {
 
 export const mockAiCampaignsStore: MockAiCampaign[] = [];
 export const mockAiConfigsStore: Record<string, MockAiConfig> = {};
-
-
+export const mockLeadDiscoveriesStore: Record<string, import("@/lib/validations/lead-discovery").LeadDiscoveryData> = {};

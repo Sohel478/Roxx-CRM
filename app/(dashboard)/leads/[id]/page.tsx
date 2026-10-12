@@ -46,6 +46,7 @@ import { ActivityModal } from "@/features/activities/components/activity-modal";
 import { PropertySidebar } from "@/features/dossier/components/property-sidebar";
 import { InlineComposer } from "@/features/dossier/components/inline-composer";
 import { AssociationsPanel } from "@/features/dossier/components/associations-panel";
+import { LeadDiscoveryCard } from "@/features/dossier/components/lead-discovery-card";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
 import { TaskItem } from "@/lib/validations/tasks";
 import type { SessionUser } from "@/lib/auth/session";
@@ -617,9 +618,15 @@ export default function LeadDetailPage() {
 
           {/* Discovery Notes Card */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Discovery Notes &amp; Context
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Discovery Notes &amp; Context
+              </h3>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                AI Linked
+              </span>
+            </div>
             <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-wrap space-y-1">
               {lead.description ? (
                 lead.description.split("\n").map((line, lIdx) => {
@@ -688,6 +695,13 @@ export default function LeadDetailPage() {
               )}
             </div>
           </div>
+
+          {/* AI Client Discovery & Strategic Pitch */}
+          <LeadDiscoveryCard
+            leadId={lead.id}
+            leadName={lead.fullName}
+            companyName={lead.companyName}
+          />
 
           {/* Inline Activity & Email Composer */}
           <InlineComposer
