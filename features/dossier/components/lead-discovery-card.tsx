@@ -16,6 +16,11 @@ import {
   Key,
   Globe,
   Settings,
+  CheckCircle2,
+  AlertTriangle,
+  Flame,
+  Clock,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -114,11 +119,16 @@ export function LeadDiscoveryCard({
   const handleCopyPitch = () => {
     if (!discovery) return;
     const text = [
+      discovery.fitAssessment
+        ? `Capabilities Matrix Fit: ${discovery.fitAssessment.fitLevel} (${discovery.fitAssessment.fitScore}%) — ${discovery.fitAssessment.timeInvestmentGuidance}`
+        : null,
       `Client Business: ${discovery.clientBusiness}`,
       `Current Needs: ${discovery.currentNeeds.join("; ")}`,
       `Recommendations: ${discovery.recommendations.join("; ")}`,
       `Target Focus Offering: ${discovery.targetOffering}`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     navigator.clipboard.writeText(text);
     setCopiedPitch(true);
@@ -395,6 +405,118 @@ export function LeadDiscoveryCard({
       {/* Card Content */}
       {isExpanded && discovery && (
         <div className="p-5 space-y-4">
+          {/* 0. Company Matrix Fit & Time-Worthiness Verdict Banner */}
+          {discovery.fitAssessment && (
+            <div
+              className={`rounded-xl p-4 border transition-all ${
+                discovery.fitAssessment.fitLevel === "EXCELLENT"
+                  ? "bg-gradient-to-r from-emerald-50/90 via-emerald-50/40 to-white border-emerald-300 shadow-xs"
+                  : discovery.fitAssessment.fitLevel === "GOOD"
+                  ? "bg-gradient-to-r from-sky-50/90 via-indigo-50/30 to-white border-sky-300 shadow-xs"
+                  : "bg-gradient-to-r from-rose-50/90 via-rose-50/40 to-white border-rose-300 shadow-xs"
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 mb-3 border-slate-200/70">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`p-2 rounded-lg text-white shadow-xs shrink-0 ${
+                      discovery.fitAssessment.fitLevel === "EXCELLENT"
+                        ? "bg-emerald-600"
+                        : discovery.fitAssessment.fitLevel === "GOOD"
+                        ? "bg-sky-600"
+                        : "bg-rose-600"
+                    }`}
+                  >
+                    {discovery.fitAssessment.fitLevel === "EXCELLENT" ? (
+                      <Flame className="w-4 h-4" />
+                    ) : discovery.fitAssessment.fitLevel === "GOOD" ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Capabilities Matrix Fit Verdict
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                          discovery.fitAssessment.fitLevel === "EXCELLENT"
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            : discovery.fitAssessment.fitLevel === "GOOD"
+                            ? "bg-sky-100 text-sky-800 border-sky-300"
+                            : "bg-rose-100 text-rose-800 border-rose-300"
+                        }`}
+                      >
+                        {discovery.fitAssessment.fitLevel === "EXCELLENT" && "🔥 EXCELLENT FIT"}
+                        {discovery.fitAssessment.fitLevel === "GOOD" && "⚡ GOOD FIT"}
+                        {discovery.fitAssessment.fitLevel === "POOR" && "⚠️ POOR FIT / LOW ALIGNMENT"}
+                        <span className="opacity-75 font-medium ml-1">
+                          ({discovery.fitAssessment.fitScore}%)
+                        </span>
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-900 mt-0.5">
+                      {discovery.fitAssessment.timeInvestmentGuidance}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-xs ${
+                      discovery.fitAssessment.isWorthTime
+                        ? "bg-emerald-600 text-white"
+                        : "bg-rose-600 text-white"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>
+                      {discovery.fitAssessment.isWorthTime
+                        ? "Worth Spending Time"
+                        : "Not Worth Heavy Time"}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {discovery.fitAssessment.exclusionAlert && (
+                <div className="mb-2.5 px-3 py-1.5 rounded-lg bg-rose-100/90 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{discovery.fitAssessment.exclusionAlert}</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Evaluation Rationale vs Company Capabilities Matrix:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                  {discovery.fitAssessment.fitReasons.map((reason, idx) => (
+                    <div
+                      key={idx}
+                      className="text-xs text-slate-700 bg-white/90 border border-slate-200/80 rounded-lg p-2 flex items-start gap-2 shadow-2xs font-medium"
+                    >
+                      <span
+                        className={`text-sm leading-none mt-0.5 font-bold ${
+                          discovery.fitAssessment?.fitLevel === "EXCELLENT"
+                            ? "text-emerald-600"
+                            : discovery.fitAssessment?.fitLevel === "GOOD"
+                            ? "text-sky-600"
+                            : "text-rose-600"
+                        }`}
+                      >
+                        •
+                      </span>
+                      <span className="leading-tight">{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Top Row: Business Overview & Current Discovery Needs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* a) Client Business & Background */}

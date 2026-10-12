@@ -119,6 +119,50 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
     // Talking points and ready-to-use opening hook
     expect(discovery.talkingPoints.length).toBeGreaterThanOrEqual(2);
     expect(discovery.openingPitchHook).toBeTruthy();
+
+    // Company Matrix Fit & Time-Worthiness Verdict
+    expect(discovery.fitAssessment).toBeDefined();
+    expect(discovery.fitAssessment?.fitLevel).toBe("EXCELLENT");
+    expect(discovery.fitAssessment?.isWorthTime).toBe(true);
+    expect(discovery.fitAssessment?.fitScore).toBeGreaterThanOrEqual(85);
+    expect(discovery.fitAssessment?.timeInvestmentGuidance.toLowerCase()).toContain("worth spending time");
+    expect(discovery.fitAssessment?.fitReasons.length).toBeGreaterThan(0);
+    expect(discovery.fitAssessment?.exclusionAlert).toBeNull();
+  });
+
+  it("evaluates lead as POOR fit and NOT worth heavy time when out-of-scope exclusion is triggered", () => {
+    const lead = {
+      id: "lead_out_of_scope_1",
+      fullName: "Bob Mechanic",
+      firstName: "Bob",
+      lastName: "Mechanic",
+      companyName: "Acme Industrial Hardware Repair",
+      jobTitle: "Owner",
+      email: "bob@acme-repair.com",
+      description: "Looking for physical server hardware installation and repair in warehouse facility.",
+    };
+
+    const discovery = synthesizeHeuristicDiscovery(
+      lead,
+      {
+        websiteUrl: "https://roxx-crm.com",
+        sourceDocuments: [],
+        elevatorPitch: "Premier B2B digital design and development agency.",
+        serviceOfferings: ["Web Design", "Web Development", "SEO & Search Visibility"],
+        coreSkillsets: ["UI/UX", "Responsive Development", "Local SEO"],
+        targetIndustries: ["Hospitality", "Healthcare", "E-Commerce"],
+        caseStudies: [],
+        outOfScopeExclusions: ["Hardware Installation", "Print Catalogs"],
+      }
+    );
+
+    expect(discovery.fitAssessment).toBeDefined();
+    expect(discovery.fitAssessment?.fitLevel).toBe("POOR");
+    expect(discovery.fitAssessment?.isWorthTime).toBe(false);
+    expect(discovery.fitAssessment?.fitScore).toBeLessThanOrEqual(50);
+    expect(discovery.fitAssessment?.timeInvestmentGuidance.toLowerCase()).toContain("not worth heavy time");
+    expect(discovery.fitAssessment?.exclusionAlert).toContain("Hardware Installation");
+    expect(discovery.fitAssessment?.fitReasons.some(r => r.includes("Hardware Installation"))).toBe(true);
   });
 
   it("generates and persists discovery via server action", async () => {
@@ -130,12 +174,15 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
     expect(genRes.data).toBeDefined();
     expect(genRes.data?.clientBusiness.toLowerCase()).toContain("hospitality");
     expect(genRes.data?.targetOffering.toLowerCase()).toContain("web design");
+    expect(genRes.data?.fitAssessment).toBeDefined();
+    expect(genRes.data?.fitAssessment?.isWorthTime).toBe(true);
 
     // Check cached retrieval
     const getRes = await getLeadDiscoveryAction("lead_hospitality_1");
     expect(getRes.success).toBe(true);
     expect(getRes.data).toBeDefined();
     expect(getRes.data?.leadId).toBe("lead_hospitality_1");
+    expect(getRes.data?.fitAssessment).toBeDefined();
   });
 
   it("integrates with OpenAI API when provider is openai and API key is present", async () => {
@@ -166,6 +213,17 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
                 ],
                 openingPitchHook:
                   "We specialize in modern web design for hospitality groups that has driven a 35% lift in direct bookings.",
+                fitAssessment: {
+                  fitLevel: "EXCELLENT",
+                  fitScore: 95,
+                  isWorthTime: true,
+                  timeInvestmentGuidance: "WORTH SPENDING TIME (High Priority — Dedicate Full Custom Pitch)",
+                  fitReasons: [
+                    "Direct match with our core Web Design & SEO offering.",
+                    "High estimated revenue and booking upside.",
+                  ],
+                  exclusionAlert: null,
+                },
               }),
             },
           },
@@ -198,6 +256,9 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       expect(result.clientBusiness).toBe("Luxury Hospitality & Resort Management");
       expect(result.currentNeeds.some((n) => n.includes("Web design"))).toBe(true);
       expect(result.recommendations.some((r) => r.includes("Web design"))).toBe(true);
+      expect(result.fitAssessment?.fitLevel).toBe("EXCELLENT");
+      expect(result.fitAssessment?.isWorthTime).toBe(true);
+      expect(result.fitAssessment?.fitScore).toBe(95);
     } finally {
       global.fetch = originalFetch;
     }
@@ -232,6 +293,7 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       expect(result.modelUsed).toBe("neural-heuristic");
       expect(result.clientBusiness.toLowerCase()).toContain("hospitality");
       expect(result.currentNeeds.length).toBeGreaterThan(0);
+      expect(result.fitAssessment?.isWorthTime).toBe(true);
     } finally {
       global.fetch = originalFetch;
     }
@@ -263,5 +325,7 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
     // Verifies tailored talking points for floral studio
     expect(discovery.talkingPoints[0].toLowerCase()).toMatch(/floral|wedding|event/);
     expect(discovery.openingPitchHook.toLowerCase()).toContain("leaves floral design");
+    expect(discovery.fitAssessment?.fitLevel).toBe("EXCELLENT");
+    expect(discovery.fitAssessment?.isWorthTime).toBe(true);
   });
 });

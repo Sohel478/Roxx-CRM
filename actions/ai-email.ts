@@ -1003,6 +1003,10 @@ export async function getAiConfigAction(): Promise<{
       if (persisted && (persisted.apiKey || persisted.aiProvider !== "builtin")) {
         config = {
           ...persisted,
+          ...(config || {}),
+          apiKey: config?.apiKey || persisted.apiKey,
+          aiProvider: config?.apiKey ? config.aiProvider : (persisted.aiProvider || config?.aiProvider || "builtin"),
+          companyMatrix: config?.companyMatrix || persisted.companyMatrix,
           organizationId: config?.organizationId || organizationId,
         };
         mockAiConfigsStore[organizationId] = config;
@@ -1048,7 +1052,7 @@ export async function getAiConfigAction(): Promise<{
       }
     }
 
-    if (!config.companyMatrix && mockAiConfigsStore[organizationId]?.companyMatrix) {
+    if (mockAiConfigsStore[organizationId]?.companyMatrix) {
       config.companyMatrix = mockAiConfigsStore[organizationId].companyMatrix;
     }
 

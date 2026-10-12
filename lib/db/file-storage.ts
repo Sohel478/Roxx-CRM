@@ -8,6 +8,10 @@ const CONFIG_FILE_PATH = path.join(process.cwd(), "prisma", "dev-ai-config.json"
  * Loads persisted AI configuration from disk with process.env.OPENAI_API_KEY fallback
  */
 export function getPersistedAiConfig(): MockAiConfig | null {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    return null;
+  }
+
   try {
     if (fs.existsSync(CONFIG_FILE_PATH)) {
       const raw = fs.readFileSync(CONFIG_FILE_PATH, "utf-8");
@@ -47,6 +51,10 @@ export function getPersistedAiConfig(): MockAiConfig | null {
  * Persists AI configuration durably to disk
  */
 export function persistAiConfig(config: MockAiConfig): void {
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    return;
+  }
+
   try {
     const dir = path.dirname(CONFIG_FILE_PATH);
     if (!fs.existsSync(dir)) {

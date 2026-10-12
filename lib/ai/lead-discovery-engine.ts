@@ -7,9 +7,11 @@
  */
 
 import type { CompanyMatrix } from "@/lib/validations/marketing";
-import type {
-  LeadDiscoveryData,
-  LeadDiscoveryInputContext,
+import {
+  type LeadDiscoveryData,
+  type LeadDiscoveryInputContext,
+  type FitAssessment,
+  fitAssessmentSchema,
 } from "@/lib/validations/lead-discovery";
 import { resolveCleanCompanyName } from "./lead-researcher";
 
@@ -63,6 +65,148 @@ export async function generateLeadDiscovery(
 }
 
 /**
+ * Evaluates how well a lead fits our company's capabilities matrix and whether
+ * spending sales rep time on this lead is worthwhile.
+ */
+export function evaluateMatrixFit(
+  lead: LeadDiscoveryInputContext,
+  matrix?: CompanyMatrix | null,
+  clientBusiness?: string,
+  targetOffering?: string,
+  currentNeeds?: string[]
+): FitAssessment {
+  const serviceOfferings = matrix?.serviceOfferings?.length
+    ? matrix.serviceOfferings
+    : ["Web Design", "Web Development", "SEO & Search Visibility"];
+  const targetIndustries = matrix?.targetIndustries || [];
+  const outOfScopeExclusions = matrix?.outOfScopeExclusions || [];
+
+  const textToScan = [
+    lead.companyName || "",
+    lead.description || "",
+    lead.sourceDetail || "",
+    lead.jobTitle || "",
+    clientBusiness || "",
+    targetOffering || "",
+    ...(currentNeeds || []),
+  ].join(" ").toLowerCase();
+
+  // 1. Check for out-of-scope exclusions
+  let triggeredExclusion: string | null = null;
+  for (const exclusion of outOfScopeExclusions) {
+    if (exclusion && exclusion.trim()) {
+      const lowerExc = exclusion.trim().toLowerCase();
+      if (textToScan.includes(lowerExc)) {
+        triggeredExclusion = exclusion.trim();
+        break;
+      }
+    }
+  }
+
+  if (triggeredExclusion) {
+    return {
+      fitLevel: "POOR",
+      fitScore: 35,
+      isWorthTime: false,
+      timeInvestmentGuidance: "NOT WORTH HEAVY TIME (Caution: Low Service Alignment / Disqualify)",
+      fitReasons: [
+        `Requested service or business profile triggers company exclusion: "${triggeredExclusion}".`,
+        "Commercial focus deviates from our high-margin core capabilities and service offerings.",
+        "Recommend quick disqualification or referring to an external vendor rather than heavy sales investment.",
+      ],
+      exclusionAlert: `Out-of-Scope Conflict: ${triggeredExclusion}`,
+    };
+  }
+
+  // 2. Check for target industry match
+  const matchedIndustries = targetIndustries.filter(
+    (ind) => ind && ind.trim() && textToScan.includes(ind.toLowerCase().trim())
+  );
+  const matchesTargetIndustry = matchedIndustries.length > 0;
+
+  // 3. Check for core service offering match
+  const matchedOfferings = serviceOfferings.filter(
+    (offering) =>
+      offering &&
+      offering.trim() &&
+      (textToScan.includes(offering.toLowerCase().trim()) ||
+        (targetOffering &&
+          targetOffering.toLowerCase().includes(offering.toLowerCase().trim())))
+  );
+  const matchesServiceOffering = matchedOfferings.length > 0;
+
+  // 4. Calculate score & verdict
+  if (matchesTargetIndustry && matchesServiceOffering) {
+    const reasons = [
+      `Direct industry match with target vertical (${matchedIndustries.join(", ")}).`,
+      `Core service demand directly aligns with our primary capabilities (${matchedOfferings.join(", ") || targetOffering || serviceOfferings[0]}).`,
+      "Zero out-of-scope conflicts detected. High probability of commercial conversion.",
+    ];
+    if (lead.estimatedValue && lead.estimatedValue > 0) {
+      reasons.push(`Estimated deal size of $${lead.estimatedValue.toLocaleString()} justifies dedicated rep focus.`);
+    }
+
+    return {
+      fitLevel: "EXCELLENT",
+      fitScore: 94,
+      isWorthTime: true,
+      timeInvestmentGuidance: "WORTH SPENDING TIME (High Priority — Dedicate Full Custom Pitch & Discovery)",
+      fitReasons: reasons,
+      exclusionAlert: null,
+    };
+  }
+
+  if (matchesServiceOffering) {
+    const reasons = [
+      `Primary need strongly matches our core offerings (${matchedOfferings.join(", ") || targetOffering || serviceOfferings[0]}).`,
+      "High degree of operational synergy with our design and development skillset.",
+      "Sales rep should prioritize scheduling a discovery consultation call.",
+    ];
+    if (lead.estimatedValue && lead.estimatedValue > 0) {
+      reasons.push(`Estimated deal size of $${lead.estimatedValue.toLocaleString()} justifies dedicated rep focus.`);
+    }
+
+    return {
+      fitLevel: "EXCELLENT",
+      fitScore: 88,
+      isWorthTime: true,
+      timeInvestmentGuidance: "WORTH SPENDING TIME (High Priority — Strong Capabilities Match)",
+      fitReasons: reasons,
+      exclusionAlert: null,
+    };
+  }
+
+  if (matchesTargetIndustry) {
+    return {
+      fitLevel: "GOOD",
+      fitScore: 80,
+      isWorthTime: true,
+      timeInvestmentGuidance: "WORTH SPENDING TIME (Standard Priority — Target Sector Opportunity)",
+      fitReasons: [
+        `Client operates within our target industry vertical (${matchedIndustries.join(", ")}).`,
+        "Recommend exploring digital presence and workflow modernization opportunities during discovery.",
+        "No out-of-scope exclusions flagged.",
+      ],
+      exclusionAlert: null,
+    };
+  }
+
+  // Good fit: standard commercial discovery
+  return {
+    fitLevel: "GOOD",
+    fitScore: 72,
+    isWorthTime: true,
+    timeInvestmentGuidance: "WORTH SPENDING TIME (Standard Priority — Proceed with Standard Discovery)",
+    fitReasons: [
+      "Client operations can benefit from digital presence enhancement and customer acquisition optimization.",
+      "General alignment with our agency capabilities, though tailored discovery is recommended.",
+      "No out-of-scope exclusions flagged.",
+    ],
+    exclusionAlert: null,
+  };
+}
+
+/**
  * Calls OpenAI GPT-4o-mini with deep, client-specific prompt (no generic templates)
  */
 async function callOpenAiDiscovery(
@@ -75,6 +219,7 @@ async function callOpenAiDiscovery(
   const companyOfferings = matrix?.serviceOfferings?.join(", ") || "Custom Web Design, Web Development, SEO, Digital Presence & Brand Strategy";
   const coreSkills = matrix?.coreSkillsets?.join(", ") || "Responsive UI/UX Design, Conversion Optimization, Local SEO, Full-Stack Architecture";
   const exclusions = matrix?.outOfScopeExclusions?.join(", ") || "None";
+  const targetIndustries = matrix?.targetIndustries?.join(", ") || "All High-Growth B2B & Commercial Services";
 
   const prompt = `You are an elite, perceptive B2B Sales Discovery Strategist and Commercial Intelligence Analyst.
 Analyze THIS SPECIFIC prospective client based on their real company name, website domain, contact details, and business context.
@@ -89,10 +234,18 @@ STRICT INSTRUCTIONS:
 3. STRATEGIC PITCH RECOMMENDATION: Formulate a compelling, actionable sales recommendation on how our sales rep should pitch our services to solve their specific business needs. Align with our capabilities below.
 4. DISCOVERY QUESTIONS: Provide 2 sharp discovery questions tailored specifically to their trade to ask during a call.
 5. OPENING PITCH HOOK: Provide a 1-sentence opening hook referencing their business name and their actual craft.
+6. COMPANY MATRIX FIT & TIME-WORTHINESS VERDICT:
+   Compare this client's profile against our Company Matrix (Offerings: ${companyOfferings}, Skills: ${coreSkills}, Target Sectors: ${targetIndustries}, Exclusions: ${exclusions}).
+   - Classify fitLevel as "EXCELLENT" (strong match with our primary offerings), "GOOD" (general commercial match), or "POOR" (conflicts with exclusions or out of scope).
+   - Assign fitScore from 0 to 100 (85-98 for EXCELLENT, 60-84 for GOOD, < 50 for POOR).
+   - Set isWorthTime to true (if EXCELLENT or GOOD) or false (if POOR).
+   - Provide timeInvestmentGuidance for the sales rep (e.g. "WORTH SPENDING TIME (High Priority — Dedicate Full Custom Pitch)" or "NOT WORTH HEAVY TIME (Caution: Low Alignment / Disqualify)").
+   - Provide 2-3 specific fitReasons explaining why this client is or is not worth spending time on based on our offerings and exclusions.
 
 Our Company Offerings & Core Focus:
 - Service Offerings: ${companyOfferings}
 - Core Skillsets: ${coreSkills}
+- Target Industries: ${targetIndustries}
 - STRICT Out-of-Scope Exclusions (Do NOT pitch): ${exclusions}
 
 Client Profile Information:
@@ -112,8 +265,7 @@ Output strict JSON schema:
   "businessSummary": "2-3 crisp sentences detailing what this specific company does, their specialties, and their commercial model.",
   "currentNeeds": [
     "Specific need 1 tailored strictly to this client's industry",
-    "Specific need 2 tailored strictly to this client's industry",
-    "Specific need 3 (optional)"
+    "Specific need 2 tailored strictly to this client's industry"
   ],
   "recommendations": [
     "Specific recommendation 1 on what our sales rep should pitch them and how to position it",
@@ -124,7 +276,18 @@ Output strict JSON schema:
     "Sharp discovery question 1 tailored specifically to this client's industry operations",
     "Sharp discovery question 2 to uncover their current pain points or timeline"
   ],
-  "openingPitchHook": "Compelling 1-sentence opening hook tailored to this specific business and what they do."
+  "openingPitchHook": "Compelling 1-sentence opening hook tailored to this specific business and what they do.",
+  "fitAssessment": {
+    "fitLevel": "EXCELLENT",
+    "fitScore": 92,
+    "isWorthTime": true,
+    "timeInvestmentGuidance": "WORTH SPENDING TIME (High Priority — Dedicate Full Custom Pitch)",
+    "fitReasons": [
+      "Why this client matches our capabilities",
+      "Why spending rep time is worthwhile"
+    ],
+    "exclusionAlert": null
+  }
 }`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -151,6 +314,20 @@ Output strict JSON schema:
   const content = JSON.parse(data.choices?.[0]?.message?.content || "{}");
 
   if (content.clientBusiness && content.businessSummary && Array.isArray(content.currentNeeds)) {
+    let fitAssessment: FitAssessment;
+    const parsedFit = fitAssessmentSchema.safeParse(content.fitAssessment);
+    if (parsedFit.success) {
+      fitAssessment = parsedFit.data;
+    } else {
+      fitAssessment = evaluateMatrixFit(
+        lead,
+        matrix,
+        content.clientBusiness,
+        content.targetOffering,
+        content.currentNeeds
+      );
+    }
+
     return {
       leadId: lead.id,
       clientBusiness: content.clientBusiness,
@@ -162,6 +339,7 @@ Output strict JSON schema:
       targetOffering: content.targetOffering || "Custom Web Design & Strategy",
       talkingPoints: content.talkingPoints || [],
       openingPitchHook: content.openingPitchHook || "",
+      fitAssessment,
       provider: "openai",
       modelUsed: "gpt-4o-mini",
       analyzedAt: new Date().toISOString(),
@@ -183,13 +361,13 @@ async function callGeminiDiscovery(
   const cleanComp = resolveCleanCompanyName(lead.companyName, lead.website, lead.email);
   const companyOfferings = matrix?.serviceOfferings?.join(", ") || "Web Design, Web Development, SEO";
 
-  const prompt = `Analyze this specific lead profile and prepare a discovery summary and sales pitch recommendation.
+  const prompt = `Analyze this specific lead profile and prepare a discovery summary, sales pitch recommendation, and company matrix fit assessment.
 Company: ${cleanComp.cleanName}
 Domain: ${cleanComp.domain || lead.website || ""}
 Description: ${lead.description || ""}
 ${scrapedWebsiteText ? `Website Text: ${scrapedWebsiteText.slice(0, 1000)}` : ""}
 Our Services: ${companyOfferings}
-Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (string array), recommendations (string array), targetOffering (string), talkingPoints (string array), openingPitchHook (string). Must be 100% specific to this client's industry.`;
+Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (string array), recommendations (string array), targetOffering (string), talkingPoints (string array), openingPitchHook (string), fitAssessment (object with fitLevel: "EXCELLENT"|"GOOD"|"POOR", fitScore: number, isWorthTime: boolean, timeInvestmentGuidance: string, fitReasons: string array, exclusionAlert: string or null). Must be 100% specific to this client's industry.`;
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
   const res = await fetch(geminiUrl, {
@@ -208,6 +386,20 @@ Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (s
   const content = JSON.parse(rawText);
 
   if (content.clientBusiness && content.businessSummary) {
+    let fitAssessment: FitAssessment;
+    const parsedFit = fitAssessmentSchema.safeParse(content.fitAssessment);
+    if (parsedFit.success) {
+      fitAssessment = parsedFit.data;
+    } else {
+      fitAssessment = evaluateMatrixFit(
+        lead,
+        matrix,
+        content.clientBusiness,
+        content.targetOffering,
+        content.currentNeeds
+      );
+    }
+
     return {
       leadId: lead.id,
       clientBusiness: content.clientBusiness,
@@ -217,6 +409,7 @@ Output strict JSON with fields: clientBusiness, businessSummary, currentNeeds (s
       targetOffering: content.targetOffering || "Custom Web Design",
       talkingPoints: content.talkingPoints || [],
       openingPitchHook: content.openingPitchHook || "",
+      fitAssessment,
       provider: "gemini",
       modelUsed: "gemini-1.5-flash",
       analyzedAt: new Date().toISOString(),
@@ -593,6 +786,14 @@ export function synthesizeHeuristicDiscovery(
     openingPitchHook = `I took a close look at ${companyDisplayName} and saw tremendous growth potential—we specialize in custom digital presence and search reach that helps businesses like yours turn visitors into committed clients.`;
   }
 
+  const fitAssessment = evaluateMatrixFit(
+    lead,
+    matrix,
+    clientBusiness,
+    targetOffering,
+    currentNeeds
+  );
+
   return {
     leadId: lead.id,
     clientBusiness,
@@ -602,6 +803,7 @@ export function synthesizeHeuristicDiscovery(
     targetOffering,
     talkingPoints,
     openingPitchHook,
+    fitAssessment,
     provider: "builtin",
     modelUsed: "neural-heuristic",
     analyzedAt: new Date().toISOString(),
