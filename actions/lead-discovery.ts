@@ -177,6 +177,30 @@ export async function generateLeadDiscoveryAction(
       return { success: false, error: "Lead record could not be found." };
     }
 
+    // Resolve website URL from description or email domain if not explicit
+    const urlFromDesc = leadInput.description?.match(/(https?:\/\/[^\s\n\r]+)/i)?.[1];
+    let resolvedWebsite = leadInput.website || urlFromDesc || null;
+    if (!resolvedWebsite && leadInput.email && leadInput.email.includes("@")) {
+      const domain = leadInput.email.split("@")[1].toLowerCase();
+      if (!["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "mail.com", "proton.me"].includes(domain)) {
+        resolvedWebsite = `https://${domain}`;
+      }
+    }
+    leadInput.website = resolvedWebsite;
+
+    let scrapedWebsiteText: string | null = null;
+    if (resolvedWebsite) {
+      try {
+        const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
+        const textRes = await extractTextFromUrl(resolvedWebsite);
+        if (textRes.success && textRes.text) {
+          scrapedWebsiteText = textRes.text;
+        }
+      } catch {
+        // Offline or unreachable URL fallback
+      }
+    }
+
     // 3. Load tenant AI config (to check OpenAI API key) and company matrix
     const [aiConfigRes, matrixRes] = await Promise.all([
       getAiConfigAction(),
@@ -190,6 +214,7 @@ export async function generateLeadDiscoveryAction(
     const discovery = await generateLeadDiscovery(leadInput, {
       aiConfig,
       companyMatrix,
+      scrapedWebsiteText,
       forceRefresh: options?.forceRefresh,
     });
 

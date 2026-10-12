@@ -11,16 +11,20 @@ import {
   Target,
   Lightbulb,
   Building2,
-  MessageSquare,
   HelpCircle,
   Quote,
+  Key,
+  Globe,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   getLeadDiscoveryAction,
   generateLeadDiscoveryAction,
 } from "@/actions/lead-discovery";
+import { saveAiConfigAction, getAiConfigAction } from "@/actions/ai-email";
 import type { LeadDiscoveryData } from "@/lib/validations/lead-discovery";
 
 interface LeadDiscoveryCardProps {
@@ -46,6 +50,10 @@ export function LeadDiscoveryCard({
   const [copiedPitch, setCopiedPitch] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(Boolean(initialDiscovery));
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [openAiKeyInput, setOpenAiKeyInput] = useState("");
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keySaveMessage, setKeySaveMessage] = useState<string | null>(null);
 
   // Load discovery if not supplied via props
   useEffect(() => {
@@ -73,6 +81,34 @@ export function LeadDiscoveryCard({
         }
       }
     });
+  };
+
+  const handleSaveOpenAiKey = async () => {
+    if (!openAiKeyInput.trim()) return;
+    setIsSavingKey(true);
+    setKeySaveMessage(null);
+    try {
+      const saveRes = await saveAiConfigAction({
+        aiProvider: "openai",
+        apiKey: openAiKeyInput.trim(),
+        defaultFollowUpDays: 3,
+        defaultPacingMinutes: 2,
+      });
+      if (saveRes.success) {
+        setKeySaveMessage("OpenAI key saved successfully! Re-analyzing lead...");
+        setTimeout(() => {
+          setIsKeyModalOpen(false);
+          setKeySaveMessage(null);
+          handleGenerateOrRefresh(true);
+        }, 1000);
+      } else {
+        setKeySaveMessage(saveRes.error || "Failed to save key");
+      }
+    } catch (err: any) {
+      setKeySaveMessage(err?.message || "Error saving key");
+    } finally {
+      setIsSavingKey(false);
+    }
   };
 
   const handleCopyPitch = () => {
@@ -118,32 +154,86 @@ export function LeadDiscoveryCard({
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                Synthesize {companyName || leadName || "client"}&apos;s business profile,
-                diagnose current needs, and match against our company focus to formulate
-                the exact pitch recommendations for your discovery call.
+                Synthesize {companyName || leadName || "client"}&apos;s specific business profile,
+                diagnose their exact operational needs, and formulate tailored sales recommendations
+                for your discovery call.
               </p>
             </div>
           </div>
 
-          <Button
-            onClick={() => handleGenerateOrRefresh(true)}
-            disabled={isPending}
-            size="sm"
-            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0"
-          >
-            {isPending ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>Analyzing Client...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Generate Client Discovery</span>
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setIsKeyModalOpen(true)}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs text-slate-600 border-slate-200 hover:bg-slate-50"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-500" />
+              <span>AI Key</span>
+            </Button>
+
+            <Button
+              onClick={() => handleGenerateOrRefresh(true)}
+              disabled={isPending}
+              size="sm"
+              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0"
+            >
+              {isPending ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Analyzing Client...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate Client Discovery</span>
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {/* Quick OpenAI Key Modal */}
+        {isKeyModalOpen && (
+          <div className="mt-4 pt-4 border-t border-indigo-100 bg-white/90 p-4 rounded-xl border space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-600" />
+                <h4 className="text-xs font-bold text-slate-900">OpenAI API Key Configuration</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsKeyModalOpen(false)}
+                className="text-xs text-slate-400 hover:text-slate-600"
+              >
+                ✕ Cancel
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Provide your OpenAI API key (`sk-proj-...`). It will be saved securely and used for deep LLM discovery synthesis across all lead records.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                placeholder="sk-proj-..."
+                value={openAiKeyInput}
+                onChange={(e) => setOpenAiKeyInput(e.target.value)}
+                className="text-xs h-8"
+              />
+              <Button
+                size="sm"
+                onClick={handleSaveOpenAiKey}
+                disabled={isSavingKey || !openAiKeyInput.trim()}
+                className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+              >
+                {isSavingKey ? "Saving..." : "Save Key & Analyze"}
+              </Button>
+            </div>
+            {keySaveMessage && (
+              <p className="text-[11px] text-emerald-600 font-medium">{keySaveMessage}</p>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -171,7 +261,7 @@ export function LeadDiscoveryCard({
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-sm font-bold text-slate-900">
                 AI Client Discovery &amp; Sales Pitch
               </h3>
@@ -186,9 +276,15 @@ export function LeadDiscoveryCard({
                   Gemini ({discovery?.modelUsed})
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                  ⚡ Built-in AI Engine
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsKeyModalOpen(true)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
+                  title="Click to configure or paste your OpenAI API key"
+                >
+                  ⚡ Neural Heuristic Engine
+                  <span className="underline ml-0.5 font-normal text-[9px]">(Add OpenAI Key)</span>
+                </button>
               )}
             </div>
             <p className="text-[11px] text-slate-500">
@@ -253,6 +349,48 @@ export function LeadDiscoveryCard({
           </button>
         </div>
       </div>
+
+      {/* Quick OpenAI Key Modal */}
+      {isKeyModalOpen && (
+        <div className="p-4 bg-slate-50 border-b border-indigo-100 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-amber-600" />
+              <h4 className="text-xs font-bold text-slate-900">Connect OpenAI API Key</h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsKeyModalOpen(false)}
+              className="text-xs text-slate-400 hover:text-slate-600"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Paste your OpenAI API key below. Once saved, every lead discovery will use OpenAI GPT-4o-mini to analyze the client&apos;s real website, products, and services.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="password"
+              placeholder="sk-proj-..."
+              value={openAiKeyInput}
+              onChange={(e) => setOpenAiKeyInput(e.target.value)}
+              className="text-xs h-8 bg-white"
+            />
+            <Button
+              size="sm"
+              onClick={handleSaveOpenAiKey}
+              disabled={isSavingKey || !openAiKeyInput.trim()}
+              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+            >
+              {isSavingKey ? "Saving..." : "Save Key & Re-Analyze"}
+            </Button>
+          </div>
+          {keySaveMessage && (
+            <p className="text-[11px] text-emerald-600 font-medium">{keySaveMessage}</p>
+          )}
+        </div>
+      )}
 
       {/* Card Content */}
       {isExpanded && discovery && (

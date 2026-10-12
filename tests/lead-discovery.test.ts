@@ -236,4 +236,32 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       global.fetch = originalFetch;
     }
   });
+
+  it("accurately analyzes boutique floral design client (Leaves Floral Design) without generic tech templates", () => {
+    const floralLead = {
+      id: "lead_floral_leaves",
+      fullName: "Sheetal D",
+      firstName: "Sheetal",
+      lastName: "D",
+      companyName: "Leaves Floral Design",
+      email: "info@leavesfloraldesign.com",
+      phone: "1 414-651-6622",
+      website: "https://www.leavesfloraldesign.com/",
+      description: "Website: https://www.leavesfloraldesign.com/\nSupport Email: info@leavesfloraldesign.com",
+    };
+
+    const discovery = synthesizeHeuristicDiscovery(floralLead);
+
+    // Verifies it identified floral design, NOT generic technology & modern services
+    expect(discovery.clientBusiness.toLowerCase()).toContain("floral");
+    expect(discovery.clientBusiness.toLowerCase()).not.toContain("technology");
+
+    // Verifies bespoke needs around wedding florals and portfolios
+    const needsText = discovery.currentNeeds.join(" ").toLowerCase();
+    expect(needsText).toMatch(/floral|wedding|bridal|portfolio/);
+
+    // Verifies tailored talking points for floral studio
+    expect(discovery.talkingPoints[0].toLowerCase()).toMatch(/floral|wedding|event/);
+    expect(discovery.openingPitchHook.toLowerCase()).toContain("leaves floral design");
+  });
 });

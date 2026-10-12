@@ -19,6 +19,7 @@ import {
   MockAiConfig,
 } from "@/lib/db/mock-store";
 import { decryptSecret } from "@/lib/crypto/encryption";
+import { getPersistedAiConfig, persistAiConfig } from "@/lib/db/file-storage";
 import * as mailer from "@/lib/email/mailer";
 import {
   generatePersonalizedLeadEmail,
@@ -997,6 +998,17 @@ export async function getAiConfigAction(): Promise<{
       config = mockAiConfigsStore[organizationId] || null;
     }
 
+    if (!config || (!config.apiKey && config.aiProvider === "builtin")) {
+      const persisted = getPersistedAiConfig();
+      if (persisted && (persisted.apiKey || persisted.aiProvider !== "builtin")) {
+        config = {
+          ...persisted,
+          organizationId: config?.organizationId || organizationId,
+        };
+        mockAiConfigsStore[organizationId] = config;
+      }
+    }
+
     if (!config) {
       config = mockAiConfigsStore[organizationId] || {
         organizationId,
@@ -1008,6 +1020,13 @@ export async function getAiConfigAction(): Promise<{
         defaultPacingMinutes: 2,
         updatedAt: new Date().toISOString(),
       };
+    }
+
+    // Check process.env.OPENAI_API_KEY
+    if (!config.apiKey && process.env.OPENAI_API_KEY) {
+      config.apiKey = process.env.OPENAI_API_KEY;
+      config.aiProvider = "openai";
+      mockAiConfigsStore[organizationId] = config;
     }
 
     // Ensure companyMatrix is resolved if saved under company_matrix setting
@@ -1113,6 +1132,8 @@ export async function saveAiConfigAction(
     }
 
     mockAiConfigsStore[organizationId] = updatedConfig;
+    mockAiConfigsStore["default"] = updatedConfig;
+    persistAiConfig(updatedConfig);
     revalidatePath("/settings");
 
     return {
