@@ -4,7 +4,17 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockSmtpStore, mockImapStore, mockAuditLogsStore, MockSmtpConfig, MockImapConfig, mockLeadsStore, mockOpportunitiesStore } from "@/lib/db/mock-store";
+import {
+  mockSmtpStore,
+  mockImapStore,
+  mockAuditLogsStore,
+  MockSmtpConfig,
+  MockImapConfig,
+  mockLeadsStore,
+  mockOpportunitiesStore,
+  mockDirectEmailsStore,
+} from "@/lib/db/mock-store";
+import { suppressEmail } from "@/lib/email/tracking";
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/crypto/encryption";
 import * as mailer from "@/lib/email/mailer";
 import { verifyImap } from "@/lib/email/imap-client";
@@ -551,6 +561,15 @@ export async function sendLeadEmailAction(
       email: to,
     });
 
+    const dispatchId = `direct_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const trackingOpts =
+      entityType === "lead" && entityId
+        ? {
+            campaignId: dispatchId,
+            leadId: entityId,
+          }
+        : undefined;
+
     // Send email via nodemailer
     const sendRes = await mailer.sendSmtpEmail(
       {
@@ -566,14 +585,49 @@ export async function sendLeadEmailAction(
         fromEmail: fromSenderEmail,
         subject: personalizedSubject,
         body: personalizedBody,
+        tracking: trackingOpts,
       }
     );
 
     if (!sendRes.success) {
+      if (entityType === "lead" && entityId && sendRes.isBounce) {
+        suppressEmail(to);
+        mockDirectEmailsStore.push({
+          id: dispatchId,
+          leadId: entityId,
+          organizationId,
+          recipientEmail: to,
+          subject: personalizedSubject.trim(),
+          body: personalizedBody.trim(),
+          senderName: fromSenderName,
+          senderEmail: fromSenderEmail,
+          status: "BOUNCED",
+          sentAt: new Date().toISOString(),
+          bouncedAt: new Date().toISOString(),
+          bounceReason: sendRes.bounceReason || sendRes.error || "SMTP delivery bounced",
+        });
+      }
       return {
         success: false,
         error: sendRes.error || "Failed to dispatch email via SMTP server.",
       };
+    }
+
+    if (entityType === "lead" && entityId) {
+      const nowIso = new Date().toISOString();
+      mockDirectEmailsStore.push({
+        id: dispatchId,
+        leadId: entityId,
+        organizationId,
+        recipientEmail: to,
+        subject: personalizedSubject.trim(),
+        body: personalizedBody.trim(),
+        senderName: fromSenderName,
+        senderEmail: fromSenderEmail,
+        status: "DELIVERED",
+        sentAt: nowIso,
+        deliveredAt: nowIso,
+      });
     }
 
     // Automatically record touchpoint to activity timeline
@@ -611,6 +665,12 @@ export async function sendLeadEmailAction(
       error: (error as Error)?.message || "Failed to send email.",
     };
   }
+}
+
+export async function sendEmailAction(
+  input: SendEmailInput
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  return sendLeadEmailAction(input);
 }
 
 /**

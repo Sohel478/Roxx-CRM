@@ -14,7 +14,7 @@ import {
 
 export interface PropertyItem {
   label: string;
-  value: string | number | null | undefined;
+  value: React.ReactNode;
   icon?: React.ReactNode;
   badge?: boolean;
 }
@@ -108,7 +108,9 @@ export function PropertySidebar({
               </span>
               <div className="flex items-center gap-1.5 font-semibold text-slate-800">
                 {prop.icon}
-                {prop.value && typeof prop.value === "string" && prop.value.startsWith("http") ? (
+                {typeof prop.value === "object" && prop.value !== null && !Array.isArray(prop.value) ? (
+                  prop.value
+                ) : prop.value && typeof prop.value === "string" && prop.value.startsWith("http") ? (
                   <a
                     href={prop.value}
                     target="_blank"
@@ -121,7 +123,7 @@ export function PropertySidebar({
                 ) : (
                   <span className="truncate">
                     {prop.value !== null && prop.value !== undefined
-                      ? prop.value.toString()
+                      ? String(prop.value)
                       : "—"}
                   </span>
                 )}

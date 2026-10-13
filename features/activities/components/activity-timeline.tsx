@@ -17,6 +17,11 @@ import {
   Search,
   Reply,
   RefreshCw,
+  Eye,
+  MousePointerClick,
+  AlertTriangle,
+  UserX,
+  CheckCircle2,
 } from "lucide-react";
 import { deleteActivityAction } from "@/actions/activities";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
@@ -309,6 +314,31 @@ export function ActivityTimeline({
                           <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
                             <Reply className="w-3 h-3 text-emerald-600" />
                             Client Reply Received
+                          </span>
+                        ) : act.outcome === "OPENED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
+                            <Eye className="w-3 h-3 text-emerald-600" />
+                            Email Opened / Read
+                          </span>
+                        ) : act.outcome === "CLICKED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200">
+                            <MousePointerClick className="w-3 h-3 text-blue-600" />
+                            Link Clicked (CTR)
+                          </span>
+                        ) : act.outcome === "BOUNCED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-200">
+                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                            Delivery Bounced
+                          </span>
+                        ) : act.outcome === "UNSUBSCRIBED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
+                            <UserX className="w-3 h-3 text-amber-600" />
+                            Unsubscribed
+                          </span>
+                        ) : act.outcome === "DELIVERED" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Delivered
                           </span>
                         ) : (
                           <span className="inline-flex items-center text-[11px] font-medium bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">

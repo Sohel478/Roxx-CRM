@@ -47,6 +47,11 @@ import { PropertySidebar } from "@/features/dossier/components/property-sidebar"
 import { InlineComposer } from "@/features/dossier/components/inline-composer";
 import { AssociationsPanel } from "@/features/dossier/components/associations-panel";
 import { LeadDiscoveryCard } from "@/features/dossier/components/lead-discovery-card";
+import { LeadEmailEngagementCard } from "@/features/dossier/components/lead-email-engagement-card";
+import {
+  getLeadEmailEngagementAction,
+  type LeadEmailEngagementSummary,
+} from "@/actions/marketing";
 import { ActivityItem, ActivityType } from "@/lib/validations/activities";
 import { TaskItem } from "@/lib/validations/tasks";
 import type { SessionUser } from "@/lib/auth/session";
@@ -107,6 +112,7 @@ export default function LeadDetailPage() {
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
+  const [emailEngagement, setEmailEngagement] = useState<LeadEmailEngagementSummary | null>(null);
 
   const roleUpper = currentUser?.role?.toUpperCase();
   const isAdminOrManager =
@@ -142,10 +148,11 @@ export default function LeadDetailPage() {
 
   const loadLead = useCallback(async () => {
     if (!id) return;
-    const [res, actRes, taskRes] = await Promise.all([
+    const [res, actRes, taskRes, engRes] = await Promise.all([
       getLeadByIdAction(id),
       getActivitiesAction({ leadId: id }),
       getTasksAction({ leadId: id }),
+      getLeadEmailEngagementAction(id),
     ]);
 
     if (res.success && res.data) {
@@ -156,6 +163,9 @@ export default function LeadDetailPage() {
     }
     if (taskRes.success && taskRes.data) {
       setTasks(taskRes.data.items);
+    }
+    if (engRes.success && engRes.data) {
+      setEmailEngagement(engRes.data);
     }
     setIsLoading(false);
   }, [id]);
@@ -172,9 +182,15 @@ export default function LeadDetailPage() {
       if (res.success) {
         setLastSyncedAt(res.lastSyncedAt);
       }
-      const actRes = await getActivitiesAction({ leadId: id });
+      const [actRes, engRes] = await Promise.all([
+        getActivitiesAction({ leadId: id }),
+        getLeadEmailEngagementAction(id),
+      ]);
       if (actRes.success && actRes.data) {
         setActivities(actRes.data.items);
+      }
+      if (engRes.success && engRes.data) {
+        setEmailEngagement(engRes.data);
       }
     } catch (err) {
       console.warn("[handleSyncEmails] error:", err);
@@ -537,7 +553,36 @@ export default function LeadDetailPage() {
               },
               {
                 label: "Customer Email",
-                value: lead.email || "Not provided",
+                value: (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="truncate">{lead.email || "Not provided"}</span>
+                    {emailEngagement?.overallStatus && emailEngagement.overallStatus !== "NONE" && (
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          emailEngagement.overallStatus === "CLICKED"
+                            ? "bg-blue-100 text-blue-700"
+                            : emailEngagement.overallStatus === "OPENED"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : emailEngagement.overallStatus === "BOUNCED"
+                            ? "bg-red-100 text-red-700"
+                            : emailEngagement.overallStatus === "UNSUBSCRIBED"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {emailEngagement.overallStatus === "CLICKED"
+                          ? `Clicked (${emailEngagement.totalClicks}x)`
+                          : emailEngagement.overallStatus === "OPENED"
+                          ? `Opened (${emailEngagement.totalOpens}x)`
+                          : emailEngagement.overallStatus === "BOUNCED"
+                          ? "Bounced"
+                          : emailEngagement.overallStatus === "UNSUBSCRIBED"
+                          ? "Unsubscribed"
+                          : "Delivered"}
+                      </span>
+                    )}
+                  </div>
+                ),
                 icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
               },
               {
@@ -706,6 +751,12 @@ export default function LeadDetailPage() {
               roleUpper === "ADMINISTRATOR" ||
               Boolean(currentUser?.isSuperAdmin)
             }
+          />
+
+          {/* Outbound Email Engagement & Delivery Status (Batch + 1-on-1) */}
+          <LeadEmailEngagementCard
+            summary={emailEngagement}
+            onRefresh={loadLead}
           />
 
           {/* Inline Activity & Email Composer */}

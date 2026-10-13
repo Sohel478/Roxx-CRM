@@ -1078,3 +1078,27 @@ export const mockAiCampaignsStore: MockAiCampaign[] = [];
 export const mockAiConfigsStore: Record<string, MockAiConfig> = {};
 export const mockLeadDiscoveriesStore: Record<string, import("@/lib/validations/lead-discovery").LeadDiscoveryData> = {};
 export const mockSuppressedEmailsStore: Set<string> = new Set<string>();
+
+export interface MockDirectEmailDispatch {
+  id: string;
+  leadId: string;
+  organizationId: string;
+  recipientEmail: string;
+  subject: string;
+  body: string;
+  senderName: string;
+  senderEmail: string;
+  status: "SENT" | "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED";
+  sentAt: string;
+  deliveredAt?: string | null;
+  openedAt?: string | null;
+  openCount?: number;
+  clickedAt?: string | null;
+  clickCount?: number;
+  lastClickedUrl?: string | null;
+  bouncedAt?: string | null;
+  bounceReason?: string | null;
+  unsubscribedAt?: string | null;
+}
+
+export const mockDirectEmailsStore: MockDirectEmailDispatch[] = [];

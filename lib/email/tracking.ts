@@ -3,6 +3,7 @@ import {
   mockActivitiesStore,
   mockSuppressedEmailsStore,
   mockLeadsStore,
+  mockDirectEmailsStore,
 } from "@/lib/db/mock-store";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
@@ -142,6 +143,22 @@ export async function recordEmailOpen(
     camp.updatedAt = now;
   }
 
+  // 1b. Update direct email store if applicable
+  const directDispatch = mockDirectEmailsStore
+    .slice()
+    .reverse()
+    .find((d) => (campaignId && d.id === campaignId) || d.leadId === leadId);
+  if (directDispatch) {
+    if (!directDispatch.openedAt) {
+      isFirstOpen = true;
+      directDispatch.openedAt = now;
+    }
+    directDispatch.openCount = (directDispatch.openCount || 0) + 1;
+    if (directDispatch.status === "SENT" || directDispatch.status === "DELIVERED") {
+      directDispatch.status = "OPENED";
+    }
+  }
+
   // 2. Record activity in Lead Timeline
   try {
     const subjectTitle = camp?.subject ? ` (${camp.subject.slice(0, 40)})` : "";
@@ -247,6 +264,27 @@ export async function recordEmailClick(
     camp.updatedAt = now;
   }
 
+  // 1b. Update direct email store if applicable
+  const directDispatch = mockDirectEmailsStore
+    .slice()
+    .reverse()
+    .find((d) => (campaignId && d.id === campaignId) || d.leadId === leadId);
+  if (directDispatch) {
+    if (!directDispatch.clickedAt) {
+      isFirstClick = true;
+      directDispatch.clickedAt = now;
+    }
+    directDispatch.clickCount = (directDispatch.clickCount || 0) + 1;
+    directDispatch.lastClickedUrl = targetUrl;
+    if (!directDispatch.openedAt) {
+      directDispatch.openedAt = now;
+      directDispatch.openCount = (directDispatch.openCount || 0) + 1;
+    }
+    if (directDispatch.status !== "UNSUBSCRIBED") {
+      directDispatch.status = "CLICKED";
+    }
+  }
+
   // 2. Record activity in Lead Timeline
   try {
     mockActivitiesStore.push({
@@ -339,6 +377,19 @@ export async function recordEmailBounce(
     camp.updatedAt = now;
   }
 
+  // 2b. Update direct email store if applicable
+  const matchingDirectForBounce = mockDirectEmailsStore.filter(
+    (d) =>
+      (campaignId && d.id === campaignId) ||
+      d.leadId === leadId ||
+      (email && d.recipientEmail.toLowerCase() === email.toLowerCase())
+  );
+  for (const d of matchingDirectForBounce) {
+    d.status = "BOUNCED";
+    d.bouncedAt = now;
+    d.bounceReason = reason;
+  }
+
   // 3. Record activity in Lead Timeline
   try {
     mockActivitiesStore.push({
@@ -398,6 +449,18 @@ export async function recordEmailUnsubscribe(
       (l) => l.status === "UNSUBSCRIBED"
     ).length;
     camp.updatedAt = now;
+  }
+
+  // 2b. Update direct email store if applicable
+  const matchingDirectForUnsub = mockDirectEmailsStore.filter(
+    (d) =>
+      (campaignId && d.id === campaignId) ||
+      d.leadId === leadId ||
+      (email && d.recipientEmail.toLowerCase() === email.toLowerCase())
+  );
+  for (const d of matchingDirectForUnsub) {
+    d.status = "UNSUBSCRIBED";
+    d.unsubscribedAt = now;
   }
 
   // 3. Mark lead in CRM as Unsubscribed if matching lead exists

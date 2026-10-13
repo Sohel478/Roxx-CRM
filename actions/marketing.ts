@@ -11,6 +11,8 @@ import {
   mockLeadsStore,
   mockUsersStore,
   mockSmtpStore,
+  mockActivitiesStore,
+  mockDirectEmailsStore,
   MockMarketingBatch,
   MockMarketingCampaign,
   MockRecipientLog,
@@ -1411,6 +1413,392 @@ export async function getSelectableLeadsForBatchAction(params: {
     return {
       success: false,
       error: error?.message || "Failed to fetch selectable leads",
+    };
+  }
+}
+
+export interface LeadEmailDispatchItem {
+  id: string;
+  subject: string;
+  source: "BATCH_CAMPAIGN" | "DIRECT_EMAIL" | "AI_CAMPAIGN";
+  sourceName?: string;
+  senderName?: string;
+  senderEmail?: string;
+  recipientEmail: string;
+  sentAt: string;
+  status: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED";
+  openedAt?: string | null;
+  openCount: number;
+  clickedAt?: string | null;
+  clickCount: number;
+  lastClickedUrl?: string | null;
+  bouncedAt?: string | null;
+  bounceReason?: string | null;
+  unsubscribedAt?: string | null;
+}
+
+export interface LeadEmailEngagementSummary {
+  overallStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" | "NONE";
+  totalSent: number;
+  totalOpens: number;
+  totalClicks: number;
+  isBounced: boolean;
+  bounceReason?: string | null;
+  isUnsubscribed: boolean;
+  unsubscribedAt?: string | null;
+  latestDispatchedAt?: string | null;
+  items: LeadEmailDispatchItem[];
+}
+
+/**
+ * Retrieves aggregate outbound email engagement and individual email dispatches for a single lead.
+ * Works across Batch Marketing Campaigns, AI Batch Runs, and Direct 1-on-1 Emails.
+ */
+export async function getLeadEmailEngagementAction(
+  leadId: string
+): Promise<{ success: boolean; data?: LeadEmailEngagementSummary; error?: string }> {
+  try {
+    const session = await requireAuth();
+    const { organizationId } = await resolveTenantContext(session);
+
+    // 1. Resolve lead details
+    let leadEmail: string | null = null;
+    let leadSupportEmail: string | null = null;
+    let leadStatus: string | null = null;
+
+    try {
+      const dbLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { email: true, supportEmail: true, status: true },
+      });
+      if (dbLead) {
+        leadEmail = dbLead.email || null;
+        leadSupportEmail = dbLead.supportEmail || null;
+        leadStatus = dbLead.status || null;
+      }
+    } catch {
+      // Prisma fallback to mockLeadsStore
+      const mockLead = mockLeadsStore.find((l) => l.id === leadId);
+      if (mockLead) {
+        leadEmail = mockLead.email || null;
+        leadSupportEmail = mockLead.supportEmail || null;
+        leadStatus = mockLead.status || null;
+      }
+    }
+
+    if (!leadEmail && !leadSupportEmail) {
+      const mockLead = mockLeadsStore.find((l) => l.id === leadId);
+      if (mockLead) {
+        leadEmail = mockLead.email || null;
+        leadSupportEmail = mockLead.supportEmail || null;
+        leadStatus = mockLead.status || null;
+      }
+    }
+
+    const emailCandidates = new Set<string>();
+    if (leadEmail) emailCandidates.add(leadEmail.trim().toLowerCase());
+    if (leadSupportEmail) emailCandidates.add(leadSupportEmail.trim().toLowerCase());
+
+    const items: LeadEmailDispatchItem[] = [];
+
+    // 2. Scan Batch Marketing Campaigns (Mock Store & Prisma)
+    const processedCampaignIds = new Set<string>();
+
+    for (const camp of mockMarketingCampaignsStore) {
+      if (camp.organizationId && camp.organizationId !== organizationId) continue;
+      processedCampaignIds.add(camp.id);
+
+      const matchingLogs = camp.recipientLogs.filter(
+        (l) =>
+          l.leadId === leadId ||
+          (l.email && emailCandidates.has(l.email.trim().toLowerCase()))
+      );
+
+      for (const log of matchingLogs) {
+        const itemStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" =
+          log.status === "CLICKED"
+            ? "CLICKED"
+            : log.status === "OPENED"
+            ? "OPENED"
+            : log.status === "BOUNCED"
+            ? "BOUNCED"
+            : log.status === "UNSUBSCRIBED"
+            ? "UNSUBSCRIBED"
+            : "DELIVERED";
+
+        items.push({
+          id: `batch_${camp.id}_${log.leadId || log.email}`,
+          subject: camp.subject || "Marketing Campaign",
+          source: "BATCH_CAMPAIGN",
+          sourceName: camp.subject || "Batch Marketing Outreach",
+          senderName: camp.senderName || "Marketing Team",
+          senderEmail: camp.senderEmail || undefined,
+          recipientEmail: log.email,
+          sentAt: log.sentAt || camp.sentAt || camp.createdAt,
+          status: itemStatus,
+          openedAt: log.openedAt || null,
+          openCount: log.openCount || (log.openedAt ? 1 : 0),
+          clickedAt: log.clickedAt || null,
+          clickCount: log.clickCount || (log.clickedAt ? 1 : 0),
+          lastClickedUrl: log.lastClickedUrl || null,
+          bouncedAt: log.bouncedAt || null,
+          bounceReason: log.bounceReason || log.error || null,
+          unsubscribedAt: log.unsubscribedAt || null,
+        });
+      }
+    }
+
+    try {
+      const dbCampaigns = await prisma.marketingCampaign.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      for (const camp of dbCampaigns) {
+        if (processedCampaignIds.has(camp.id)) continue;
+        if (!Array.isArray(camp.recipientLogs)) continue;
+
+        const logs = camp.recipientLogs as Array<Record<string, unknown>>;
+        const matchingLogs = logs.filter(
+          (l) =>
+            l.leadId === leadId ||
+            (typeof l.email === "string" && emailCandidates.has(l.email.trim().toLowerCase()))
+        );
+
+        for (const log of matchingLogs) {
+          const rawStatus = String(log.status || "SENT").toUpperCase();
+          const itemStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" =
+            rawStatus === "CLICKED"
+              ? "CLICKED"
+              : rawStatus === "OPENED"
+              ? "OPENED"
+              : rawStatus === "BOUNCED"
+              ? "BOUNCED"
+              : rawStatus === "UNSUBSCRIBED"
+              ? "UNSUBSCRIBED"
+              : "DELIVERED";
+
+          items.push({
+            id: `batch_db_${camp.id}_${String(log.leadId || log.email)}`,
+            subject: camp.subject || "Marketing Campaign",
+            source: "BATCH_CAMPAIGN",
+            sourceName: camp.subject || "Batch Marketing Outreach",
+            senderName: camp.senderName || "Marketing Team",
+            senderEmail: camp.senderEmail || undefined,
+            recipientEmail: String(log.email || leadEmail || "lead@client.com"),
+            sentAt: String(log.sentAt || camp.sentAt || camp.createdAt.toISOString()),
+            status: itemStatus,
+            openedAt: (log.openedAt as string) || null,
+            openCount: Number(log.openCount || (log.openedAt ? 1 : 0)),
+            clickedAt: (log.clickedAt as string) || null,
+            clickCount: Number(log.clickCount || (log.clickedAt ? 1 : 0)),
+            lastClickedUrl: (log.lastClickedUrl as string) || null,
+            bouncedAt: (log.bouncedAt as string) || null,
+            bounceReason: (log.bounceReason as string) || (log.error as string) || null,
+            unsubscribedAt: (log.unsubscribedAt as string) || null,
+          });
+        }
+      }
+    } catch {
+      // Non-blocking in mock environments
+    }
+
+    // 3. Scan Direct 1-on-1 Email Dispatches
+    const matchingDirect = mockDirectEmailsStore.filter(
+      (d) =>
+        d.leadId === leadId ||
+        (d.recipientEmail && emailCandidates.has(d.recipientEmail.trim().toLowerCase()))
+    );
+
+    for (const d of matchingDirect) {
+      const itemStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" =
+        d.status === "CLICKED"
+          ? "CLICKED"
+          : d.status === "OPENED"
+          ? "OPENED"
+          : d.status === "BOUNCED"
+          ? "BOUNCED"
+          : d.status === "UNSUBSCRIBED"
+          ? "UNSUBSCRIBED"
+          : "DELIVERED";
+
+      items.push({
+        id: d.id,
+        subject: d.subject,
+        source: "DIRECT_EMAIL",
+        sourceName: "Direct 1-on-1 Email",
+        senderName: d.senderName,
+        senderEmail: d.senderEmail,
+        recipientEmail: d.recipientEmail,
+        sentAt: d.sentAt,
+        status: itemStatus,
+        openedAt: d.openedAt || null,
+        openCount: d.openCount || (d.openedAt ? 1 : 0),
+        clickedAt: d.clickedAt || null,
+        clickCount: d.clickCount || (d.clickedAt ? 1 : 0),
+        lastClickedUrl: d.lastClickedUrl || null,
+        bouncedAt: d.bouncedAt || null,
+        bounceReason: d.bounceReason || null,
+        unsubscribedAt: d.unsubscribedAt || null,
+      });
+    }
+
+    // 4. Scan AI Outreach Campaigns
+    for (const aiCamp of mockAiCampaignsStore) {
+      if (aiCamp.organizationId && aiCamp.organizationId !== organizationId) continue;
+      const matchingSchedules = aiCamp.schedules.filter(
+        (s) =>
+          (s.leadId === leadId || (s.leadEmail && emailCandidates.has(s.leadEmail.trim().toLowerCase()))) &&
+          s.status !== "SCHEDULED"
+      );
+
+      for (const s of matchingSchedules) {
+        // If already added via direct or batch, avoid duplicate item ID
+        const exists = items.some(
+          (i) => i.id === `ai_${aiCamp.id}_${s.leadId}` || i.subject === s.initialSubject
+        );
+        if (exists) continue;
+
+        const isFailed = s.status === "FAILED";
+        const isBounced = isFailed && (s.errorMessage || "").toLowerCase().includes("bounc");
+        const status: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" = isBounced
+          ? "BOUNCED"
+          : s.status === "REPLIED"
+          ? "OPENED"
+          : "DELIVERED";
+
+        items.push({
+          id: `ai_${aiCamp.id}_${s.leadId}`,
+          subject: s.initialSubject,
+          source: "AI_CAMPAIGN",
+          sourceName: `${aiCamp.name} (AI Sequence)`,
+          senderName: aiCamp.creatorName || "Sales Assistant",
+          recipientEmail: s.leadEmail,
+          sentAt: s.sentAt || s.scheduledAt,
+          status,
+          openCount: s.status === "REPLIED" ? 1 : 0,
+          clickCount: 0,
+          bouncedAt: isBounced ? (s.sentAt || new Date().toISOString()) : null,
+          bounceReason: isBounced ? s.errorMessage || null : null,
+        });
+      }
+    }
+
+    // 5. Scan Timeline Activities to supplement open/click counts or legacy direct emails
+    const emailActivities = mockActivitiesStore.filter(
+      (a) => a.type === "EMAIL" && a.leadId === leadId
+    );
+
+    for (const act of emailActivities) {
+      // Check if this activity is an outcome tracking event (OPENED, CLICKED, BOUNCED, UNSUBSCRIBED)
+      if (act.outcome === "OPENED" && items.length > 0) {
+        // Ensure at least one item reflects this open if not already
+        const unopenItem = items.find((i) => i.status === "DELIVERED");
+        if (unopenItem) {
+          unopenItem.status = "OPENED";
+          unopenItem.openedAt = unopenItem.openedAt || act.activityAt;
+          unopenItem.openCount = Math.max(unopenItem.openCount, 1);
+        }
+      } else if (act.outcome === "CLICKED" && items.length > 0) {
+        const itemToPromote = items.find((i) => i.status !== "CLICKED" && i.status !== "BOUNCED");
+        if (itemToPromote) {
+          itemToPromote.status = "CLICKED";
+          itemToPromote.clickedAt = itemToPromote.clickedAt || act.activityAt;
+          itemToPromote.clickCount = Math.max(itemToPromote.clickCount, 1);
+        }
+      } else if (act.outcome === "BOUNCED" && items.length > 0) {
+        const itemToBounce = items[0];
+        if (itemToBounce && itemToBounce.status !== "BOUNCED") {
+          itemToBounce.status = "BOUNCED";
+          itemToBounce.bouncedAt = itemToBounce.bouncedAt || act.activityAt;
+          itemToBounce.bounceReason = itemToBounce.bounceReason || act.description || "Delivery bounced";
+        }
+      } else if (act.outcome === "UNSUBSCRIBED" && items.length > 0) {
+        const itemToUnsub = items[0];
+        if (itemToUnsub) {
+          itemToUnsub.status = "UNSUBSCRIBED";
+          itemToUnsub.unsubscribedAt = itemToUnsub.unsubscribedAt || act.activityAt;
+        }
+      } else if (
+        !act.outcome ||
+        act.outcome === "SENT" ||
+        act.outcome === "DELIVERED" ||
+        act.outcome === "REPLIED"
+      ) {
+        // If an email activity exists but no dispatch item exists, synthesize a direct email entry
+        const exists = items.some(
+          (i) => i.subject.toLowerCase() === act.subject.toLowerCase()
+        );
+        if (!exists && !act.subject.toLowerCase().startsWith("email opened") && !act.subject.toLowerCase().startsWith("email link clicked")) {
+          items.push({
+            id: `act_${act.id}`,
+            subject: act.subject,
+            source: "DIRECT_EMAIL",
+            sourceName: "Direct 1-on-1 Email",
+            senderName: act.userName || "Sales Rep",
+            recipientEmail: leadEmail || "lead@client.com",
+            sentAt: act.activityAt || act.createdAt,
+            status: "DELIVERED",
+            openCount: 0,
+            clickCount: 0,
+          });
+        }
+      }
+    }
+
+    // Sort items chronologically descending (newest email first)
+    items.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+
+    // 6. Calculate summary metrics
+    const totalSent = items.length;
+    const totalOpens = items.reduce((acc, i) => acc + (i.openCount || 0), 0);
+    const totalClicks = items.reduce((acc, i) => acc + (i.clickCount || 0), 0);
+
+    const isSuppressed = Array.from(emailCandidates).some((e) => isEmailSuppressed(e));
+    const hasUnsubItem = items.some((i) => i.status === "UNSUBSCRIBED");
+    const isUnsubscribed = isSuppressed || hasUnsubItem || leadStatus === "Unsubscribed";
+    const unsubItem = items.find((i) => i.unsubscribedAt != null);
+
+    const bouncedItem = items.find((i) => i.status === "BOUNCED");
+    const isBounced = Boolean(bouncedItem);
+    const bounceReason = bouncedItem?.bounceReason || null;
+
+    let overallStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" | "NONE" =
+      "NONE";
+
+    if (isBounced) {
+      overallStatus = "BOUNCED";
+    } else if (isUnsubscribed) {
+      overallStatus = "UNSUBSCRIBED";
+    } else if (totalClicks > 0 || items.some((i) => i.status === "CLICKED")) {
+      overallStatus = "CLICKED";
+    } else if (totalOpens > 0 || items.some((i) => i.status === "OPENED")) {
+      overallStatus = "OPENED";
+    } else if (totalSent > 0) {
+      overallStatus = "DELIVERED";
+    }
+
+    const summary: LeadEmailEngagementSummary = {
+      overallStatus,
+      totalSent,
+      totalOpens,
+      totalClicks,
+      isBounced,
+      bounceReason,
+      isUnsubscribed,
+      unsubscribedAt: unsubItem?.unsubscribedAt || null,
+      latestDispatchedAt: items[0]?.sentAt || null,
+      items,
+    };
+
+    return {
+      success: true,
+      data: summary,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || "Failed to retrieve lead email engagement status.",
     };
   }
 }
