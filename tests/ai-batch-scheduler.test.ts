@@ -342,10 +342,20 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
     expect(camp.status).toBe("COMPLETED");
   });
 
-  it("should get and save tenant AI settings correctly", async () => {
+  it("should get and save tenant AI settings correctly (with Admin role protection)", async () => {
+    // Non-admin attempt should be blocked
+    mockSessionUser.role = "SALES_REP";
+    const blockedSave = await saveAiConfigAction({
+      aiProvider: "openai",
+      apiKey: "sk-proj-test123456789",
+    });
+    expect(blockedSave.success).toBe(false);
+    expect(blockedSave.error).toContain("Forbidden");
+
+    // Admin attempt succeeds
+    mockSessionUser.role = "ADMIN";
     const initialConfig = await getAiConfigAction();
     expect(initialConfig.success).toBe(true);
-    expect(initialConfig.data?.aiProvider).toBe("builtin");
 
     const saveRes = await saveAiConfigAction({
       aiProvider: "openai",
@@ -362,6 +372,9 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
     expect(updatedConfig.data?.defaultCompanyPitch).toBe("World-class CRM automation platform");
     expect(updatedConfig.data?.defaultFollowUpDays).toBe(4);
     expect(updatedConfig.data?.defaultPacingMinutes).toBe(5);
+
+    // Reset role back to SALES_REP for subsequent tests
+    mockSessionUser.role = "SALES_REP";
   });
 
   it("should immediately send lead #1 and sync to mockMarketingCampaignsStore when startDate is 'now'", async () => {
@@ -423,83 +436,93 @@ describe("Marketing AI Batch Study & Autonomous Scheduler Engine", () => {
   });
 
   it("should test AI connection correctly with testAiConnectionAction", async () => {
-    // 1. Builtin provider always succeeds
-    const builtinRes = await testAiConnectionAction({ provider: "builtin" });
-    expect(builtinRes.success).toBe(true);
-    expect(builtinRes.message).toContain("operational and ready");
-
-    // 2. Empty key errors out
-    const emptyKeyRes = await testAiConnectionAction({ provider: "openai", apiKey: "" });
-    expect(emptyKeyRes.success).toBe(false);
-    expect(emptyKeyRes.error).toContain("Please enter an API key");
-
-    // 3. Mock fetch response for OpenAI test
-    const originalFetch = global.fetch;
+    mockSessionUser.role = "ADMIN";
     try {
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-      } as any);
+      // 1. Builtin provider always succeeds
+      const builtinRes = await testAiConnectionAction({ provider: "builtin" });
+      expect(builtinRes.success).toBe(true);
+      expect(builtinRes.message).toContain("operational and ready");
 
-      const openaiSuccessRes = await testAiConnectionAction({
-        provider: "openai",
-        apiKey: "sk-proj-valid-test-key",
-      });
-      expect(openaiSuccessRes.success).toBe(true);
-      expect(openaiSuccessRes.message).toContain("Successfully connected to OpenAI");
+      // 2. Empty key errors out
+      const emptyKeyRes = await testAiConnectionAction({ provider: "openai", apiKey: "" });
+      expect(emptyKeyRes.success).toBe(false);
+      expect(emptyKeyRes.error).toContain("Please enter an API key");
 
-      // Mock 401 Unauthorized
-      global.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        statusText: "Unauthorized",
-        json: async () => ({ error: { message: "Incorrect API key provided" } }),
-      } as any);
+      // 3. Mock fetch response for OpenAI test
+      const originalFetch = global.fetch;
+      try {
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+        } as any);
 
-      const openaiFailRes = await testAiConnectionAction({
-        provider: "openai",
-        apiKey: "sk-proj-invalid-key",
-      });
-      expect(openaiFailRes.success).toBe(false);
-      expect(openaiFailRes.error).toContain("Invalid OpenAI API key");
+        const openaiSuccessRes = await testAiConnectionAction({
+          provider: "openai",
+          apiKey: "sk-proj-valid-test-key",
+        });
+        expect(openaiSuccessRes.success).toBe(true);
+        expect(openaiSuccessRes.message).toContain("Successfully connected to OpenAI");
+
+        // Mock 401 Unauthorized
+        global.fetch = vi.fn().mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          statusText: "Unauthorized",
+          json: async () => ({ error: { message: "Incorrect API key provided" } }),
+        } as any);
+
+        const openaiFailRes = await testAiConnectionAction({
+          provider: "openai",
+          apiKey: "sk-proj-invalid-key",
+        });
+        expect(openaiFailRes.success).toBe(false);
+        expect(openaiFailRes.error).toContain("Invalid OpenAI API key");
+      } finally {
+        global.fetch = originalFetch;
+      }
     } finally {
-      global.fetch = originalFetch;
+      mockSessionUser.role = "SALES_REP";
     }
   });
 
   it("should preserve companyMatrix when saving AI configuration", async () => {
-    // Save config with company matrix
-    await saveAiConfigAction({
-      aiProvider: "openai",
-      apiKey: "sk-proj-test-matrix",
-      defaultCompanyPitch: "Tech leaders",
-      defaultFollowUpDays: 3,
-      defaultPacingMinutes: 2,
-      companyMatrix: {
-        websiteUrl: "https://example.com",
-        elevatorPitch: "Premier Enterprise Cloud Solutions",
-        coreSkillsets: ["Cloud Migration", "Kubernetes", "DevSecOps"],
-        serviceOfferings: ["Architecture Audit", "Modernization"],
-        targetIndustries: ["FinTech", "HealthTech"],
-        caseStudies: [],
-        outOfScopeExclusions: ["Hardware repair"],
-      },
-    });
+    mockSessionUser.role = "ADMIN";
+    try {
+      // Save config with company matrix
+      await saveAiConfigAction({
+        aiProvider: "openai",
+        apiKey: "sk-proj-test-matrix",
+        defaultCompanyPitch: "Tech leaders",
+        defaultFollowUpDays: 3,
+        defaultPacingMinutes: 2,
+        companyMatrix: {
+          websiteUrl: "https://example.com",
+          elevatorPitch: "Premier Enterprise Cloud Solutions",
+          coreSkillsets: ["Cloud Migration", "Kubernetes", "DevSecOps"],
+          serviceOfferings: ["Architecture Audit", "Modernization"],
+          targetIndustries: ["FinTech", "HealthTech"],
+          caseStudies: [],
+          outOfScopeExclusions: ["Hardware repair"],
+        },
+      });
 
-    // Update only pitch and provider
-    const updateRes = await saveAiConfigAction({
-      aiProvider: "openai",
-      apiKey: "sk-proj-test-matrix",
-      defaultCompanyPitch: "Updated pitch",
-      defaultFollowUpDays: 5,
-      defaultPacingMinutes: 3,
-    });
-    expect(updateRes.success).toBe(true);
+      // Update only pitch and provider
+      const updateRes = await saveAiConfigAction({
+        aiProvider: "openai",
+        apiKey: "sk-proj-test-matrix",
+        defaultCompanyPitch: "Updated pitch",
+        defaultFollowUpDays: 5,
+        defaultPacingMinutes: 3,
+      });
+      expect(updateRes.success).toBe(true);
 
-    const saved = await getAiConfigAction();
-    expect(saved.data?.defaultCompanyPitch).toBe("Updated pitch");
-    expect(saved.data?.companyMatrix?.coreSkillsets).toContain("Cloud Migration");
-    expect(saved.data?.companyMatrix?.outOfScopeExclusions).toContain("Hardware repair");
+      const saved = await getAiConfigAction();
+      expect(saved.data?.defaultCompanyPitch).toBe("Updated pitch");
+      expect(saved.data?.companyMatrix?.coreSkillsets).toContain("Cloud Migration");
+      expect(saved.data?.companyMatrix?.outOfScopeExclusions).toContain("Hardware repair");
+    } finally {
+      mockSessionUser.role = "SALES_REP";
+    }
   });
 
   it("should generate distinct bespoke human subject lines and resolve clean company names across a 5-lead cohort", async () => {

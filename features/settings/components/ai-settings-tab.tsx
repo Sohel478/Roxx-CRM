@@ -36,6 +36,8 @@ import {
   saveCompanyMatrixAction,
   removeCompanyDocumentAction,
 } from "@/actions/company-matrix";
+import { getCurrentUserAction } from "@/actions/auth";
+import type { SessionUser } from "@/lib/auth/session";
 import { AiCompanyMatrixModal } from "./ai-company-matrix-modal";
 import type {
   AiConfigInput,
@@ -44,6 +46,7 @@ import type {
 } from "@/lib/validations/marketing";
 
 export function AiSettingsTab() {
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [provider, setProvider] = useState<"builtin" | "openai" | "gemini">("builtin");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -55,6 +58,18 @@ export function AiSettingsTab() {
     success: boolean;
     message: string;
   } | null>(null);
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) setCurrentUser(u);
+    });
+  }, []);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdmin =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    Boolean(currentUser?.isSuperAdmin);
 
   const handleTestConnection = async () => {
     if (!apiKey.trim()) {
@@ -305,6 +320,18 @@ export function AiSettingsTab() {
       <div className="bg-white p-12 rounded-xl border border-slate-200 text-center flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
         <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
         <span>Loading AI intelligence settings...</span>
+      </div>
+    );
+  }
+
+  if (currentUser && !isAdmin) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center space-y-3">
+        <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto" />
+        <h3 className="text-sm font-bold text-slate-900">Administrator Access Required</h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          AI Intelligence settings and API keys can only be configured by Administrators. Please contact an organization administrator to update AI parameters.
+        </p>
       </div>
     );
   }

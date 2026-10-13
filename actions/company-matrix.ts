@@ -26,6 +26,12 @@ export async function extractCompanyMatrixFromUrlAction(input: {
 }): Promise<ExtractionResult> {
   try {
     const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin = roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR" || Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return { success: false, error: "Forbidden: Only Administrators can extract capabilities matrix." };
+    }
+
     await resolveTenantContext(session);
 
     if (!input.url || !input.url.trim()) {
@@ -47,7 +53,7 @@ export async function extractCompanyMatrixFromUrlAction(input: {
     const existingDocs = currentMatrixRes.data?.sourceDocuments || [];
 
     // Load AI config for tenant to check if OpenAI/Gemini is configured
-    const aiConfig = await getAiConfigAction();
+    const aiConfig = await getAiConfigAction({ internalServerCall: true });
     const configData = aiConfig.data;
 
     const matrix = await synthesizeCompanyMatrix(textRes.text, {
@@ -86,6 +92,12 @@ export async function extractCompanyMatrixFromFileAction(
 ): Promise<ExtractionResult> {
   try {
     const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin = roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR" || Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return { success: false, error: "Forbidden: Only Administrators can upload documents for capabilities matrix." };
+    }
+
     await resolveTenantContext(session);
 
     const file = formData.get("file") as any;
@@ -135,7 +147,7 @@ export async function extractCompanyMatrixFromFileAction(
       ...existingDocs.filter((d) => d.name.toLowerCase() !== fileName.toLowerCase()),
     ];
 
-    const aiConfig = await getAiConfigAction();
+    const aiConfig = await getAiConfigAction({ internalServerCall: true });
     const configData = aiConfig.data;
 
     const matrix = await synthesizeCompanyMatrix(textRes.text, {
@@ -176,6 +188,13 @@ export async function removeCompanyDocumentAction(documentId: string): Promise<{
   error?: string;
 }> {
   try {
+    const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin = roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR" || Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return { success: false, error: "Forbidden: Only Administrators can remove matrix documents." };
+    }
+
     const matrixRes = await getCompanyMatrixAction();
     if (!matrixRes.success || !matrixRes.data) {
       return { success: false, error: "Capabilities matrix not found" };
@@ -215,6 +234,12 @@ export async function saveCompanyMatrixAction(
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
     const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin = roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR" || Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return { success: false, error: "Forbidden: Only Administrators can save capabilities matrix." };
+    }
+
     const { organizationId } = await resolveTenantContext(session);
 
     // Normalize URL if provided without protocol (e.g., 'www.techflux.in')

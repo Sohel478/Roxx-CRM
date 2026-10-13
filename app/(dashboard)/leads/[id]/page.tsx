@@ -701,6 +701,11 @@ export default function LeadDetailPage() {
             leadId={lead.id}
             leadName={lead.fullName}
             companyName={lead.companyName}
+            isAdmin={
+              roleUpper === "ADMIN" ||
+              roleUpper === "ADMINISTRATOR" ||
+              Boolean(currentUser?.isSuperAdmin)
+            }
           />
 
           {/* Inline Activity & Email Composer */}

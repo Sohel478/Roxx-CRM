@@ -220,7 +220,7 @@ export async function generateLeadDiscoveryAction(
 
     // 3. Load tenant AI config (to check OpenAI API key) and company matrix
     const [aiConfigRes, matrixRes] = await Promise.all([
-      getAiConfigAction(),
+      getAiConfigAction({ internalServerCall: true }),
       getCompanyMatrixAction(),
     ]);
 

@@ -13,6 +13,7 @@ import {
   Mail,
   Trash2,
   Sparkles,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeamMembersTab } from "@/features/settings/components/team-members-tab";
@@ -37,11 +38,14 @@ import type {
   OrganizationSettings,
   PipelineStageItem,
 } from "@/lib/validations/settings";
+import { getCurrentUserAction } from "@/actions/auth";
+import type { SessionUser } from "@/lib/auth/session";
 
 type TabType = "team" | "audit" | "organization" | "stages" | "billing" | "security" | "targets" | "email" | "ai" | "data";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("team");
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [orgSettings, setOrgSettings] = useState<OrganizationSettings | null>(null);
@@ -85,7 +89,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadData();
+    getCurrentUserAction().then((u) => {
+      if (u) setCurrentUser(u);
+    });
   }, [loadData]);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isAdmin =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    Boolean(currentUser?.isSuperAdmin);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -230,18 +243,20 @@ export default function SettingsPage() {
           <span>Email &amp; SMTP</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab("ai")}
-          className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
-            activeTab === "ai"
-              ? "border-purple-600 text-purple-600"
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-purple-600" />
-          <span>AI Intelligence</span>
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("ai")}
+            className={`py-3.5 px-4 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-all ${
+              activeTab === "ai"
+                ? "border-purple-600 text-purple-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span>AI Intelligence</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -289,7 +304,17 @@ export default function SettingsPage() {
         )}
 
         {activeTab === "ai" && (
-          <AiSettingsTab />
+          isAdmin ? (
+            <AiSettingsTab />
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 p-10 text-center space-y-3">
+              <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto" />
+              <h3 className="text-sm font-bold text-slate-900">Administrator Access Required</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                AI Intelligence settings and API keys can only be configured by Administrators. Please contact an organization administrator to update AI parameters.
+              </p>
+            </div>
+          )
         )}
 
         {activeTab === "data" && (

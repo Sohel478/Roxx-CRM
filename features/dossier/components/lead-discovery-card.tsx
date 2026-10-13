@@ -41,6 +41,8 @@ import {
   generateLeadDiscoveryAction,
 } from "@/actions/lead-discovery";
 import { saveAiConfigAction, getAiConfigAction } from "@/actions/ai-email";
+import { getCurrentUserAction } from "@/actions/auth";
+import type { SessionUser } from "@/lib/auth/session";
 import type {
   LeadDiscoveryData,
   EvidenceStatus,
@@ -53,6 +55,7 @@ interface LeadDiscoveryCardProps {
   companyName?: string | null;
   initialDiscovery?: LeadDiscoveryData | null;
   onDiscoveryGenerated?: (discovery: LeadDiscoveryData) => void;
+  isAdmin?: boolean;
 }
 
 function EvidenceBadge({ status }: { status?: string | null }) {
@@ -107,7 +110,24 @@ export function LeadDiscoveryCard({
   companyName,
   initialDiscovery,
   onDiscoveryGenerated,
+  isAdmin: propsIsAdmin,
 }: LeadDiscoveryCardProps) {
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    getCurrentUserAction().then((u) => {
+      if (u) setCurrentUser(u);
+    });
+  }, []);
+
+  const roleUpper = currentUser?.role?.toUpperCase();
+  const isCurrentUserAdmin =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    Boolean(currentUser?.isSuperAdmin);
+
+  const isAdmin = propsIsAdmin !== undefined ? propsIsAdmin : isCurrentUserAdmin;
+
   const [discovery, setDiscovery] = useState<LeadDiscoveryData | null>(
     initialDiscovery || null
   );
@@ -166,6 +186,10 @@ export function LeadDiscoveryCard({
   };
 
   const handleSaveOpenAiKey = async () => {
+    if (!isAdmin) {
+      setKeySaveMessage("Forbidden: Only Administrators can configure AI keys.");
+      return;
+    }
     if (!openAiKeyInput.trim()) return;
     setIsSavingKey(true);
     setKeySaveMessage(null);
@@ -328,15 +352,17 @@ export function LeadDiscoveryCard({
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setIsKeyModalOpen(true)}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs text-slate-600 border-slate-200 hover:bg-slate-50"
-            >
-              <Key className="w-3.5 h-3.5 text-amber-500" />
-              <span>AI Key</span>
-            </Button>
+            {isAdmin && (
+              <Button
+                onClick={() => setIsKeyModalOpen(true)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs text-slate-600 border-slate-200 hover:bg-slate-50"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-500" />
+                <span>AI Key</span>
+              </Button>
+            )}
 
             <Button
               onClick={() => handleGenerateOrRefresh(true)}
@@ -359,8 +385,8 @@ export function LeadDiscoveryCard({
           </div>
         </div>
 
-        {/* Quick OpenAI Key Modal */}
-        {isKeyModalOpen && (
+        {/* Quick OpenAI Key Modal (Admin Only) */}
+        {isAdmin && isKeyModalOpen && (
           <div className="mt-4 pt-4 border-t border-indigo-100 bg-white/90 p-4 rounded-xl border space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -441,7 +467,7 @@ export function LeadDiscoveryCard({
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                   Gemini ({discovery?.modelUsed})
                 </span>
-              ) : (
+              ) : isAdmin ? (
                 <button
                   type="button"
                   onClick={() => setIsKeyModalOpen(true)}
@@ -451,6 +477,10 @@ export function LeadDiscoveryCard({
                   ⚡ Neural Heuristic Engine
                   <span className="underline ml-0.5 font-normal text-[9px]">(Add OpenAI Key)</span>
                 </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                  ⚡ Built-in Neural Engine
+                </span>
               )}
             </div>
             <p className="text-[11px] text-slate-500">
@@ -516,8 +546,8 @@ export function LeadDiscoveryCard({
         </div>
       </div>
 
-      {/* Quick OpenAI Key Modal */}
-      {isKeyModalOpen && (
+      {/* Quick OpenAI Key Modal (Admin Only) */}
+      {isAdmin && isKeyModalOpen && (
         <div className="p-4 bg-slate-50 border-b border-indigo-100 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">

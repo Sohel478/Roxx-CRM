@@ -232,3 +232,17 @@ export async function requireSuperAdmin(): Promise<SessionUser> {
   }
   return session;
 }
+
+/**
+ * Enforce Administrator role access.
+ * Throws an error or returns session if authorized.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const session = await requireAuth();
+  const roleUpper = session.role?.toUpperCase();
+  if (roleUpper !== "ADMIN" && roleUpper !== "ADMINISTRATOR" && !session.isSuperAdmin) {
+    throw new Error("Unauthorized: Administrator privileges required");
+  }
+  return session;
+}
+

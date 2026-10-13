@@ -136,7 +136,7 @@ export async function generateLeadAiEmailAction(
     }
 
     // Fetch AI config
-    const aiConfig = await getAiConfigAction();
+    const aiConfig = await getAiConfigAction({ internalServerCall: true });
     const configData = aiConfig.data;
 
     let leadDiscovery: any = null;
@@ -319,7 +319,7 @@ export async function studyMarketingBatchAiAction(
       rating: l.rating,
     }));
 
-    const aiConfig = await getAiConfigAction();
+    const aiConfig = await getAiConfigAction({ internalServerCall: true });
     const configData = aiConfig.data;
 
     // Retrieve any existing lead discoveries for batch leads
@@ -1044,7 +1044,9 @@ export async function processScheduledAiQueueAction(
 /**
  * 6. Get tenant AI configuration
  */
-export async function getAiConfigAction(): Promise<{
+export async function getAiConfigAction(options?: {
+  internalServerCall?: boolean;
+}): Promise<{
   success: boolean;
   data?: MockAiConfig;
   error?: string;
@@ -1128,6 +1130,20 @@ export async function getAiConfigAction(): Promise<{
       config.companyMatrix = mockAiConfigsStore[organizationId].companyMatrix;
     }
 
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      Boolean(session.isSuperAdmin);
+
+    // If client caller is not an administrator and not an internal server invocation, redact plaintext secret API key
+    if (!isAdmin && !options?.internalServerCall && config.apiKey) {
+      config = {
+        ...config,
+        apiKey: "••••••••",
+      };
+    }
+
     return { success: true, data: config };
   } catch (error: any) {
     return {
@@ -1138,13 +1154,25 @@ export async function getAiConfigAction(): Promise<{
 }
 
 /**
- * 7. Save tenant AI configuration
+ * 7. Save tenant AI configuration (Admin only)
  */
 export async function saveAiConfigAction(
   input: AiConfigInput
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
     const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Forbidden: Only Administrators can configure AI settings and API keys.",
+      };
+    }
+
     const { organizationId } = await resolveTenantContext(session);
 
     const parsed = aiConfigSchema.safeParse(input);
@@ -1225,7 +1253,7 @@ export async function saveAiConfigAction(
 }
 
 /**
- * 8. Test AI provider connection and API key validity
+ * 8. Test AI provider connection and API key validity (Admin only)
  */
 export async function testAiConnectionAction(input: {
   provider: "builtin" | "openai" | "gemini";
@@ -1236,7 +1264,18 @@ export async function testAiConnectionAction(input: {
   error?: string;
 }> {
   try {
-    await requireAuth();
+    const session = await requireAuth();
+    const roleUpper = session.role?.toUpperCase();
+    const isAdmin =
+      roleUpper === "ADMIN" ||
+      roleUpper === "ADMINISTRATOR" ||
+      Boolean(session.isSuperAdmin);
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Forbidden: Only Administrators can test AI provider keys.",
+      };
+    }
 
     const { provider, apiKey } = input;
 
