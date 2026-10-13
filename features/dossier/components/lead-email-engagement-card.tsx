@@ -30,6 +30,7 @@ export function LeadEmailEngagementCard({
   isLoading = false,
   onRefresh,
 }: LeadEmailEngagementCardProps) {
+  const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
 
   if (isLoading && !summary) {
@@ -157,10 +158,27 @@ export function LeadEmailEngagementCard({
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
           )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsCardExpanded((prev) => !prev)}
+            className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5"
+            title={isCardExpanded ? "Collapse email status card" : "Expand email status card"}
+          >
+            <span>{isCardExpanded ? "Collapse" : "Expand"}</span>
+            {isCardExpanded ? (
+              <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+            )}
+          </Button>
         </div>
       </div>
 
-      {/* Bounce Warning Alert */}
+      {isCardExpanded && (
+        <>
+          {/* Bounce Warning Alert */}
       {isBounced && (
         <div className="bg-red-50/90 border-b border-red-200 px-5 py-3.5 flex items-start gap-3">
           <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -367,6 +385,8 @@ export function LeadEmailEngagementCard({
           </div>
         ) : null}
       </div>
+        </>
+      )}
     </div>
   );
 }

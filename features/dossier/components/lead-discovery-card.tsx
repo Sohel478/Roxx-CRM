@@ -325,11 +325,11 @@ export function LeadDiscoveryCard({
   // 1. Initial Empty State (Not yet generated)
   if (hasLoaded && !discovery) {
     return (
-      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-sky-50/30 p-5 shadow-xs">
+      <div className={`rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-sky-50/30 ${isExpanded ? "p-5" : "px-5 py-3"} shadow-xs transition-all`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-xs">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -343,15 +343,17 @@ export function LeadDiscoveryCard({
                   Discovery Phase
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                Synthesize {companyName || leadName || "client"}&apos;s specific business profile,
-                diagnose their exact operational needs, and formulate tailored sales recommendations
-                for your discovery call.
-              </p>
+              {isExpanded && (
+                <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                  Synthesize {companyName || leadName || "client"}&apos;s specific business profile,
+                  diagnose their exact operational needs, and formulate tailored sales recommendations
+                  for your discovery call.
+                </p>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {isAdmin && (
               <Button
                 onClick={() => setIsKeyModalOpen(true)}
@@ -380,6 +382,22 @@ export function LeadDiscoveryCard({
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Generate Client Discovery</span>
                 </>
+              )}
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/60 flex items-center gap-1.5"
+              title={isExpanded ? "Collapse AI Client Discovery card" : "Expand AI Client Discovery card"}
+            >
+              <span>{isExpanded ? "Collapse" : "Expand"}</span>
+              {isExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
               )}
             </Button>
           </div>
@@ -531,18 +549,21 @@ export function LeadDiscoveryCard({
             <span>{isPending ? "Analyzing..." : "Re-Analyze"}</span>
           </Button>
 
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-            title={isExpanded ? "Collapse brief" : "Expand brief"}
+            className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5"
+            title={isExpanded ? "Collapse AI Client Discovery card" : "Expand AI Client Discovery card"}
           >
+            <span>{isExpanded ? "Collapse" : "Expand"}</span>
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
+              <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
