@@ -21,6 +21,10 @@ import {
   UserCheck,
   Trash2,
   AlertCircle,
+  Eye,
+  MousePointerClick,
+  UserX,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +66,7 @@ export default function MarketingBatchDetailPage() {
   const [isBulkRemoveOpen, setIsBulkRemoveOpen] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeFeedback, setRemoveFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [campaignLogFilter, setCampaignLogFilter] = useState<Record<string, string>>({});
 
   const fetchBatch = useCallback(async () => {
     setIsLoading(true);
@@ -617,7 +622,40 @@ export default function MarketingBatchDetailPage() {
                           <CheckCircle2 className="w-3 h-3 mr-1" />
                           {camp.sentCount} Sent
                         </Badge>
-                        {camp.failedCount > 0 && (
+
+                        {/* Open Rate Badge */}
+                        {(camp.openedCount ?? 0) > 0 && (
+                          <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold">
+                            <Eye className="w-3 h-3 mr-1 text-sky-600" />
+                            {camp.openedCount} Opened
+                          </Badge>
+                        )}
+
+                        {/* Clicked CTR Badge */}
+                        {(camp.clickedCount ?? 0) > 0 && (
+                          <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-semibold">
+                            <MousePointerClick className="w-3 h-3 mr-1 text-purple-600" />
+                            {camp.clickedCount} Clicked
+                          </Badge>
+                        )}
+
+                        {/* Bounce Badge */}
+                        {(camp.bouncedCount ?? 0) > 0 && (
+                          <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-xs font-semibold">
+                            <AlertTriangle className="w-3 h-3 mr-1 text-rose-600" />
+                            {camp.bouncedCount} Bounced
+                          </Badge>
+                        )}
+
+                        {/* Unsubscribed Badge */}
+                        {(camp.unsubscribedCount ?? 0) > 0 && (
+                          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs font-semibold">
+                            <UserX className="w-3 h-3 mr-1 text-amber-600" />
+                            {camp.unsubscribedCount} Unsubscribed
+                          </Badge>
+                        )}
+
+                        {camp.failedCount > 0 && (camp.bouncedCount ?? 0) === 0 && (
                           <Badge
                             variant="destructive"
                             className="bg-red-50 text-red-700 border-red-200 text-xs font-semibold"
@@ -626,6 +664,7 @@ export default function MarketingBatchDetailPage() {
                             {camp.failedCount} Failed / Skipped
                           </Badge>
                         )}
+
                         {(camp.status === "SENDING" || camp.sentCount < camp.totalRecipients) && (
                           <Button
                             size="sm"
@@ -659,77 +698,243 @@ export default function MarketingBatchDetailPage() {
                     </div>
                   </div>
 
-                  {/* Expanded Content: Body preview + Recipient logs */}
-                  {isExpanded && (
-                    <div className="p-5 border-t border-slate-200 space-y-4">
-                      {/* Body Preview */}
-                      <div>
-                        <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                          Template Message
-                        </span>
-                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto font-sans">
-                          {camp.body}
-                        </div>
-                      </div>
+                  {/* Expanded Content: Executive KPI Bar + Body preview + Recipient logs */}
+                  {isExpanded && (() => {
+                    const logs = camp.recipientLogs || [];
+                    const total = logs.length;
+                    const sentCount = camp.sentCount || logs.filter((l) => l.status !== "SKIPPED").length;
+                    const openedCount =
+                      camp.openedCount ??
+                      logs.filter((l) => l.openedAt != null || l.status === "OPENED" || l.status === "CLICKED").length;
+                    const clickedCount =
+                      camp.clickedCount ??
+                      logs.filter((l) => l.clickedAt != null || l.status === "CLICKED").length;
+                    const bouncedCount =
+                      camp.bouncedCount ??
+                      logs.filter((l) => l.bouncedAt != null || l.status === "BOUNCED").length;
+                    const unsubscribedCount =
+                      camp.unsubscribedCount ??
+                      logs.filter((l) => l.unsubscribedAt != null || l.status === "UNSUBSCRIBED").length;
 
-                      {/* Recipient Logs Table */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                            Recipient Delivery Logs ({camp.recipientLogs.length})
-                          </span>
+                    const validDenominator = sentCount > 0 ? sentCount : total > 0 ? total : 1;
+                    const openRate = Math.round((openedCount / validDenominator) * 1000) / 10;
+                    const clickThroughRate = Math.round((clickedCount / validDenominator) * 1000) / 10;
+                    const bounceRate = Math.round((bouncedCount / validDenominator) * 1000) / 10;
+                    const unsubscribeRate = Math.round((unsubscribedCount / validDenominator) * 1000) / 10;
+
+                    const activeFilter = campaignLogFilter[camp.id] || "ALL";
+                    const filteredLogs = logs.filter((log) => {
+                      if (activeFilter === "ALL") return true;
+                      if (activeFilter === "OPENED") return log.openedAt != null || log.status === "OPENED" || log.status === "CLICKED";
+                      if (activeFilter === "CLICKED") return log.clickedAt != null || log.status === "CLICKED";
+                      if (activeFilter === "BOUNCED") return log.status === "BOUNCED" || log.bouncedAt != null;
+                      if (activeFilter === "UNSUBSCRIBED") return log.status === "UNSUBSCRIBED" || log.unsubscribedAt != null;
+                      if (activeFilter === "DELIVERED") return log.status === "SENT" || log.status === "DELIVERED";
+                      return true;
+                    });
+
+                    return (
+                      <div className="p-5 border-t border-slate-200 space-y-5">
+                        {/* Executive Campaign Performance KPI Bar */}
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider mb-2.5">
+                            <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Campaign Performance Report</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                            <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                                <span>Delivered</span>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              </div>
+                              <div className="text-xl font-bold text-slate-900">{sentCount}</div>
+                              <div className="text-[10px] text-slate-400 font-medium">Outbound Sent</div>
+                            </div>
+                            <div className="bg-sky-50/50 p-3 rounded-xl border border-sky-100">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-sky-700 mb-1">
+                                <span>Opened / Read</span>
+                                <Eye className="w-3.5 h-3.5 text-sky-600" />
+                              </div>
+                              <div className="text-xl font-bold text-sky-950">{openedCount}</div>
+                              <div className="text-[10px] text-sky-700 font-semibold">{openRate}% Open Rate</div>
+                            </div>
+                            <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-purple-700 mb-1">
+                                <span>Clicked (CTR)</span>
+                                <MousePointerClick className="w-3.5 h-3.5 text-purple-600" />
+                              </div>
+                              <div className="text-xl font-bold text-purple-950">{clickedCount}</div>
+                              <div className="text-[10px] text-purple-700 font-semibold">{clickThroughRate}% CTR</div>
+                            </div>
+                            <div className="bg-rose-50/50 p-3 rounded-xl border border-rose-100">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-rose-700 mb-1">
+                                <span>Bounced</span>
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                              </div>
+                              <div className="text-xl font-bold text-rose-950">{bouncedCount}</div>
+                              <div className="text-[10px] text-rose-700 font-semibold">{bounceRate}% Bounce</div>
+                            </div>
+                            <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-amber-700 mb-1">
+                                <span>Unsubscribed</span>
+                                <UserX className="w-3.5 h-3.5 text-amber-600" />
+                              </div>
+                              <div className="text-xl font-bold text-amber-950">{unsubscribedCount}</div>
+                              <div className="text-[10px] text-amber-700 font-semibold">{unsubscribeRate}% Unsub</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
-                          <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="py-2.5 px-3">Lead Name</th>
-                                <th className="py-2.5 px-3">Email Address</th>
-                                <th className="py-2.5 px-3">Status</th>
-                                <th className="py-2.5 px-3">Details / Timestamp</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {camp.recipientLogs.map((log, idx) => (
-                                <tr key={`${log.leadId}_${idx}`} className="hover:bg-slate-50/50">
-                                  <td className="py-2.5 px-3 font-semibold text-slate-900">
-                                    {log.leadName}
-                                  </td>
-                                  <td className="py-2.5 px-3 font-mono text-slate-600">
-                                    {log.email}
-                                  </td>
-                                  <td className="py-2.5 px-3">
-                                    {log.status === "SENT" ? (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                        <CheckCircle2 className="w-3 h-3" /> Delivered
-                                      </span>
-                                    ) : log.status === "SKIPPED" ? (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                        <AlertTriangle className="w-3 h-3" /> Skipped
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                                        <XCircle className="w-3 h-3" /> Failed
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-slate-500 text-[11px]">
-                                    {log.error ? (
-                                      <span className="text-red-600 font-medium">{log.error}</span>
-                                    ) : log.sentAt ? (
-                                      new Date(log.sentAt).toLocaleTimeString()
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                </tr>
+
+                        {/* Template Message Body Preview */}
+                        <div>
+                          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                            Template Message
+                          </span>
+                          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto font-sans">
+                            {camp.body}
+                          </div>
+                        </div>
+
+                        {/* Recipient Logs Table with Interactive Filters */}
+                        <div>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                              Recipient Delivery Logs ({filteredLogs.length} of {logs.length})
+                            </span>
+
+                            {/* Filter Chips */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {[
+                                { key: "ALL", label: `All (${logs.length})` },
+                                { key: "OPENED", label: `Opened (${openedCount})` },
+                                { key: "CLICKED", label: `Clicked (${clickedCount})` },
+                                { key: "BOUNCED", label: `Bounced (${bouncedCount})` },
+                                { key: "UNSUBSCRIBED", label: `Unsub (${unsubscribedCount})` },
+                                { key: "DELIVERED", label: `Delivered (${sentCount})` },
+                              ].map((f) => (
+                                <button
+                                  key={f.key}
+                                  type="button"
+                                  onClick={() =>
+                                    setCampaignLogFilter((prev) => ({
+                                      ...prev,
+                                      [camp.id]: prev[camp.id] === f.key ? "ALL" : f.key,
+                                    }))
+                                  }
+                                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all ${
+                                    activeFilter === f.key
+                                      ? "bg-slate-900 text-white border-slate-900 shadow-2xs"
+                                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {f.label}
+                                </button>
                               ))}
-                            </tbody>
-                          </table>
+                            </div>
+                          </div>
+
+                          <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                  <th className="py-2.5 px-3">Lead Name</th>
+                                  <th className="py-2.5 px-3">Email Address</th>
+                                  <th className="py-2.5 px-3">Engagement Status</th>
+                                  <th className="py-2.5 px-3">Activity & Details</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {filteredLogs.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="py-6 text-center text-slate-400">
+                                      No recipients match the selected filter &ldquo;{activeFilter}&rdquo;.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  filteredLogs.map((log, idx) => (
+                                    <tr key={`${log.leadId}_${idx}`} className="hover:bg-slate-50/50">
+                                      <td className="py-2.5 px-3 font-semibold text-slate-900">
+                                        <div>{log.leadName}</div>
+                                        {log.companyName && (
+                                          <div className="text-[10px] text-slate-400 font-normal">{log.companyName}</div>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono text-slate-600">
+                                        {log.email}
+                                      </td>
+                                      <td className="py-2.5 px-3">
+                                        {log.status === "CLICKED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                                            <MousePointerClick className="w-3 h-3" /> Clicked {log.clickCount && log.clickCount > 1 ? `(${log.clickCount}x)` : ""}
+                                          </span>
+                                        ) : log.status === "OPENED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+                                            <Eye className="w-3 h-3" /> Opened {log.openCount && log.openCount > 1 ? `(${log.openCount}x)` : ""}
+                                          </span>
+                                        ) : log.status === "BOUNCED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                            <AlertTriangle className="w-3 h-3" /> Bounced
+                                          </span>
+                                        ) : log.status === "UNSUBSCRIBED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                            <UserX className="w-3 h-3" /> Unsubscribed
+                                          </span>
+                                        ) : log.status === "SENT" || log.status === "DELIVERED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                            <CheckCircle2 className="w-3 h-3" /> Delivered
+                                          </span>
+                                        ) : log.status === "SKIPPED" ? (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                                            <AlertTriangle className="w-3 h-3" /> Skipped
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                                            <XCircle className="w-3 h-3" /> Failed
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-slate-500 text-[11px]">
+                                        {log.status === "CLICKED" ? (
+                                          <div className="space-y-0.5">
+                                            <div className="font-semibold text-slate-800">
+                                              {log.clickedAt ? `Clicked ${new Date(log.clickedAt).toLocaleTimeString()}` : "Clicked"}
+                                            </div>
+                                            {log.lastClickedUrl && (
+                                              <div className="text-[10px] text-purple-600 font-mono truncate max-w-xs" title={log.lastClickedUrl}>
+                                                {log.lastClickedUrl}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : log.status === "OPENED" ? (
+                                          <div className="font-semibold text-slate-800">
+                                            {log.openedAt ? `Opened ${new Date(log.openedAt).toLocaleTimeString()}` : "Opened"}
+                                          </div>
+                                        ) : log.status === "BOUNCED" ? (
+                                          <span className="text-rose-600 font-medium">
+                                            {log.bounceReason || log.error || "Delivery bounced / rejected"}
+                                          </span>
+                                        ) : log.status === "UNSUBSCRIBED" ? (
+                                          <span className="text-amber-600 font-medium">
+                                            {log.unsubscribedAt ? `Unsubscribed ${new Date(log.unsubscribedAt).toLocaleTimeString()}` : "Unsubscribed"}
+                                          </span>
+                                        ) : log.error ? (
+                                          <span className="text-red-600 font-medium">{log.error}</span>
+                                        ) : log.sentAt ? (
+                                          new Date(log.sentAt).toLocaleTimeString()
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })

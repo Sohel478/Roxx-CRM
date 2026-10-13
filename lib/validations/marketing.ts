@@ -54,14 +54,32 @@ export const sendBatchEmailSchema = z.object({
 
 export type SendBatchEmailInput = z.infer<typeof sendBatchEmailSchema>;
 
+export type RecipientStatus =
+  | "SENT"
+  | "DELIVERED"
+  | "OPENED"
+  | "CLICKED"
+  | "BOUNCED"
+  | "UNSUBSCRIBED"
+  | "FAILED"
+  | "SKIPPED";
+
 export interface RecipientLogItem {
   leadId: string;
   leadName: string;
   email: string;
   companyName?: string | null;
-  status: "SENT" | "FAILED" | "SKIPPED";
+  status: RecipientStatus;
   error?: string | null;
   sentAt?: string | null;
+  openedAt?: string | null;
+  openCount?: number;
+  clickedAt?: string | null;
+  clickCount?: number;
+  lastClickedUrl?: string | null;
+  bouncedAt?: string | null;
+  bounceReason?: string | null;
+  unsubscribedAt?: string | null;
 }
 
 export interface MarketingCampaignItem {
@@ -77,6 +95,10 @@ export interface MarketingCampaignItem {
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
+  openedCount?: number;
+  clickedCount?: number;
+  bouncedCount?: number;
+  unsubscribedCount?: number;
   recipientLogs: RecipientLogItem[];
   sentAt?: string | null;
   createdAt: string;
@@ -104,6 +126,10 @@ export interface MarketingBatchItem {
     status: string;
     sentCount: number;
     failedCount: number;
+    openedCount?: number;
+    clickedCount?: number;
+    bouncedCount?: number;
+    unsubscribedCount?: number;
     totalRecipients: number;
   } | null;
 }

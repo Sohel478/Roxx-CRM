@@ -23,6 +23,7 @@ import { getLeadDiscoveryAction } from "@/actions/lead-discovery";
 import { decryptSecret } from "@/lib/crypto/encryption";
 import { getPersistedAiConfig, persistAiConfig } from "@/lib/db/file-storage";
 import * as mailer from "@/lib/email/mailer";
+import { isEmailSuppressed, suppressEmail } from "@/lib/email/tracking";
 import {
   generatePersonalizedLeadEmail,
   buildLeadResearchBrief,
@@ -667,6 +668,12 @@ export async function processAiQueueInternal(
 
       // 1. Initial email dispatch
       if (item.status === "SCHEDULED" && scheduledTimeMs <= now) {
+        if (isEmailSuppressed(item.leadEmail)) {
+          item.status = "COMPLETED";
+          item.errorMessage = "Recipient unsubscribed or suppressed";
+          continue;
+        }
+
         let sentSuccess = false;
         let errorMessage: string | null = null;
 
@@ -687,6 +694,10 @@ export async function processAiQueueInternal(
               body: item.initialBody,
               isMarketing: true,
               unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
+              tracking: {
+                campaignId: campaign.id,
+                leadId: item.leadId,
+              },
             }
           );
 
@@ -694,6 +705,10 @@ export async function processAiQueueInternal(
             sentSuccess = true;
           } else {
             errorMessage = sendRes.error || "SMTP send failed";
+            if (sendRes.isBounce) {
+              suppressEmail(item.leadEmail);
+              errorMessage = `Delivery bounced: ${sendRes.bounceReason || sendRes.error}`;
+            }
           }
         } else {
           // Simulated send if live SMTP not configured
@@ -801,6 +816,12 @@ export async function processAiQueueInternal(
 
         // If due and not replied, send Step 2 follow-up
         if (followUpTimeMs <= now && item.followUpSubject && item.followUpBody) {
+          if (isEmailSuppressed(item.leadEmail)) {
+            item.status = "COMPLETED";
+            item.errorMessage = "Recipient unsubscribed or suppressed";
+            continue;
+          }
+
           let sentFollowUp = false;
           if (smtpConfig && smtpConfig.host && smtpConfig.username && password) {
             const sendRes = await mailer.sendSmtpEmail(
@@ -819,9 +840,20 @@ export async function processAiQueueInternal(
                 body: item.followUpBody,
                 isMarketing: true,
                 unsubscribeEmail: smtpConfig.fromEmail || smtpConfig.username,
+                tracking: {
+                  campaignId: campaign.id,
+                  leadId: item.leadId,
+                },
               }
             );
-            if (sendRes.success) sentFollowUp = true;
+            if (sendRes.success) {
+              sentFollowUp = true;
+            } else if (sendRes.isBounce) {
+              suppressEmail(item.leadEmail);
+              item.status = "FAILED";
+              item.errorMessage = `Follow-up bounced: ${sendRes.bounceReason || sendRes.error}`;
+              continue;
+            }
           } else {
             sentFollowUp = true;
           }

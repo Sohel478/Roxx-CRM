@@ -26,6 +26,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/api/v1/health") ||
     pathname.startsWith("/api/v1/billing/webhook") ||
+    pathname.startsWith("/api/v1/email/") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 

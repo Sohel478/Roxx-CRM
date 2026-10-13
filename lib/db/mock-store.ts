@@ -945,9 +945,25 @@ export interface MockRecipientLog {
   leadName: string;
   email: string;
   companyName?: string | null;
-  status: "SENT" | "FAILED" | "SKIPPED";
+  status:
+    | "SENT"
+    | "DELIVERED"
+    | "OPENED"
+    | "CLICKED"
+    | "BOUNCED"
+    | "UNSUBSCRIBED"
+    | "FAILED"
+    | "SKIPPED";
   error?: string | null;
   sentAt?: string | null;
+  openedAt?: string | null;
+  openCount?: number;
+  clickedAt?: string | null;
+  clickCount?: number;
+  lastClickedUrl?: string | null;
+  bouncedAt?: string | null;
+  bounceReason?: string | null;
+  unsubscribedAt?: string | null;
 }
 
 export interface MockMarketingCampaign {
@@ -963,6 +979,10 @@ export interface MockMarketingCampaign {
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
+  openedCount?: number;
+  clickedCount?: number;
+  bouncedCount?: number;
+  unsubscribedCount?: number;
   recipientLogs: MockRecipientLog[];
   sentAt?: string | null;
   createdAt: string;
@@ -1057,3 +1077,4 @@ export interface MockAiConfig {
 export const mockAiCampaignsStore: MockAiCampaign[] = [];
 export const mockAiConfigsStore: Record<string, MockAiConfig> = {};
 export const mockLeadDiscoveriesStore: Record<string, import("@/lib/validations/lead-discovery").LeadDiscoveryData> = {};
+export const mockSuppressedEmailsStore: Set<string> = new Set<string>();

@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import { injectTrackingIntoHtml, getAppBaseUrl } from "./tracking";
 
 export interface SmtpConnectionOptions {
   host: string;
@@ -21,6 +22,19 @@ export interface SendMailOptions {
   references?: string;
   isMarketing?: boolean;
   unsubscribeEmail?: string;
+  tracking?: {
+    campaignId: string;
+    leadId: string;
+    trackingBaseUrl?: string;
+  };
+}
+
+export interface SendSmtpResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  isBounce?: boolean;
+  bounceReason?: string;
 }
 
 /**
@@ -100,7 +114,7 @@ export async function verifySmtp(
 export async function sendSmtpEmail(
   connection: SmtpConnectionOptions,
   mail: SendMailOptions
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<SendSmtpResult> {
   if (
     connection.host === "localhost" ||
     connection.host === "127.0.0.1" ||
@@ -130,9 +144,19 @@ export async function sendSmtpEmail(
       .map((p) => `<div style="margin-bottom: 12px;">${p.replace(/\n/g, "<br/>")}</div>`)
       .join("");
 
-    const naturalHtml = `<div dir="ltr" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222222;">
+    let naturalHtml = `<div dir="ltr" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222222;">
 ${paragraphsHtml}
 </div>`;
+
+    if (mail.tracking) {
+      naturalHtml = injectTrackingIntoHtml(naturalHtml, {
+        campaignId: mail.tracking.campaignId,
+        leadId: mail.tracking.leadId,
+        recipientEmail: mail.to,
+        baseUrl: mail.tracking.trackingBaseUrl,
+        isMarketing: mail.isMarketing,
+      });
+    }
 
     // Only set replyTo if explicitly provided and distinct from From address
     // (Redundant replyTo equal to from triggers SpamAssassin REPLYTO_SAME_AS_FROM)
@@ -150,7 +174,14 @@ ${paragraphsHtml}
     // If sending a bulk marketing campaign, attach RFC 8058 One-Click Unsubscribe headers
     if (mail.isMarketing) {
       const unsubEmail = mail.unsubscribeEmail || senderEmail;
-      headers["List-Unsubscribe"] = `<mailto:${unsubEmail}?subject=unsubscribe>`;
+      const baseUrl = (mail.tracking?.trackingBaseUrl || getAppBaseUrl()).replace(/\/$/, "");
+      const cid = mail.tracking?.campaignId || "unsub";
+      const lid = mail.tracking?.leadId || "unsub";
+      const httpUnsubUrl = `${baseUrl}/api/v1/email/unsubscribe?cid=${encodeURIComponent(
+        cid
+      )}&lid=${encodeURIComponent(lid)}&email=${encodeURIComponent(mail.to)}`;
+
+      headers["List-Unsubscribe"] = `<${httpUnsubUrl}>, <mailto:${unsubEmail}?subject=unsubscribe>`;
       headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
       headers["Precedence"] = "bulk";
     }
@@ -176,12 +207,27 @@ ${paragraphsHtml}
     };
   } catch (error: unknown) {
     console.error("Nodemailer send error:", error);
-    const err = error as { response?: string; message?: string };
+    const err = error as {
+      responseCode?: number;
+      response?: string;
+      message?: string;
+      code?: string;
+    };
     const errorMessage =
       err?.response || err?.message || "Failed to send email via SMTP.";
+    const responseCode = err?.responseCode || 0;
+
+    const isBounce =
+      (responseCode >= 500 && responseCode < 600) ||
+      /550|551|552|553|554|mailbox unavailable|user not found|recipient address rejected|no such user|invalid recipient|domain not found|unrouteable address|does not exist/i.test(
+        errorMessage
+      );
+
     return {
       success: false,
       error: errorMessage,
+      isBounce,
+      bounceReason: isBounce ? errorMessage : undefined,
     };
   }
 }

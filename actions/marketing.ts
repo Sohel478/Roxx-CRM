@@ -21,6 +21,11 @@ import { applyMergeTags } from "@/lib/templates/email-templates";
 import { logActivityAction } from "@/actions/activities";
 import { resolveCleanCompanyName } from "@/lib/ai/lead-researcher";
 import {
+  isEmailSuppressed,
+  suppressEmail,
+  calculateCampaignKpis,
+} from "@/lib/email/tracking";
+import {
   createMarketingBatchSchema,
   CreateMarketingBatchInput,
   updateMarketingBatchSchema,
@@ -126,7 +131,7 @@ export async function getMarketingBatchesAction(): Promise<{
 
       batches = dbBatches.map((b) => {
         const leadIds = Array.isArray(b.leadIds) ? (b.leadIds as string[]) : [];
-        let lastCampaign = b.campaigns[0]
+        let lastCampaign: MarketingBatchItem["lastCampaign"] = b.campaigns[0]
           ? {
               ...b.campaigns[0],
               sentAt: b.campaigns[0].sentAt ? b.campaigns[0].sentAt.toISOString() : null,
@@ -138,6 +143,7 @@ export async function getMarketingBatchesAction(): Promise<{
             .filter((c) => c.batchId === b.id)
             .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())[0];
           if (mockC) {
+            const kpis = calculateCampaignKpis(mockC.recipientLogs || []);
             lastCampaign = {
               id: mockC.id,
               subject: mockC.subject,
@@ -145,6 +151,10 @@ export async function getMarketingBatchesAction(): Promise<{
               status: mockC.status,
               sentCount: mockC.sentCount,
               failedCount: mockC.failedCount,
+              openedCount: mockC.openedCount ?? kpis.openedCount,
+              clickedCount: mockC.clickedCount ?? kpis.clickedCount,
+              bouncedCount: mockC.bouncedCount ?? kpis.bouncedCount,
+              unsubscribedCount: mockC.unsubscribedCount ?? kpis.unsubscribedCount,
               totalRecipients: mockC.totalRecipients,
             };
           } else {
@@ -200,7 +210,7 @@ export async function getMarketingBatchesAction(): Promise<{
           .filter((c) => c.batchId === b.id)
           .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
 
-        let last = campaigns[0]
+        let last: MarketingBatchItem["lastCampaign"] = campaigns[0]
           ? {
               id: campaigns[0].id,
               subject: campaigns[0].subject,
@@ -208,6 +218,10 @@ export async function getMarketingBatchesAction(): Promise<{
               status: campaigns[0].status,
               sentCount: campaigns[0].sentCount,
               failedCount: campaigns[0].failedCount,
+              openedCount: campaigns[0].openedCount,
+              clickedCount: campaigns[0].clickedCount,
+              bouncedCount: campaigns[0].bouncedCount,
+              unsubscribedCount: campaigns[0].unsubscribedCount,
               totalRecipients: campaigns[0].totalRecipients,
             }
           : null;
@@ -452,24 +466,32 @@ export async function getMarketingBatchByIdAction(batchId: string): Promise<{
       };
     });
 
-    const formattedCampaigns: MarketingCampaignItem[] = campaignRecords.map((c: any) => ({
-      id: c.id,
-      batchId: c.batchId,
-      organizationId: c.organizationId,
-      senderId: c.senderId,
-      senderName: c.senderName || "Sales Rep",
-      senderEmail: c.senderEmail || null,
-      subject: c.subject,
-      body: c.body,
-      status: (c.status === "COMPLETED" || c.status === "completed" || c.status === "SENT") ? "SENT" : (c.status === "ACTIVE" || c.status === "active" || c.status === "SENDING" || c.status === "sending") ? "SENDING" : (c.status === "FAILED" || c.status === "failed") ? "FAILED" : "DRAFT",
-      totalRecipients: c.totalRecipients,
-      sentCount: c.sentCount,
-      failedCount: c.failedCount,
-      recipientLogs: Array.isArray(c.recipientLogs) ? c.recipientLogs : [],
-      sentAt: c.sentAt ? (typeof c.sentAt === "string" ? c.sentAt : c.sentAt.toISOString()) : null,
-      createdAt: typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
-      updatedAt: typeof c.updatedAt === "string" ? c.updatedAt : c.updatedAt.toISOString(),
-    }));
+    const formattedCampaigns: MarketingCampaignItem[] = campaignRecords.map((c: any) => {
+      const logs = Array.isArray(c.recipientLogs) ? c.recipientLogs : [];
+      const kpis = calculateCampaignKpis(logs);
+      return {
+        id: c.id,
+        batchId: c.batchId,
+        organizationId: c.organizationId,
+        senderId: c.senderId,
+        senderName: c.senderName || "Sales Rep",
+        senderEmail: c.senderEmail || null,
+        subject: c.subject,
+        body: c.body,
+        status: (c.status === "COMPLETED" || c.status === "completed" || c.status === "SENT") ? "SENT" : (c.status === "ACTIVE" || c.status === "active" || c.status === "SENDING" || c.status === "sending") ? "SENDING" : (c.status === "FAILED" || c.status === "failed") ? "FAILED" : "DRAFT",
+        totalRecipients: c.totalRecipients,
+        sentCount: c.sentCount,
+        failedCount: c.failedCount,
+        openedCount: c.openedCount ?? kpis.openedCount,
+        clickedCount: c.clickedCount ?? kpis.clickedCount,
+        bouncedCount: c.bouncedCount ?? kpis.bouncedCount,
+        unsubscribedCount: c.unsubscribedCount ?? kpis.unsubscribedCount,
+        recipientLogs: logs,
+        sentAt: c.sentAt ? (typeof c.sentAt === "string" ? c.sentAt : c.sentAt.toISOString()) : null,
+        createdAt: typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
+        updatedAt: typeof c.updatedAt === "string" ? c.updatedAt : c.updatedAt.toISOString(),
+      };
+    });
 
     const assignedName = batchRecord.assignedToName || batchRecord.ownerName || (session.id === batchRecord.ownerId ? session.name : "Sales Rep");
     const assignedEmail = batchRecord.assignedToEmail || (session.id === batchRecord.ownerId ? session.email : null);
@@ -1075,6 +1097,21 @@ export async function sendBatchEmailAction(
         continue;
       }
 
+      // Check if recipient has unsubscribed or bounced previously
+      if (isEmailSuppressed(recipientEmail)) {
+        recipientLogs.push({
+          leadId: lead.id,
+          leadName,
+          email: recipientEmail,
+          companyName: lead.companyName || null,
+          status: "SKIPPED",
+          error: "Recipient unsubscribed or suppressed from future communications",
+          sentAt: null,
+        });
+        failedCount++;
+        continue;
+      }
+
       // Personalize subject and body using merge tags
       const personalizedSubject = applyMergeTags(subject, {
         firstName: resolvedFirstName || "there",
@@ -1110,6 +1147,10 @@ export async function sendBatchEmailAction(
             body: personalizedBody,
             isMarketing: true,
             unsubscribeEmail: fromSenderEmail,
+            tracking: {
+              campaignId,
+              leadId: lead.id,
+            },
           }
         );
 
@@ -1137,6 +1178,20 @@ export async function sendBatchEmailAction(
           } catch (logErr) {
             console.warn(`Failed to log activity for lead ${lead.id}:`, logErr);
           }
+        } else if (sendResult.isBounce) {
+          failedCount++;
+          recipientLogs.push({
+            leadId: lead.id,
+            leadName,
+            email: recipientEmail,
+            companyName: lead.companyName || null,
+            status: "BOUNCED",
+            error: sendResult.error || "Delivery bounced / mailbox unavailable",
+            bounceReason: sendResult.bounceReason || sendResult.error || "Permanent SMTP reject",
+            bouncedAt: new Date().toISOString(),
+            sentAt: null,
+          });
+          suppressEmail(recipientEmail);
         } else {
           failedCount++;
           recipientLogs.push({
@@ -1166,6 +1221,8 @@ export async function sendBatchEmailAction(
     const campaignStatus =
       sentCount === 0 && failedCount > 0 ? "FAILED" : "SENT";
 
+    const kpis = calculateCampaignKpis(recipientLogs);
+
     const campaignData: MarketingCampaignItem = {
       id: campaignId,
       batchId,
@@ -1179,6 +1236,10 @@ export async function sendBatchEmailAction(
       totalRecipients: leads.length,
       sentCount,
       failedCount,
+      openedCount: kpis.openedCount,
+      clickedCount: kpis.clickedCount,
+      bouncedCount: kpis.bouncedCount,
+      unsubscribedCount: kpis.unsubscribedCount,
       recipientLogs,
       sentAt: now.toISOString(),
       createdAt: now.toISOString(),
