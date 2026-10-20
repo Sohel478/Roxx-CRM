@@ -32,6 +32,7 @@ import {
   Send,
   Clock,
   Minus,
+  Globe,
 } from "lucide-react";
 import type { LeadItem } from "@/lib/validations/leads";
 import { Badge } from "@/components/ui/badge";
@@ -794,6 +795,18 @@ export function LeadTable({
                             <p className="font-medium text-slate-800 truncate" title={lead.companyName || "Independent"}>
                               {lead.companyName || "Independent"}
                             </p>
+                            {lead.website && (
+                              <a
+                                href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                                title={`Company Website: ${lead.website}`}
+                              >
+                                <span className="sr-only">Company Website</span>
+                                <Globe className="w-3 h-3 text-blue-500" />
+                              </a>
+                            )}
                             {lead.companyLinkedin && (
                               <a
                                 href={lead.companyLinkedin}

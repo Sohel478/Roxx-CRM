@@ -80,6 +80,7 @@ export interface MockLead {
   phone: string | null;
   companyName: string | null;
   jobTitle: string | null;
+  website?: string | null;
   companyLinkedin?: string | null;
   customerLinkedin?: string | null;
   source: string;

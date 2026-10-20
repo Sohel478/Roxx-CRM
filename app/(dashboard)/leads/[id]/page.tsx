@@ -68,6 +68,7 @@ interface LeadDetailData {
   phone?: string | null;
   companyName?: string | null;
   jobTitle?: string | null;
+  website?: string | null;
   companyLinkedin?: string | null;
   customerLinkedin?: string | null;
   source: string;
@@ -287,8 +288,10 @@ export default function LeadDetailPage() {
     : 0;
 
   // Extract scraped social links & website (prefers explicit lead properties with notes fallback)
-  const websiteMatch = lead.description?.match(/Website:\s*([^\s\n\r]+)/i);
-  const websiteUrl = websiteMatch ? websiteMatch[1] : null;
+  const websiteUrl =
+    lead.website ||
+    lead.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] ||
+    null;
 
   const companyLinkedinUrl =
     lead.companyLinkedin ||

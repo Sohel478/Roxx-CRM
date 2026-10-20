@@ -181,4 +181,20 @@ describe("Lead Validation & Duplicate Rules", () => {
     expect(na.length).toBe(1);
     expect(na[0].id).toBe("3");
   });
+
+  it("validates and accepts company website URL in lead schema", () => {
+    const leadWithWebsite = {
+      firstName: "Mohsin",
+      lastName: "S",
+      companyName: "Bellawoman",
+      website: "https://bellawoman.com",
+      jobTitle: "CEO",
+    };
+
+    const res = leadSchema.safeParse(leadWithWebsite);
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.website).toBe("https://bellawoman.com");
+    }
+  });
 });

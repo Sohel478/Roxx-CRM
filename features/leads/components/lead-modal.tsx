@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { AlertTriangle, Flame, Snowflake, Zap, UserCheck } from "lucide-react";
+import { AlertTriangle, Flame, Snowflake, Zap, UserCheck, Globe } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ interface LeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null }) | null;
+  leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null; website?: string | null }) | null;
   isTechfluxOrg?: boolean;
 }
 
@@ -34,6 +34,13 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     roleUpper === "MANAGER" ||
     Boolean(currentUser?.isSuperAdmin);
 
+  const extractWebsite = (l?: (LeadFormData & { id: string; ownerId?: string | null; website?: string | null }) | null) => {
+    if (!l) return "";
+    if (l.website) return l.website;
+    const match = l.description?.match(/Website:\s*([^\s\n\r]+)/i);
+    return match ? match[1] : "";
+  };
+
   const [formData, setFormData] = useState<LeadFormData>({
     firstName: leadToEdit?.firstName || "",
     lastName: leadToEdit?.lastName || "",
@@ -42,6 +49,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     phone: leadToEdit?.phone || "",
     companyName: leadToEdit?.companyName || "",
     jobTitle: leadToEdit?.jobTitle || "",
+    website: extractWebsite(leadToEdit),
     companyLinkedin: leadToEdit?.companyLinkedin || "",
     customerLinkedin: leadToEdit?.customerLinkedin || "",
     source: leadToEdit?.source || "Website",
@@ -91,6 +99,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         phone: leadToEdit.phone || "",
         companyName: leadToEdit.companyName || "",
         jobTitle: leadToEdit.jobTitle || "",
+        website: extractWebsite(leadToEdit),
         companyLinkedin: leadToEdit.companyLinkedin || "",
         customerLinkedin: leadToEdit.customerLinkedin || "",
         source: leadToEdit.source || "Website",
@@ -111,6 +120,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         phone: "",
         companyName: "",
         jobTitle: "",
+        website: "",
         companyLinkedin: "",
         customerLinkedin: "",
         source: "Website",
@@ -261,6 +271,19 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
               placeholder="e.g. Cyberdyne Systems"
               value={formData.companyName || ""}
               onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <Globe className="w-3.5 h-3.5 text-slate-400" />
+              <span>Company Website URL</span>
+            </label>
+            <Input
+              type="url"
+              placeholder="https://company.com"
+              value={formData.website || ""}
+              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
             />
           </div>
 

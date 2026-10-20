@@ -243,6 +243,7 @@ export async function getLeadsAction(params: {
       phone: l.phone,
       companyName: l.companyName,
       jobTitle: l.jobTitle,
+      website: (l as any).website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
       companyLinkedin: l.companyLinkedin || null,
       customerLinkedin: l.customerLinkedin || null,
       source: l.source,
@@ -340,6 +341,7 @@ export async function getLeadsAction(params: {
         isTechfluxOrg,
         items: paginated.map((l) => ({
           ...l,
+          website: l.website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
           emailStatus: resolveLeadEmailStatus(l),
         })),
         meta: {
@@ -423,6 +425,7 @@ export async function getLeadByIdAction(id: string) {
           success: true,
           data: {
             ...mock,
+            website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
             emailStatus: resolveLeadEmailStatus(mock),
             convertedInfo,
             owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
@@ -488,6 +491,7 @@ export async function getLeadByIdAction(id: string) {
       success: true,
       data: {
         ...lead,
+        website: (lead as any).website || lead.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
         emailStatus: resolveLeadEmailStatus(lead),
         convertedInfo,
         estimatedValue: Number(lead.estimatedValue || 0),
@@ -532,6 +536,7 @@ export async function getLeadByIdAction(id: string) {
         success: true,
         data: {
           ...mock,
+          website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
           emailStatus: resolveLeadEmailStatus(mock),
           convertedInfo,
           owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
@@ -578,6 +583,7 @@ export async function createLeadAction(data: LeadFormData) {
     phone,
     companyName,
     jobTitle,
+    website,
     companyLinkedin,
     customerLinkedin,
     source,
@@ -593,6 +599,9 @@ export async function createLeadAction(data: LeadFormData) {
 
   const finalOwnerId = isAdminOrManager && ownerId ? ownerId : userId;
   const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
+  const cleanWebsite = website?.trim()
+    ? (website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`)
+    : null;
 
   try {
     const created = await prisma.lead.create({
@@ -606,6 +615,7 @@ export async function createLeadAction(data: LeadFormData) {
         phone: phone || null,
         companyName: companyName || null,
         jobTitle: jobTitle || null,
+        website: cleanWebsite,
         companyLinkedin: companyLinkedin || null,
         customerLinkedin: customerLinkedin || null,
         source,
@@ -662,6 +672,7 @@ export async function createLeadAction(data: LeadFormData) {
       phone: phone || null,
       companyName: companyName || null,
       jobTitle: jobTitle || null,
+      website: cleanWebsite,
       companyLinkedin: companyLinkedin || null,
       customerLinkedin: customerLinkedin || null,
       source,
@@ -715,6 +726,11 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
     if (data.phone !== undefined) updatePayload.phone = data.phone?.trim() || null;
     if (data.companyName !== undefined) updatePayload.companyName = data.companyName?.trim() || null;
     if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle?.trim() || null;
+    if (data.website !== undefined) {
+      updatePayload.website = data.website?.trim()
+        ? (data.website.trim().startsWith("http") ? data.website.trim() : `https://${data.website.trim()}`)
+        : null;
+    }
     if (data.companyLinkedin !== undefined) updatePayload.companyLinkedin = data.companyLinkedin?.trim() || null;
     if (data.customerLinkedin !== undefined) updatePayload.customerLinkedin = data.customerLinkedin?.trim() || null;
     if (data.source !== undefined) updatePayload.source = data.source;
