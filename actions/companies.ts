@@ -554,7 +554,7 @@ export async function assignCompanyAction(id: string, ownerId: string) {
     if (idx !== -1) {
       const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
       mockCompaniesStore[idx].ownerId = ownerId;
-      mockCompaniesStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
+      mockCompaniesStore[idx].ownerName = assignedUser ? assignedUser.name : (session.name || "Sales Rep");
       revalidatePath("/companies");
       revalidatePath(`/companies/${id}`);
       return { success: true, data: mockCompaniesStore[idx] };

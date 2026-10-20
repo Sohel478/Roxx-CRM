@@ -189,6 +189,7 @@ const globalForMock = globalThis as unknown as {
   mockOpportunitiesStore?: MockOpportunity[];
   mockTasksStore?: MockTask[];
   mockActivitiesStore?: MockActivity[];
+  mockUsersStore?: MockUser[];
 };
 
 export const mockCompaniesStore: MockCompany[] =
@@ -549,9 +550,21 @@ export interface MockUser {
   passwordHash?: string;
 }
 
-export const mockUsersStore: MockUser[] = [
+const initialMockUsers: MockUser[] = [
   {
     id: "usr_sohel",
+    organizationId: "platform-system-org",
+    name: "Sohel Jatu",
+    email: "sohel@techflux.in",
+    role: "ADMIN",
+    isActive: true,
+    isSuperAdmin: true,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 60 * 86400000).toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  },
+  {
+    id: "platform-owner-sohel",
     organizationId: "platform-system-org",
     name: "Sohel Jatu",
     email: "sohel@techflux.in",
@@ -611,6 +624,10 @@ export const mockUsersStore: MockUser[] = [
     lastLoginAt: new Date(Date.now() - 172800000).toISOString(),
   },
 ];
+
+export const mockUsersStore: MockUser[] =
+  globalForMock.mockUsersStore ??
+  (globalForMock.mockUsersStore = initialMockUsers);
 
 export interface MockOrgSettings {
   name: string;

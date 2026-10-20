@@ -735,7 +735,7 @@ export async function assignContactAction(id: string, ownerId: string) {
     if (idx !== -1) {
       const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
       mockContactsStore[idx].ownerId = ownerId;
-      mockContactsStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
+      mockContactsStore[idx].ownerName = assignedUser ? assignedUser.name : (session.name || "Sales Rep");
       revalidatePath("/contacts");
       revalidatePath(`/contacts/${id}`);
       return { success: true, data: mockContactsStore[idx] };
