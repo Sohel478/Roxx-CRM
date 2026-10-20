@@ -12,6 +12,7 @@ export const leadSchema = z.object({
   companyLinkedin: z.string().optional().nullable(),
   customerLinkedin: z.string().optional().nullable(),
   ownerId: z.string().optional().nullable(),
+  ownerName: z.string().optional().nullable(),
   source: z.string().default("Website"),
   sourceDetail: z.string().optional(),
   status: z.enum(["Scraped", "New", "Contacted", "Qualified", "Unqualified", "Nurture", "Converted", "Lost"]).default("New"),

@@ -7,6 +7,7 @@ import type {
   MockOpportunity,
   MockTask,
   MockActivity,
+  MockUser,
 } from "./mock-store";
 
 export const isTestEnv = Boolean(
@@ -24,6 +25,7 @@ const CONTACTS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-contacts.json
 const OPPORTUNITIES_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-opportunities.json") : "";
 const TASKS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-tasks.json") : "";
 const ACTIVITIES_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-activities.json") : "";
+const USERS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-users.json") : "";
 
 const globalForMockStorage = globalThis as unknown as {
   _mockLeadsMtime?: number;
@@ -32,6 +34,7 @@ const globalForMockStorage = globalThis as unknown as {
   _mockOpportunitiesMtime?: number;
   _mockTasksMtime?: number;
   _mockActivitiesMtime?: number;
+  _mockUsersMtime?: number;
 };
 
 function safeWriteJson(filePath: string, data: unknown): void {
@@ -403,5 +406,74 @@ export function storageSyncActivities(targetStore: MockActivity[]): void {
     }
   } catch (err) {
     console.warn("[storageSyncActivities] Disk sync error:", err);
+  }
+}
+
+// ----------------------------------------------------------------------------
+// USERS PERSISTENCE
+// ----------------------------------------------------------------------------
+
+export function loadInitialUsers(fallback: MockUser[]): MockUser[] {
+  if (isTestEnv || !USERS_FILE_PATH || !fs || !fs.existsSync) return [...fallback];
+  try {
+    if (fs.existsSync(USERS_FILE_PATH)) {
+      const raw = fs.readFileSync(USERS_FILE_PATH, "utf-8");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const stat = fs.statSync(USERS_FILE_PATH);
+          globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+          // Merge fallback users if any core users are missing
+          const existingIds = new Set(parsed.map((u: MockUser) => u.id));
+          const existingEmails = new Set(parsed.map((u: MockUser) => u.email.toLowerCase()));
+          const merged = [...parsed];
+          for (const fb of fallback) {
+            if (!existingIds.has(fb.id) && !existingEmails.has(fb.email.toLowerCase())) {
+              merged.push(fb);
+            }
+          }
+          return merged;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[loadInitialUsers] Disk read error:", err);
+  }
+  return [...fallback];
+}
+
+export function storagePersistUsers(users: MockUser[]): void {
+  if (isTestEnv || !USERS_FILE_PATH || !fs || !fs.existsSync) return;
+  safeWriteJson(USERS_FILE_PATH, users);
+  try {
+    if (fs.existsSync(USERS_FILE_PATH)) {
+      const stat = fs.statSync(USERS_FILE_PATH);
+      globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+    }
+  } catch {}
+}
+
+export function storageSyncUsers(targetStore: MockUser[]): void {
+  if (isTestEnv || !USERS_FILE_PATH || !fs || !fs.existsSync) return;
+  try {
+    if (fs.existsSync(USERS_FILE_PATH)) {
+      const stat = fs.statSync(USERS_FILE_PATH);
+      if (
+        !globalForMockStorage._mockUsersMtime ||
+        stat.mtimeMs > globalForMockStorage._mockUsersMtime
+      ) {
+        const raw = fs.readFileSync(USERS_FILE_PATH, "utf-8");
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (Array.isArray(data) && data.length > 0) {
+            targetStore.length = 0;
+            targetStore.push(...data);
+            globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[storageSyncUsers] Disk sync error:", err);
   }
 }

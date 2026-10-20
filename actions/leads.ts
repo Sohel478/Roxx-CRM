@@ -22,6 +22,7 @@ import {
   LeadItem,
   isTechfluxOrganization,
 } from "@/lib/validations/leads";
+import { resolveOwnerNameFromStore } from "@/lib/leads/owner-resolution";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
 import { createNotificationHelper } from "@/actions/notifications";
 
@@ -316,14 +317,19 @@ export async function getLeadsAction(params: {
           matchesOwner = Boolean(
             l.ownerId === session.id ||
             l.ownerId === userId ||
+            l.ownerId === "usr_sohel" ||
+            l.ownerId === "platform-owner-sohel" ||
             l.createdById === session.id ||
             l.createdById === userId ||
-            (l.ownerName && (l.ownerName === session.name || l.ownerName === "Alex Sales"))
+            (l.ownerName && l.ownerName === session.name)
           );
         } else if (params.ownerId === "UNASSIGNED") {
           matchesOwner = !l.ownerId;
         } else {
-          matchesOwner = l.ownerId === params.ownerId;
+          matchesOwner =
+            l.ownerId === params.ownerId ||
+            (params.ownerId === "usr_sheetal" && (l.ownerId === "usr_sheetal" || l.ownerName === "Sheetal D")) ||
+            (params.ownerId === "usr_alex" && (l.ownerId === "usr_alex" || l.ownerName === "Alex Sales"));
         }
       }
 
@@ -345,35 +351,10 @@ export async function getLeadsAction(params: {
         isTechfluxOrg,
         items: paginated.map((l) => {
           let resolvedOwnerName = l.ownerName;
-
-          // Normalize / cleanse stale legacy dummy values
-          if (
-            resolvedOwnerName === "Assigned User" ||
-            resolvedOwnerName === "Alex Sales" ||
-            l.ownerId === "usr_alex"
-          ) {
-            if (l.status === "Scraped" || !l.ownerId || l.ownerId === "usr_alex") {
-              resolvedOwnerName = null;
-            }
-          }
-
-          if (
-            l.ownerId === session.id ||
-            l.ownerId === userId ||
-            l.ownerId === "usr_sohel" ||
-            l.ownerId === "platform-owner-sohel" ||
-            (session.name && resolvedOwnerName === session.name)
-          ) {
-            resolvedOwnerName = session.name || "Sohel Jatu";
-          } else if (l.ownerId) {
-            const ownerUser = mockUsersStore.find(
-              (u) => u.id === l.ownerId || u.email.toLowerCase() === l.ownerId?.toLowerCase()
-            );
-            if (ownerUser) {
-              resolvedOwnerName = ownerUser.name;
-            } else if (resolvedOwnerName === "Assigned User" || resolvedOwnerName === "Alex Sales") {
-              resolvedOwnerName = null;
-            }
+          if (!l.ownerId) {
+            resolvedOwnerName = null;
+          } else {
+            resolvedOwnerName = resolveOwnerNameFromStore(l.ownerId, session, resolvedOwnerName);
           }
 
           return {
@@ -464,34 +445,9 @@ export async function getLeadByIdAction(id: string) {
           };
         }
 
-        let resolvedOwnerName = mock.ownerName;
-        if (
-          resolvedOwnerName === "Assigned User" ||
-          resolvedOwnerName === "Alex Sales" ||
-          mock.ownerId === "usr_alex"
-        ) {
-          if (mock.status === "Scraped" || !mock.ownerId || mock.ownerId === "usr_alex") {
-            resolvedOwnerName = null;
-          }
-        }
-
-        if (
-          mock.ownerId === session.id ||
-          mock.ownerId === userId ||
-          mock.ownerId === "usr_sohel" ||
-          mock.ownerId === "platform-owner-sohel"
-        ) {
-          resolvedOwnerName = session.name || "Sohel Jatu";
-        } else if (mock.ownerId) {
-          const ownerUser = mockUsersStore.find(
-            (u) => u.id === mock.ownerId || u.email.toLowerCase() === mock.ownerId?.toLowerCase()
-          );
-          if (ownerUser) {
-            resolvedOwnerName = ownerUser.name;
-          } else if (resolvedOwnerName === "Assigned User" || resolvedOwnerName === "Alex Sales") {
-            resolvedOwnerName = null;
-          }
-        }
+        const resolvedOwnerName = mock.ownerId
+          ? resolveOwnerNameFromStore(mock.ownerId, session, mock.ownerName)
+          : null;
 
         const ownerObj =
           mock.ownerId && resolvedOwnerName
@@ -613,34 +569,9 @@ export async function getLeadByIdAction(id: string) {
         };
       }
 
-      let resolvedOwnerName = mock.ownerName;
-      if (
-        resolvedOwnerName === "Assigned User" ||
-        resolvedOwnerName === "Alex Sales" ||
-        mock.ownerId === "usr_alex"
-      ) {
-        if (mock.status === "Scraped" || !mock.ownerId || mock.ownerId === "usr_alex") {
-          resolvedOwnerName = null;
-        }
-      }
-
-      if (
-        mock.ownerId === session.id ||
-        mock.ownerId === userId ||
-        mock.ownerId === "usr_sohel" ||
-        mock.ownerId === "platform-owner-sohel"
-      ) {
-        resolvedOwnerName = session.name || "Sohel Jatu";
-      } else if (mock.ownerId) {
-        const ownerUser = mockUsersStore.find(
-          (u) => u.id === mock.ownerId || u.email.toLowerCase() === mock.ownerId?.toLowerCase()
-        );
-        if (ownerUser) {
-          resolvedOwnerName = ownerUser.name;
-        } else if (resolvedOwnerName === "Assigned User" || resolvedOwnerName === "Alex Sales") {
-          resolvedOwnerName = null;
-        }
-      }
+      const resolvedOwnerName = mock.ownerId
+        ? resolveOwnerNameFromStore(mock.ownerId, session, mock.ownerName)
+        : null;
 
       const ownerObj =
         mock.ownerId && resolvedOwnerName
@@ -777,15 +708,11 @@ export async function createLeadAction(data: LeadFormData) {
   } catch (err) {
     console.error("[createLeadAction] Database error:", err);
     const fullName = `${firstName} ${lastName || ""}`.trim();
-    const isSelf = finalOwnerId === session.id || finalOwnerId === userId || finalOwnerId === "usr_sohel" || finalOwnerId === "platform-owner-sohel";
-    const assignedUser = finalOwnerId
-      ? mockUsersStore.find((u) => u.id === finalOwnerId || u.email.toLowerCase() === finalOwnerId?.toLowerCase())
-      : null;
-    const finalOwnerName = isUnassigned
-      ? null
-      : (isSelf
-          ? (session.name || "Sohel Jatu")
-          : (assignedUser ? assignedUser.name : (session.name || "Sohel Jatu")));
+    const finalOwnerName = resolveOwnerNameFromStore(
+      finalOwnerId,
+      session,
+      (data as any).ownerName
+    );
     const newLead: LeadItem & { organizationId: string; description?: string } = {
       id: `lead_${Date.now()}`,
       organizationId,
@@ -919,24 +846,14 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
         updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
       }
       if (updatePayload.ownerId !== undefined) {
-        const isSelf =
-          updatePayload.ownerId === session.id ||
-          updatePayload.ownerId === userId ||
-          updatePayload.ownerId === "usr_sohel" ||
-          updatePayload.ownerId === "platform-owner-sohel";
-        const assignedUser = updatePayload.ownerId
-          ? mockUsersStore.find(
-              (u) =>
-                u.id === updatePayload.ownerId ||
-                u.email.toLowerCase() === updatePayload.ownerId?.toLowerCase()
-            )
-          : null;
-        updated.ownerId = updatePayload.ownerId;
-        updated.ownerName = updatePayload.ownerId === null
-          ? null
-          : (isSelf
-              ? (session.name || "Sohel Jatu")
-              : (assignedUser ? assignedUser.name : (session.name || "Sohel Jatu")));
+        const targetOwnerId =
+          updatePayload.ownerId === "UNASSIGNED" ? null : updatePayload.ownerId;
+        updated.ownerId = targetOwnerId;
+        updated.ownerName = resolveOwnerNameFromStore(
+          targetOwnerId,
+          session,
+          (data as any).ownerName || updated.ownerName
+        );
       }
       mockLeadsStore[idx] = updated;
       persistMockLeads();
@@ -1112,24 +1029,12 @@ export async function assignLeadAction(id: string, ownerId: string) {
       idx = mockLeadsStore.findIndex((l) => l.id === id);
     }
     if (idx !== -1) {
-      const isSelf =
-        targetOwnerId === session.id ||
-        targetOwnerId === userId ||
-        targetOwnerId === "usr_sohel" ||
-        targetOwnerId === "platform-owner-sohel";
-      const assignedUser = targetOwnerId
-        ? mockUsersStore.find(
-            (u) =>
-              u.id === targetOwnerId ||
-              u.email.toLowerCase() === targetOwnerId?.toLowerCase()
-          )
-        : null;
       mockLeadsStore[idx].ownerId = targetOwnerId;
-      mockLeadsStore[idx].ownerName = isUnassign
-        ? null
-        : (isSelf
-            ? (session.name || "Sohel Jatu")
-            : (assignedUser ? assignedUser.name : (session.name || "Sohel Jatu")));
+      mockLeadsStore[idx].ownerName = resolveOwnerNameFromStore(
+        targetOwnerId,
+        session,
+        mockLeadsStore[idx].ownerName
+      );
       persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
@@ -1321,18 +1226,7 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
       ownerId === "usr_sohel" ||
       ownerId === "platform-owner-sohel";
     const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId || "platform-owner-sohel") : ownerId);
-    const assignedUser = targetOwnerId
-      ? mockUsersStore.find(
-          (u) =>
-            u.id === targetOwnerId ||
-            u.email.toLowerCase() === targetOwnerId?.toLowerCase()
-        )
-      : null;
-    const assignedName = isUnassign
-      ? null
-      : (isMe
-          ? (session.name || "Sohel Jatu")
-          : (assignedUser ? assignedUser.name : (session.name || "Sohel Jatu")));
+    const assignedName = resolveOwnerNameFromStore(targetOwnerId, session);
 
     let updatedCount = 0;
     try {

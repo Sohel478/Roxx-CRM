@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
-import { mockUsersStore, mockAuditLogsStore, mockOrganizationsStore, MockUser } from "@/lib/db/mock-store";
+import {
+  mockUsersStore,
+  mockAuditLogsStore,
+  mockOrganizationsStore,
+  MockUser,
+  persistMockUsers,
+  syncMockUsersFromDisk,
+} from "@/lib/db/mock-store";
 import { ensureDatabaseSchema } from "@/lib/db/migrate";
 import {
   userCreateSchema,
@@ -116,9 +123,13 @@ export async function getUsersAction(): Promise<{
     return { success: true, data: items };
   } catch {
     // Graceful fallback to centralized mock store
+    syncMockUsersFromDisk();
     const isSuperAdmin = Boolean(session.isSuperAdmin || session.email?.toLowerCase() === "sohel@techflux.in");
     let matchingUsers = mockUsersStore.filter((u) =>
-      isSuperAdmin || u.organizationId === session.organizationId || u.organizationId === "demo-org-123"
+      isSuperAdmin ||
+      u.organizationId === session.organizationId ||
+      u.organizationId === "demo-org-123" ||
+      u.organizationId === "platform-system-org"
     );
 
     // Ensure session user is always included in the team members list
@@ -287,6 +298,7 @@ export async function createUserAction(
     };
 
     mockUsersStore.unshift(mockUser);
+    persistMockUsers();
 
     // Add audit log
     mockAuditLogsStore.unshift({
@@ -412,6 +424,7 @@ export async function updateUserAction(
       role,
       isActive,
     };
+    persistMockUsers();
 
     mockAuditLogsStore.unshift({
       id: `audit_${Date.now()}`,
@@ -489,6 +502,7 @@ export async function toggleUserActiveAction(
     if (!user) return { success: false, error: "User not found" };
 
     user.isActive = !user.isActive;
+    persistMockUsers();
 
     mockAuditLogsStore.unshift({
       id: `audit_${Date.now()}`,

@@ -647,7 +647,7 @@ export default function LeadDetailPage() {
                 </span>
               </div>
               <select
-                value={lead.owner?.id || lead.ownerId || ""}
+                value={lead.owner?.id || lead.ownerId || "UNASSIGNED"}
                 disabled={isPending}
                 onChange={(e) => handleAssignLead(e.target.value)}
                 className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"

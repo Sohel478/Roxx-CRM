@@ -170,9 +170,18 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
 
     startTransition(async () => {
       try {
+        const targetOwnerId = formData.ownerId === "UNASSIGNED" ? null : (formData.ownerId || undefined);
+        const selectedMember = teamMembers.find((m) => m.id === targetOwnerId);
+        const resolvedName =
+          targetOwnerId === null
+            ? null
+            : selectedMember?.name ||
+              (targetOwnerId === currentUser?.id ? currentUser?.name : undefined);
+
         const payload: LeadFormData = {
           ...formData,
-          ownerId: formData.ownerId === "UNASSIGNED" ? null : (formData.ownerId || undefined),
+          ownerId: targetOwnerId,
+          ownerName: resolvedName,
         };
         let result;
         if (leadToEdit) {
@@ -423,7 +432,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
                 <span>Assign To (Sales Rep / Account Owner)</span>
               </label>
               <select
-                value={formData.ownerId ?? (currentUser?.id || "")}
+                value={formData.ownerId === null ? "UNASSIGNED" : (formData.ownerId || currentUser?.id || "")}
                 onChange={(e) => {
                   const val = e.target.value;
                   setFormData({

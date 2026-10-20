@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { leadSchema, isTechfluxOrganization } from "@/lib/validations/leads";
+import { resolveOwnerNameFromStore } from "@/lib/leads/owner-resolution";
 
 describe("Lead Validation & Duplicate Rules", () => {
   it("validates valid lead data", () => {
@@ -196,5 +197,36 @@ describe("Lead Validation & Duplicate Rules", () => {
     if (res.success) {
       expect(res.data.website).toBe("https://bellawoman.com");
     }
+  });
+
+  it("accurately resolves owner names for team members and never defaults to session owner", () => {
+    const session = {
+      id: "usr_sohel",
+      name: "Sohel Jatu",
+      email: "sohel@techflux.in",
+    };
+
+    // 1. Assign to Sheetal D -> Sheetal D (NEVER Sohel Jatu)
+    const sheetalName = resolveOwnerNameFromStore("usr_sheetal", session);
+    expect(sheetalName).toBe("Sheetal D");
+
+    // 2. Assign to Alex Sales -> Alex Sales
+    const alexName = resolveOwnerNameFromStore("usr_alex", session);
+    expect(alexName).toBe("Alex Sales");
+
+    // 3. Assign to Self / ME -> Sohel Jatu
+    const selfName = resolveOwnerNameFromStore("ME", session);
+    expect(selfName).toBe("Sohel Jatu");
+    const selfIdName = resolveOwnerNameFromStore("usr_sohel", session);
+    expect(selfIdName).toBe("Sohel Jatu");
+
+    // 4. Unassigned -> null
+    expect(resolveOwnerNameFromStore("UNASSIGNED", session)).toBe(null);
+    expect(resolveOwnerNameFromStore(null, session)).toBe(null);
+    expect(resolveOwnerNameFromStore(undefined, session)).toBe(null);
+
+    // 5. Preserves explicit team member fallbackName when provided
+    const customMember = resolveOwnerNameFromStore("usr_sheetal_custom", session, "Sheetal D");
+    expect(customMember).toBe("Sheetal D");
   });
 });

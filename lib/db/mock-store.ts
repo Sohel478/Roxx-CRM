@@ -20,6 +20,9 @@ import {
   loadInitialActivities,
   storagePersistActivities,
   storageSyncActivities,
+  loadInitialUsers,
+  storagePersistUsers,
+  storageSyncUsers,
 } from "./mock-storage";
 
 export interface MockCompany {
@@ -576,6 +579,18 @@ const initialMockUsers: MockUser[] = [
     lastLoginAt: new Date().toISOString(),
   },
   {
+    id: "usr_sheetal",
+    organizationId: "demo-org-123",
+    name: "Sheetal D",
+    email: "sheetal@roxx-crm.local",
+    role: "SALES_USER",
+    isActive: true,
+    isSuperAdmin: false,
+    avatarUrl: null,
+    createdAt: new Date(Date.now() - 25 * 86400000).toISOString(),
+    lastLoginAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
     id: "usr_admin",
     organizationId: "demo-org-123",
     name: "Admin User",
@@ -627,7 +642,17 @@ const initialMockUsers: MockUser[] = [
 
 export const mockUsersStore: MockUser[] =
   globalForMock.mockUsersStore ??
-  (globalForMock.mockUsersStore = initialMockUsers);
+  (globalForMock.mockUsersStore = isTestEnv
+    ? [...initialMockUsers]
+    : loadInitialUsers(initialMockUsers));
+
+export function persistMockUsers(): void {
+  storagePersistUsers(mockUsersStore);
+}
+
+export function syncMockUsersFromDisk(): void {
+  storageSyncUsers(mockUsersStore);
+}
 
 export interface MockOrgSettings {
   name: string;
