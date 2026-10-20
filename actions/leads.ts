@@ -13,6 +13,8 @@ import {
   mockDirectEmailsStore,
   mockMarketingCampaignsStore,
   mockActivitiesStore,
+  persistMockLeads,
+  syncMockLeadsFromDisk,
 } from "@/lib/db/mock-store";
 import {
   leadSchema,
@@ -110,6 +112,7 @@ export async function checkLeadDuplicateAction(params: {
       };
     }
   } catch {
+    syncMockLeadsFromDisk();
     // In-memory check
     const match = mockLeadsStore.find((l) => {
       if (params.excludeId && l.id === params.excludeId) return false;
@@ -280,6 +283,7 @@ export async function getLeadsAction(params: {
       },
     };
   } catch {
+    syncMockLeadsFromDisk();
     // In-memory fallback
     let filtered = mockLeadsStore.filter((l) => {
       if (!isAdminOrManager) {
@@ -392,7 +396,11 @@ export async function getLeadByIdAction(id: string) {
     });
 
     if (!lead) {
-      const mock = mockLeadsStore.find((l) => l.id === id);
+      let mock = mockLeadsStore.find((l) => l.id === id);
+      if (!mock) {
+        syncMockLeadsFromDisk();
+        mock = mockLeadsStore.find((l) => l.id === id);
+      }
       if (mock) {
         if (!isAdminOrManager) {
           const isOwner =
@@ -503,7 +511,11 @@ export async function getLeadByIdAction(id: string) {
       return { success: false, error: err.message };
     }
     console.error("[getLeadByIdAction] Database error:", err);
-    const mock = mockLeadsStore.find((l) => l.id === id);
+    let mock = mockLeadsStore.find((l) => l.id === id);
+    if (!mock) {
+      syncMockLeadsFromDisk();
+      mock = mockLeadsStore.find((l) => l.id === id);
+    }
     if (mock) {
       if (!isAdminOrManager) {
         const isOwner =
@@ -688,6 +700,7 @@ export async function createLeadAction(data: LeadFormData) {
       emailStatus: emailStatus || "NA",
     };
     mockLeadsStore.unshift(newLead);
+    persistMockLeads();
 
     createNotificationHelper({
       organizationId,
@@ -776,7 +789,11 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       console.warn("[updateLeadAction] Live database update error:", dbErr);
     }
 
-    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === id);
+    }
     if (idx !== -1) {
       const updated = {
         ...mockLeadsStore[idx],
@@ -791,6 +808,7 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
         updated.ownerName = assignedUser ? assignedUser.name : (updatePayload.ownerId ? "Assigned User" : null);
       }
       mockLeadsStore[idx] = updated;
+      persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
@@ -826,9 +844,14 @@ export async function updateLeadEmailStatusAction(
       });
     } catch {}
 
-    const idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    let idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    }
     if (idx !== -1) {
       mockLeadsStore[idx].emailStatus = emailStatus;
+      persistMockLeads();
     }
 
     revalidatePath("/leads");
@@ -878,9 +901,14 @@ export async function updateLeadStatusAction(id: string, newStatus: string) {
       console.warn("[updateLeadStatusAction] Live database update error:", dbErr);
     }
 
-    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === id);
+    }
     if (idx !== -1) {
       mockLeadsStore[idx].status = newStatus;
+      persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
@@ -943,11 +971,16 @@ export async function assignLeadAction(id: string, ownerId: string) {
     revalidatePath(`/leads/${id}`);
     return { success: true, data: updated };
   } catch {
-    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === id);
+    }
     if (idx !== -1) {
       const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
       mockLeadsStore[idx].ownerId = ownerId;
       mockLeadsStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
+      persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       return { success: true, data: mockLeadsStore[idx] };
@@ -1016,10 +1049,15 @@ export async function pickLeadAction(id: string) {
       console.warn("[pickLeadAction] Database error, falling back to mock store:", dbErr);
     }
 
-    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === id);
+    }
     if (idx !== -1) {
       mockLeadsStore[idx].status = "New";
       mockLeadsStore[idx].ownerName = session.name || "Current User";
+      persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
@@ -1067,9 +1105,14 @@ export async function deleteLeadAction(id: string) {
         });
       } catch {}
     } else {
-      const idx = mockLeadsStore.findIndex((l) => l.id === id);
+      let idx = mockLeadsStore.findIndex((l) => l.id === id);
+      if (idx === -1) {
+        syncMockLeadsFromDisk();
+        idx = mockLeadsStore.findIndex((l) => l.id === id);
+      }
       if (idx !== -1) {
         mockLeadsStore.splice(idx, 1);
+        persistMockLeads();
       }
     }
 
@@ -1078,9 +1121,14 @@ export async function deleteLeadAction(id: string) {
     return { success: true };
   } catch (err) {
     console.error("[deleteLeadAction] Error deleting lead:", err);
-    const idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    if (idx === -1) {
+      syncMockLeadsFromDisk();
+      idx = mockLeadsStore.findIndex((l) => l.id === id);
+    }
     if (idx !== -1) {
       mockLeadsStore.splice(idx, 1);
+      persistMockLeads();
     }
     revalidatePath("/leads");
     revalidatePath("/dashboard");
@@ -1147,6 +1195,7 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
     }
 
     // Update mockLeadsStore as well
+    syncMockLeadsFromDisk();
     const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
     const assignedName = assignedUser ? assignedUser.name : "Assigned User";
     let mockUpdatedCount = 0;
@@ -1156,6 +1205,9 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
         lead.ownerName = assignedName;
         mockUpdatedCount++;
       }
+    }
+    if (mockUpdatedCount > 0) {
+      persistMockLeads();
     }
 
     const finalCount = updatedCount || mockUpdatedCount;
@@ -1226,6 +1278,7 @@ export async function bulkDeleteLeadsAction(leadIds: string[]) {
     }
 
     // Mock store deletion
+    syncMockLeadsFromDisk();
     let mockDeletedCount = 0;
     for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
       const l = mockLeadsStore[i];
@@ -1235,6 +1288,9 @@ export async function bulkDeleteLeadsAction(leadIds: string[]) {
           mockDeletedCount++;
         }
       }
+    }
+    if (mockDeletedCount > 0) {
+      persistMockLeads();
     }
 
     const finalCount = deletedCount || mockDeletedCount;

@@ -10,6 +10,10 @@ import {
   mockContactsStore,
   mockOpportunitiesStore,
   mockAuditLogsStore,
+  persistMockLeads,
+  persistMockCompanies,
+  persistMockContacts,
+  persistMockOpportunities,
 } from "@/lib/db/mock-store";
 import {
   resetCrmDataSchema,
@@ -135,6 +139,7 @@ export async function resetCrmDataAction(
       );
       mockLeadsStore.length = 0;
       mockLeadsStore.push(...remainingLeads);
+      persistMockLeads();
     }
 
     if (entity === "contacts" || entity === "all") {
@@ -150,6 +155,7 @@ export async function resetCrmDataAction(
       );
       mockContactsStore.length = 0;
       mockContactsStore.push(...remainingContacts);
+      persistMockContacts();
     }
 
     if (entity === "companies" || entity === "all") {
@@ -169,12 +175,14 @@ export async function resetCrmDataAction(
       );
       mockCompaniesStore.length = 0;
       mockCompaniesStore.push(...remainingCompanies);
+      persistMockCompanies();
 
       const remainingOpps = mockOpportunitiesStore.filter(
         (o) => o.organizationId !== session.organizationId && o.organizationId !== organizationId
       );
       mockOpportunitiesStore.length = 0;
       mockOpportunitiesStore.push(...remainingOpps);
+      persistMockOpportunities();
 
       // Disassociate companies on remaining contacts for this tenant
       mockContactsStore.forEach((c) => {

@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockContactsStore, mockCompaniesStore, mockUsersStore } from "@/lib/db/mock-store";
+import {
+  mockContactsStore,
+  mockCompaniesStore,
+  mockUsersStore,
+  persistMockContacts,
+  syncMockContactsFromDisk,
+} from "@/lib/db/mock-store";
 import {
   contactSchema,
   ContactFormData,
@@ -108,6 +114,7 @@ export async function getContactsAction(params: {
       },
     };
   } catch {
+    syncMockContactsFromDisk();
     // In-memory fallback
     let filtered = mockContactsStore.filter((c) => {
       if (c.organizationId && c.organizationId !== organizationId) return false;
@@ -178,6 +185,7 @@ export async function getContactByIdAction(id: string) {
     });
 
     if (!contact) {
+      syncMockContactsFromDisk();
       const mock = mockContactsStore.find(
         (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
       );
@@ -212,6 +220,7 @@ export async function getContactByIdAction(id: string) {
       },
     };
   } catch {
+    syncMockContactsFromDisk();
     const mock = mockContactsStore.find(
       (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
     );
@@ -427,6 +436,7 @@ export async function createContactAction(data: ContactFormData) {
         ownerName: assignedOwnerName,
       };
       mockContactsStore.unshift(newContact);
+      persistMockContacts();
 
       createNotificationHelper({
         organizationId,
@@ -580,6 +590,7 @@ export async function updateContactAction(id: string, data: Partial<ContactFormD
         updated.ownerName = assignedUser ? assignedUser.name : null;
       }
       mockContactsStore[idx] = updated;
+      persistMockContacts();
       revalidatePath("/contacts");
       return { success: true, data: updated };
     }
@@ -643,6 +654,7 @@ export async function deleteContactAction(id: string) {
             return { success: false, error: "Unauthorized: You can only delete contacts assigned to you" };
           }
           mockContactsStore.splice(idx, 1);
+          persistMockContacts();
         }
       }
 
@@ -657,6 +669,7 @@ export async function deleteContactAction(id: string) {
           return { success: false, error: "Unauthorized: You can only delete contacts assigned to you" };
         }
         mockContactsStore.splice(idx, 1);
+        persistMockContacts();
       }
       revalidatePath("/contacts");
       revalidatePath("/dashboard");

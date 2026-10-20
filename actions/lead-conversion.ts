@@ -17,6 +17,11 @@ import {
   MockCompany,
   MockContact,
   MockOpportunity,
+  persistMockLeads,
+  persistMockCompanies,
+  persistMockContacts,
+  persistMockOpportunities,
+  syncMockLeadsFromDisk,
 } from "@/lib/db/mock-store";
 
 /**
@@ -241,7 +246,11 @@ export async function convertLeadAction(
     }
 
     // In-memory fallback if Neon PostgreSQL is offline during local preview
-    const lead = mockLeadsStore.find((l) => l.id === leadId);
+    let lead = mockLeadsStore.find((l) => l.id === leadId);
+    if (!lead) {
+      syncMockLeadsFromDisk();
+      lead = mockLeadsStore.find((l) => l.id === leadId);
+    }
     if (!lead) {
       return { success: false, error: "Lead not found" };
     }
@@ -347,6 +356,13 @@ export async function convertLeadAction(
     lead.convertedCompanyId = resolvedCompanyId;
     lead.convertedContactId = contactId;
     lead.convertedOpportunityId = opportunityId;
+
+    persistMockLeads();
+    persistMockCompanies();
+    persistMockContacts();
+    if (opportunityId) {
+      persistMockOpportunities();
+    }
 
     revalidatePath("/leads");
     revalidatePath(`/leads/${leadId}`);

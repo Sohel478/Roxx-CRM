@@ -9,6 +9,8 @@ import {
   mockCompaniesStore,
   mockContactsStore,
   MockOpportunity,
+  persistMockOpportunities,
+  syncMockOpportunitiesFromDisk,
 } from "@/lib/db/mock-store";
 import {
   opportunitySchema,
@@ -121,6 +123,7 @@ export async function getOpportunitiesAction(params: {
       },
     };
   } catch {
+    syncMockOpportunitiesFromDisk();
     // In-memory fallback
     let filtered = mockOpportunitiesStore.filter((o) => {
       if (params.status && params.status !== "ALL" && o.status !== params.status) {
@@ -189,6 +192,7 @@ export async function getOpportunityByIdAction(id: string) {
     });
 
     if (!opp) {
+      syncMockOpportunitiesFromDisk();
       const mock = mockOpportunitiesStore.find((o) => o.id === id);
       if (mock) {
         return {
@@ -242,6 +246,7 @@ export async function getOpportunityByIdAction(id: string) {
       },
     };
   } catch {
+    syncMockOpportunitiesFromDisk();
     const mock = mockOpportunitiesStore.find((o) => o.id === id);
     if (mock) {
       const contact = mockContactsStore.find((c) => c.id === mock.primaryContactId);
@@ -418,6 +423,7 @@ export async function createOpportunityAction(data: OpportunityFormData) {
     };
 
     mockOpportunitiesStore.unshift(newOpp);
+    persistMockOpportunities();
     revalidatePath("/opportunities");
     revalidatePath("/dashboard");
     return { success: true, data: newOpp };
@@ -583,6 +589,7 @@ export async function updateOpportunityStageAction(id: string, newStageName: str
           status,
           closedAt: closedAt ? closedAt.toISOString() : null,
         };
+        persistMockOpportunities();
         revalidatePath("/opportunities");
         revalidatePath(`/opportunities/${id}`);
         revalidatePath("/dashboard");
@@ -681,6 +688,7 @@ export async function closeOpportunityAction(id: string, data: CloseOpportunityF
           closedAt: closedAt.toISOString(),
           lossReason: status === "LOST" ? lossReason || null : null,
         };
+        persistMockOpportunities();
 
         if (status === "WON") {
           createNotificationHelper({
@@ -731,6 +739,7 @@ export async function deleteOpportunityAction(id: string) {
         const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
         if (idx !== -1) {
           mockOpportunitiesStore.splice(idx, 1);
+          persistMockOpportunities();
         }
       }
 
@@ -742,6 +751,7 @@ export async function deleteOpportunityAction(id: string) {
       const idx = mockOpportunitiesStore.findIndex((o) => o.id === id);
       if (idx !== -1) {
         mockOpportunitiesStore.splice(idx, 1);
+        persistMockOpportunities();
       }
       revalidatePath("/opportunities");
       revalidatePath("/dashboard");

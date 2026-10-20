@@ -10,6 +10,9 @@ import {
   mockContactsStore,
   mockOpportunitiesStore,
   mockTasksStore,
+  persistMockLeads,
+  persistMockCompanies,
+  persistMockContacts,
 } from "@/lib/db/mock-store";
 import { parseCsv, serializeCsv } from "@/lib/csv/parser";
 import {
@@ -621,6 +624,14 @@ export async function importCsvAction(
       });
     } catch {
       // safe fallback
+    }
+
+    if (entityType === "leads" && importedCount > 0) {
+      persistMockLeads();
+    } else if (entityType === "companies" && importedCount > 0) {
+      persistMockCompanies();
+    } else if (entityType === "contacts" && importedCount > 0) {
+      persistMockContacts();
     }
 
     revalidatePath(`/${entityType}`);

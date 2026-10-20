@@ -1,5 +1,26 @@
 import initialLeads from "./initial-leads.json";
 import type { CompanyMatrix } from "@/lib/validations/marketing";
+import {
+  isTestEnv,
+  loadInitialLeads,
+  storagePersistLeads,
+  storageSyncLeads,
+  loadInitialCompanies,
+  storagePersistCompanies,
+  storageSyncCompanies,
+  loadInitialContacts,
+  storagePersistContacts,
+  storageSyncContacts,
+  loadInitialOpportunities,
+  storagePersistOpportunities,
+  storageSyncOpportunities,
+  loadInitialTasks,
+  storagePersistTasks,
+  storageSyncTasks,
+  loadInitialActivities,
+  storagePersistActivities,
+  storageSyncActivities,
+} from "./mock-storage";
 
 export interface MockCompany {
   id: string;
@@ -161,15 +182,40 @@ export interface MockActivity {
 // Global in-memory storage arrays shared across server action modules
 // ----------------------------------------------------------------------------
 
-export const mockCompaniesStore: MockCompany[] = [];
+const globalForMock = globalThis as unknown as {
+  mockCompaniesStore?: MockCompany[];
+  mockContactsStore?: MockContact[];
+  mockLeadsStore?: MockLead[];
+  mockOpportunitiesStore?: MockOpportunity[];
+  mockTasksStore?: MockTask[];
+  mockActivitiesStore?: MockActivity[];
+};
 
-export const mockContactsStore: MockContact[] = [];
+export const mockCompaniesStore: MockCompany[] =
+  globalForMock.mockCompaniesStore ??
+  (globalForMock.mockCompaniesStore = isTestEnv
+    ? []
+    : loadInitialCompanies([]));
 
-export const mockLeadsStore: MockLead[] = [...(initialLeads as MockLead[])];
+export const mockContactsStore: MockContact[] =
+  globalForMock.mockContactsStore ??
+  (globalForMock.mockContactsStore = isTestEnv
+    ? []
+    : loadInitialContacts([]));
 
-export const mockOpportunitiesStore: MockOpportunity[] = [];
+export const mockLeadsStore: MockLead[] =
+  globalForMock.mockLeadsStore ??
+  (globalForMock.mockLeadsStore = isTestEnv
+    ? [...(initialLeads as MockLead[])]
+    : loadInitialLeads(initialLeads as MockLead[]));
 
-export const mockTasksStore: MockTask[] = [
+export const mockOpportunitiesStore: MockOpportunity[] =
+  globalForMock.mockOpportunitiesStore ??
+  (globalForMock.mockOpportunitiesStore = isTestEnv
+    ? []
+    : loadInitialOpportunities([]));
+
+const initialTasksList: MockTask[] = [
   {
     id: "task_1",
     organizationId: "demo-org-123",
@@ -264,7 +310,13 @@ export const mockTasksStore: MockTask[] = [
   },
 ];
 
-export const mockActivitiesStore: MockActivity[] = [
+export const mockTasksStore: MockTask[] =
+  globalForMock.mockTasksStore ??
+  (globalForMock.mockTasksStore = isTestEnv
+    ? [...initialTasksList]
+    : loadInitialTasks(initialTasksList));
+
+const initialActivitiesList: MockActivity[] = [
   {
     id: "act_1",
     organizationId: "demo-org-123",
@@ -350,6 +402,64 @@ export const mockActivitiesStore: MockActivity[] = [
     createdAt: new Date(Date.now() - 259200000).toISOString(),
   },
 ];
+
+export const mockActivitiesStore: MockActivity[] =
+  globalForMock.mockActivitiesStore ??
+  (globalForMock.mockActivitiesStore = isTestEnv
+    ? [...initialActivitiesList]
+    : loadInitialActivities(initialActivitiesList));
+
+// ----------------------------------------------------------------------------
+// Persistence & disk synchronization wrappers
+// ----------------------------------------------------------------------------
+
+export function persistMockLeads(): void {
+  storagePersistLeads(mockLeadsStore);
+}
+
+export function syncMockLeadsFromDisk(): void {
+  storageSyncLeads(mockLeadsStore);
+}
+
+export function persistMockCompanies(): void {
+  storagePersistCompanies(mockCompaniesStore);
+}
+
+export function syncMockCompaniesFromDisk(): void {
+  storageSyncCompanies(mockCompaniesStore);
+}
+
+export function persistMockContacts(): void {
+  storagePersistContacts(mockContactsStore);
+}
+
+export function syncMockContactsFromDisk(): void {
+  storageSyncContacts(mockContactsStore);
+}
+
+export function persistMockOpportunities(): void {
+  storagePersistOpportunities(mockOpportunitiesStore);
+}
+
+export function syncMockOpportunitiesFromDisk(): void {
+  storageSyncOpportunities(mockOpportunitiesStore);
+}
+
+export function persistMockTasks(): void {
+  storagePersistTasks(mockTasksStore);
+}
+
+export function syncMockTasksFromDisk(): void {
+  storageSyncTasks(mockTasksStore);
+}
+
+export function persistMockActivities(): void {
+  storagePersistActivities(mockActivitiesStore);
+}
+
+export function syncMockActivitiesFromDisk(): void {
+  storageSyncActivities(mockActivitiesStore);
+}
 
 export interface MockAuditLog {
   id: string;

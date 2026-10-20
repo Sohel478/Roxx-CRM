@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
-import { mockCompaniesStore, mockUsersStore } from "@/lib/db/mock-store";
+import {
+  mockCompaniesStore,
+  mockUsersStore,
+  persistMockCompanies,
+  syncMockCompaniesFromDisk,
+} from "@/lib/db/mock-store";
 import {
   companySchema,
   CompanyFormData,
@@ -101,6 +106,7 @@ export async function getCompaniesAction(params: {
       },
     };
   } catch {
+    syncMockCompaniesFromDisk();
     // Fallback in-memory search for development preview
     let filtered = mockCompaniesStore.filter((c) => {
       if (c.organizationId && c.organizationId !== organizationId) return false;
@@ -169,6 +175,7 @@ export async function getCompanyByIdAction(id: string) {
     });
 
     if (!company) {
+      syncMockCompaniesFromDisk();
       // Check mock store
       const mock = mockCompaniesStore.find(
         (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
@@ -203,6 +210,7 @@ export async function getCompanyByIdAction(id: string) {
       },
     };
   } catch {
+    syncMockCompaniesFromDisk();
     const mock = mockCompaniesStore.find(
       (c) => c.id === id && (c.organizationId === session.organizationId || !c.organizationId)
     );
@@ -312,6 +320,7 @@ export async function createCompanyAction(data: CompanyFormData) {
         ownerName: assignedOwnerName,
       };
       mockCompaniesStore.unshift(newComp);
+      persistMockCompanies();
       revalidatePath("/companies");
       revalidatePath("/dashboard");
       return { success: true, data: newComp };
@@ -401,6 +410,7 @@ export async function updateCompanyAction(id: string, data: Partial<CompanyFormD
         ...mockCompaniesStore[index],
         ...updatePayload,
       };
+      persistMockCompanies();
       revalidatePath("/companies");
       revalidatePath(`/companies/${id}`);
       revalidatePath("/dashboard");
@@ -479,6 +489,7 @@ export async function deleteCompanyAction(id: string) {
           return { success: false, error: "Unauthorized: You can only delete companies assigned to you" };
         }
         mockCompaniesStore.splice(idx, 1);
+        persistMockCompanies();
       }
       revalidatePath("/companies");
       revalidatePath("/dashboard");

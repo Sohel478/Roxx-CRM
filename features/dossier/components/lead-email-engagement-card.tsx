@@ -28,7 +28,7 @@ import {
   simulateLeadEmailEngagementAction,
   sendTestTrackedEmailAction,
 } from "@/actions/marketing";
-import { generateTrackingUrls } from "@/lib/email/tracking";
+import { generateTrackingUrls } from "@/lib/email/tracking-urls";
 
 interface LeadEmailEngagementCardProps {
   summary: LeadEmailEngagementSummary | null;
