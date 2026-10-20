@@ -429,6 +429,17 @@ export async function getLeadByIdAction(id: string) {
           };
         }
 
+        const resolvedOwnerName =
+          mock.ownerName ||
+          (mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId)?.name : null) ||
+          (mock.ownerId === session.id ? session.name : null) ||
+          null;
+
+        const ownerObj =
+          mock.ownerId || resolvedOwnerName
+            ? { id: mock.ownerId || "", name: resolvedOwnerName || "Assigned User" }
+            : null;
+
         return {
           success: true,
           data: {
@@ -436,7 +447,7 @@ export async function getLeadByIdAction(id: string) {
             website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
             emailStatus: resolveLeadEmailStatus(mock),
             convertedInfo,
-            owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
+            owner: ownerObj,
             activities: [],
             tasks: [],
             notes: [],
@@ -544,6 +555,17 @@ export async function getLeadByIdAction(id: string) {
         };
       }
 
+      const resolvedOwnerName =
+        mock.ownerName ||
+        (mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId)?.name : null) ||
+        (mock.ownerId === session.id ? session.name : null) ||
+        null;
+
+      const ownerObj =
+        mock.ownerId || resolvedOwnerName
+          ? { id: mock.ownerId || "", name: resolvedOwnerName || "Assigned User" }
+          : null;
+
       return {
         success: true,
         data: {
@@ -551,7 +573,7 @@ export async function getLeadByIdAction(id: string) {
           website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
           emailStatus: resolveLeadEmailStatus(mock),
           convertedInfo,
-          owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
+          owner: ownerObj,
           activities: [],
           tasks: [],
           notes: [],
