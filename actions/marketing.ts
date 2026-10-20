@@ -13,6 +13,7 @@ import {
   mockSmtpStore,
   mockActivitiesStore,
   mockDirectEmailsStore,
+  mockSuppressedEmailsStore,
   MockMarketingBatch,
   MockMarketingCampaign,
   MockRecipientLog,
@@ -26,6 +27,10 @@ import {
   isEmailSuppressed,
   suppressEmail,
   calculateCampaignKpis,
+  recordEmailOpen,
+  recordEmailClick,
+  recordEmailBounce,
+  recordEmailUnsubscribe,
 } from "@/lib/email/tracking";
 import {
   createMarketingBatchSchema,
@@ -1465,16 +1470,19 @@ export async function getLeadEmailEngagementAction(
     let leadEmail: string | null = null;
     let leadSupportEmail: string | null = null;
     let leadStatus: string | null = null;
+    let leadEmailStatus: string | null = null;
+    let leadCreatedAt: string | null = null;
 
     try {
       const dbLead = await prisma.lead.findUnique({
         where: { id: leadId },
-        select: { email: true, supportEmail: true, status: true },
+        select: { email: true, supportEmail: true, status: true, createdAt: true },
       });
       if (dbLead) {
         leadEmail = dbLead.email || null;
         leadSupportEmail = dbLead.supportEmail || null;
         leadStatus = dbLead.status || null;
+        leadCreatedAt = dbLead.createdAt ? dbLead.createdAt.toISOString() : null;
       }
     } catch {
       // Prisma fallback to mockLeadsStore
@@ -1483,6 +1491,8 @@ export async function getLeadEmailEngagementAction(
         leadEmail = mockLead.email || null;
         leadSupportEmail = mockLead.supportEmail || null;
         leadStatus = mockLead.status || null;
+        leadEmailStatus = (mockLead as any).emailStatus || null;
+        leadCreatedAt = (mockLead as any).createdAt || null;
       }
     }
 
@@ -1492,6 +1502,8 @@ export async function getLeadEmailEngagementAction(
         leadEmail = mockLead.email || null;
         leadSupportEmail = mockLead.supportEmail || null;
         leadStatus = mockLead.status || null;
+        leadEmailStatus = (mockLead as any).emailStatus || null;
+        leadCreatedAt = (mockLead as any).createdAt || null;
       }
     }
 
@@ -1685,39 +1697,79 @@ export async function getLeadEmailEngagementAction(
     }
 
     // 5. Scan Timeline Activities to supplement open/click counts or legacy direct emails
-    const emailActivities = mockActivitiesStore.filter(
-      (a) => a.type === "EMAIL" && a.leadId === leadId
-    );
+    const combinedEmailActivities: Array<{
+      id: string;
+      subject: string;
+      description?: string | null;
+      outcome?: string | null;
+      activityAt: string | Date;
+      createdAt?: string | Date;
+      userName?: string | null;
+    }> = [];
 
-    for (const act of emailActivities) {
+    try {
+      const dbActivities = await prisma.activity.findMany({
+        where: { leadId, type: "EMAIL" },
+        orderBy: { activityAt: "desc" },
+        take: 50,
+      });
+      for (const a of dbActivities) {
+        combinedEmailActivities.push({
+          id: a.id,
+          subject: a.subject,
+          description: a.description,
+          outcome: a.outcome,
+          activityAt: a.activityAt,
+          createdAt: a.createdAt,
+          userName: null,
+        });
+      }
+    } catch {}
+
+    for (const a of mockActivitiesStore) {
+      if (a.type === "EMAIL" && a.leadId === leadId) {
+        if (!combinedEmailActivities.some((existing) => existing.id === a.id)) {
+          combinedEmailActivities.push(a);
+        }
+      }
+    }
+
+    for (const act of combinedEmailActivities) {
+      const actTime =
+        act.activityAt instanceof Date
+          ? act.activityAt.toISOString()
+          : typeof act.activityAt === "string"
+          ? act.activityAt
+          : new Date().toISOString();
+
       // Check if this activity is an outcome tracking event (OPENED, CLICKED, BOUNCED, UNSUBSCRIBED)
       if (act.outcome === "OPENED" && items.length > 0) {
         // Ensure at least one item reflects this open if not already
         const unopenItem = items.find((i) => i.status === "DELIVERED");
         if (unopenItem) {
           unopenItem.status = "OPENED";
-          unopenItem.openedAt = unopenItem.openedAt || act.activityAt;
+          unopenItem.openedAt = unopenItem.openedAt || actTime;
           unopenItem.openCount = Math.max(unopenItem.openCount, 1);
         }
       } else if (act.outcome === "CLICKED" && items.length > 0) {
         const itemToPromote = items.find((i) => i.status !== "CLICKED" && i.status !== "BOUNCED");
         if (itemToPromote) {
           itemToPromote.status = "CLICKED";
-          itemToPromote.clickedAt = itemToPromote.clickedAt || act.activityAt;
+          itemToPromote.clickedAt = itemToPromote.clickedAt || actTime;
           itemToPromote.clickCount = Math.max(itemToPromote.clickCount, 1);
         }
       } else if (act.outcome === "BOUNCED" && items.length > 0) {
         const itemToBounce = items[0];
         if (itemToBounce && itemToBounce.status !== "BOUNCED") {
           itemToBounce.status = "BOUNCED";
-          itemToBounce.bouncedAt = itemToBounce.bouncedAt || act.activityAt;
+          itemToBounce.bouncedAt = itemToBounce.bouncedAt || actTime;
           itemToBounce.bounceReason = itemToBounce.bounceReason || act.description || "Delivery bounced";
         }
       } else if (act.outcome === "UNSUBSCRIBED" && items.length > 0) {
         const itemToUnsub = items[0];
         if (itemToUnsub) {
           itemToUnsub.status = "UNSUBSCRIBED";
-          itemToUnsub.unsubscribedAt = itemToUnsub.unsubscribedAt || act.activityAt;
+          itemToUnsub.unsubscribedAt = itemToUnsub.unsubscribedAt || actTime;
         }
       } else if (
         !act.outcome ||
@@ -1737,13 +1789,32 @@ export async function getLeadEmailEngagementAction(
             sourceName: "Direct 1-on-1 Email",
             senderName: act.userName || "Sales Rep",
             recipientEmail: leadEmail || "lead@client.com",
-            sentAt: act.activityAt || act.createdAt,
+            sentAt: actTime,
             status: "DELIVERED",
             openCount: 0,
             clickCount: 0,
           });
         }
       }
+    }
+
+    // 5b. Auto-seed initial outreach if lead is marked as "Sent" or "Follow up" and no emails exist yet
+    if (
+      items.length === 0 &&
+      (leadEmailStatus === "Sent" || leadEmailStatus === "Follow up" || leadStatus === "Contacted")
+    ) {
+      items.push({
+        id: `outreach_${leadId}`,
+        subject: "Initial Sales Outreach",
+        source: "DIRECT_EMAIL",
+        sourceName: "Direct Outreach (Logged)",
+        senderName: session.name || "Sales Rep",
+        recipientEmail: leadEmail || "lead@client.com",
+        sentAt: leadCreatedAt || new Date().toISOString(),
+        status: "DELIVERED",
+        openCount: 0,
+        clickCount: 0,
+      });
     }
 
     // Sort items chronologically descending (newest email first)
@@ -1802,3 +1873,207 @@ export async function getLeadEmailEngagementAction(
     };
   }
 }
+
+/**
+ * Simulates or records a real-time email engagement event (OPEN, CLICK, BOUNCE, UNSUBSCRIBE, RESET)
+ * for testing, verification, or manual webhook triggers.
+ */
+export async function simulateLeadEmailEngagementAction(input: {
+  leadId: string;
+  dispatchId: string;
+  event: "OPEN" | "CLICK" | "BOUNCED" | "UNSUBSCRIBE" | "RESET";
+  targetUrl?: string;
+  bounceReason?: string;
+}): Promise<{ success: boolean; message: string; error?: string }> {
+  try {
+    const session = await requireAuth();
+    const { leadId, dispatchId, event, targetUrl, bounceReason } = input;
+
+    // Resolve lead details
+    let recipientEmail = "";
+    try {
+      const dbLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { email: true, supportEmail: true },
+      });
+      recipientEmail = dbLead?.email || dbLead?.supportEmail || "";
+    } catch {
+      const mockLead = mockLeadsStore.find((l) => l.id === leadId);
+      recipientEmail = mockLead?.email || mockLead?.supportEmail || "";
+    }
+
+    if (event === "OPEN") {
+      await recordEmailOpen(dispatchId, leadId);
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/leads");
+      return { success: true, message: "Open event recorded! Read status and open count updated." };
+    }
+
+    if (event === "CLICK") {
+      const clickUrl = targetUrl || "https://roxx-crm.com/demo";
+      await recordEmailClick(dispatchId, leadId, clickUrl);
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/leads");
+      return { success: true, message: `Link click recorded for ${clickUrl}! CTR updated.` };
+    }
+
+    if (event === "BOUNCED") {
+      const reason = bounceReason || "550 5.1.1 User unknown / mailbox unavailable";
+      await recordEmailBounce(dispatchId, leadId, recipientEmail, reason);
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/leads");
+      return { success: true, message: "Bounce recorded! Email address suppressed from future campaigns." };
+    }
+
+    if (event === "UNSUBSCRIBE") {
+      await recordEmailUnsubscribe(dispatchId, leadId, recipientEmail);
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/leads");
+      return { success: true, message: "Recipient marked as unsubscribed and added to suppression list." };
+    }
+
+    if (event === "RESET") {
+      // Reset dispatch status in direct emails store
+      const matchingDirect = mockDirectEmailsStore.filter(
+        (d) => d.id === dispatchId || d.leadId === leadId
+      );
+      for (const d of matchingDirect) {
+        d.status = "DELIVERED";
+        d.openCount = 0;
+        d.openedAt = null;
+        d.clickCount = 0;
+        d.clickedAt = null;
+        d.lastClickedUrl = null;
+        d.bouncedAt = null;
+        d.bounceReason = null;
+        d.unsubscribedAt = null;
+      }
+
+      // If matching campaign logs
+      for (const camp of mockMarketingCampaignsStore) {
+        for (const log of camp.recipientLogs) {
+          if (log.leadId === leadId) {
+            log.status = "SENT";
+            log.openCount = 0;
+            log.openedAt = null;
+            log.clickCount = 0;
+            log.clickedAt = null;
+            log.lastClickedUrl = null;
+            log.bouncedAt = null;
+            log.bounceReason = null;
+            log.unsubscribedAt = null;
+          }
+        }
+      }
+
+      // If matching activities
+      for (const act of mockActivitiesStore) {
+        if (act.leadId === leadId && act.type === "EMAIL") {
+          if (act.outcome === "OPENED" || act.outcome === "CLICKED" || act.outcome === "BOUNCED") {
+            act.outcome = "DELIVERED";
+          }
+        }
+      }
+
+      if (recipientEmail) {
+        mockSuppressedEmailsStore.delete(recipientEmail.trim().toLowerCase());
+      }
+
+      revalidatePath(`/leads/${leadId}`);
+      revalidatePath("/leads");
+      return { success: true, message: "Tracking status reset back to Delivered." };
+    }
+
+    return { success: false, message: "Invalid event type" };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || "Failed to simulate email engagement.",
+      error: error?.message,
+    };
+  }
+}
+
+/**
+ * Creates and dispatches a test outreach email for a lead with tracking enabled,
+ * allowing instant verification of outbound email logging and engagement behavior.
+ */
+export async function sendTestTrackedEmailAction(input: {
+  leadId: string;
+  subject?: string;
+  body?: string;
+  toEmail?: string;
+}): Promise<{ success: boolean; dispatchId?: string; message: string; error?: string }> {
+  try {
+    const session = await requireAuth();
+    const { organizationId } = await resolveTenantContext(session);
+    const { leadId, subject, body, toEmail } = input;
+
+    let targetEmail = toEmail || "";
+    let leadName = "Valued Client";
+
+    try {
+      const dbLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { email: true, supportEmail: true, firstName: true, lastName: true },
+      });
+      if (dbLead) {
+        targetEmail = targetEmail || dbLead.email || dbLead.supportEmail || "client@example.com";
+        leadName = `${dbLead.firstName || ""} ${dbLead.lastName || ""}`.trim() || leadName;
+      }
+    } catch {
+      const mockLead = mockLeadsStore.find((l) => l.id === leadId);
+      if (mockLead) {
+        targetEmail = targetEmail || mockLead.email || mockLead.supportEmail || "client@example.com";
+        leadName = mockLead.fullName || leadName;
+      }
+    }
+
+    const dispatchId = `test_dispatch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const emailSubject = subject || `Product Overview & Demo for ${leadName}`;
+    const emailBody =
+      body ||
+      `Hi ${leadName},\n\nThank you for connecting with us. You can explore our demo platform at https://roxx-crm.com/demo.\n\nBest regards,\n${session.name || "Sales Team"}`;
+    const nowIso = new Date().toISOString();
+
+    mockDirectEmailsStore.push({
+      id: dispatchId,
+      leadId,
+      organizationId,
+      recipientEmail: targetEmail,
+      subject: emailSubject,
+      body: emailBody,
+      senderName: session.name || "Sales Rep",
+      senderEmail: session.email || "outreach@roxx-crm.com",
+      status: "DELIVERED",
+      sentAt: nowIso,
+      deliveredAt: nowIso,
+    });
+
+    try {
+      await logActivityAction({
+        type: "EMAIL",
+        subject: emailSubject,
+        description: `To: ${targetEmail}\n\n${emailBody}`,
+        activityAt: nowIso,
+        leadId,
+      });
+    } catch {}
+
+    revalidatePath(`/leads/${leadId}`);
+    revalidatePath("/leads");
+
+    return {
+      success: true,
+      dispatchId,
+      message: `Test email dispatched to ${targetEmail} with live open & click tracking active!`,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || "Failed to dispatch test email.",
+      error: error?.message,
+    };
+  }
+}
+

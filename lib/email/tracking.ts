@@ -45,6 +45,35 @@ export interface TrackingOptions {
 }
 
 /**
+ * Generates direct open tracking pixel URLs and sample click redirect URLs for live testing & inspection.
+ */
+export function generateTrackingUrls(
+  campaignOrDispatchId: string,
+  leadId: string,
+  recipientEmail?: string,
+  customBaseUrl?: string
+): {
+  openTrackingUrl: string;
+  clickTrackingSampleUrl: string;
+  unsubscribeUrl: string;
+  baseUrl: string;
+} {
+  const baseUrl = (customBaseUrl || getAppBaseUrl()).replace(/\/$/, "");
+  const cid = encodeURIComponent(campaignOrDispatchId || "direct");
+  const lid = encodeURIComponent(leadId || "lead");
+  const emailParam = recipientEmail ? `&email=${encodeURIComponent(recipientEmail)}` : "";
+
+  return {
+    baseUrl,
+    openTrackingUrl: `${baseUrl}/api/v1/email/track/open?cid=${cid}&lid=${lid}`,
+    clickTrackingSampleUrl: `${baseUrl}/api/v1/email/track/click?cid=${cid}&lid=${lid}&url=${encodeURIComponent(
+      "https://roxx-crm.com"
+    )}`,
+    unsubscribeUrl: `${baseUrl}/api/v1/email/unsubscribe?cid=${cid}&lid=${lid}${emailParam}`,
+  };
+}
+
+/**
  * Injects a 1x1 transparent open-tracking GIF and wraps hyperlinks with click-tracking redirects.
  * Adds an RFC-compliant unsubscribe footer if isMarketing is true.
  */
@@ -157,6 +186,21 @@ export async function recordEmailOpen(
     if (directDispatch.status === "SENT" || directDispatch.status === "DELIVERED") {
       directDispatch.status = "OPENED";
     }
+  }
+
+  // 1c. If campaignId references an activity (act_xxx), promote its outcome
+  if (campaignId && campaignId.startsWith("act_")) {
+    const rawActId = campaignId.replace(/^act_/, "");
+    const matchingAct = mockActivitiesStore.find((a) => a.id === rawActId || a.id === campaignId);
+    if (matchingAct) {
+      matchingAct.outcome = "OPENED";
+    }
+    try {
+      await prisma.activity.update({
+        where: { id: rawActId },
+        data: { outcome: "OPENED" },
+      });
+    } catch {}
   }
 
   // 2. Record activity in Lead Timeline
@@ -285,6 +329,21 @@ export async function recordEmailClick(
     }
   }
 
+  // 1c. If campaignId references an activity (act_xxx), promote its outcome to CLICKED
+  if (campaignId && campaignId.startsWith("act_")) {
+    const rawActId = campaignId.replace(/^act_/, "");
+    const matchingAct = mockActivitiesStore.find((a) => a.id === rawActId || a.id === campaignId);
+    if (matchingAct) {
+      matchingAct.outcome = "CLICKED";
+    }
+    try {
+      await prisma.activity.update({
+        where: { id: rawActId },
+        data: { outcome: "CLICKED" },
+      });
+    } catch {}
+  }
+
   // 2. Record activity in Lead Timeline
   try {
     mockActivitiesStore.push({
@@ -388,6 +447,21 @@ export async function recordEmailBounce(
     d.status = "BOUNCED";
     d.bouncedAt = now;
     d.bounceReason = reason;
+  }
+
+  // 2c. If campaignId references an activity (act_xxx), promote its outcome to BOUNCED
+  if (campaignId && campaignId.startsWith("act_")) {
+    const rawActId = campaignId.replace(/^act_/, "");
+    const matchingAct = mockActivitiesStore.find((a) => a.id === rawActId || a.id === campaignId);
+    if (matchingAct) {
+      matchingAct.outcome = "BOUNCED";
+    }
+    try {
+      await prisma.activity.update({
+        where: { id: rawActId },
+        data: { outcome: "BOUNCED" },
+      });
+    } catch {}
   }
 
   // 3. Record activity in Lead Timeline

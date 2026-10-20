@@ -15,7 +15,11 @@ import {
   recordEmailBounce,
   recordEmailUnsubscribe,
 } from "@/lib/email/tracking";
-import { getLeadEmailEngagementAction } from "@/actions/marketing";
+import {
+  getLeadEmailEngagementAction,
+  simulateLeadEmailEngagementAction,
+  sendTestTrackedEmailAction,
+} from "@/actions/marketing";
 import { sendEmailAction } from "@/actions/email";
 
 // Mock next/cache
@@ -346,5 +350,137 @@ describe("Lead Outbound Email Delivery & Engagement Status", () => {
     // Overall status reflects open from the campaign
     expect(res.data?.overallStatus).toBe("OPENED");
     expect(res.data?.totalOpens).toBe(2);
+  });
+
+  it("should auto-seed initial outreach when lead emailStatus is 'Sent' and no outbound logs exist", async () => {
+    // Add a lead that has emailStatus = "Sent"
+    mockLeadsStore.push({
+      id: "lead_sent_client",
+      organizationId: "org_lead_test",
+      leadNumber: "LEAD-0003",
+      firstName: "David",
+      lastName: "Delivered",
+      fullName: "David Delivered",
+      email: "david@client.com",
+      companyName: "Delivered Corp",
+      status: "Contacted",
+      emailStatus: "Sent",
+      createdAt: new Date().toISOString(),
+    } as any);
+
+    const res = await getLeadEmailEngagementAction("lead_sent_client");
+    expect(res.success).toBe(true);
+    expect(res.data?.totalSent).toBe(1);
+    expect(res.data?.overallStatus).toBe("DELIVERED");
+    expect(res.data?.items).toHaveLength(1);
+    expect(res.data?.items[0].subject).toBe("Initial Sales Outreach");
+    expect(res.data?.items[0].status).toBe("DELIVERED");
+    expect(res.data?.items[0].source).toBe("DIRECT_EMAIL");
+  });
+
+  it("should support simulateLeadEmailEngagementAction to test OPEN, CLICK, BOUNCE, and RESET", async () => {
+    // 1. Dispatch a test tracked email
+    const sendRes = await sendTestTrackedEmailAction({
+      leadId: "lead_alpha",
+      subject: "Interactive Product Showcase",
+      body: "Check out our portal",
+      toEmail: "alice@alpha-corp.com",
+    });
+
+    expect(sendRes.success).toBe(true);
+    expect(sendRes.dispatchId).toBeDefined();
+    const dispatchId = sendRes.dispatchId!;
+
+    let engagement = await getLeadEmailEngagementAction("lead_alpha");
+    expect(engagement.data?.overallStatus).toBe("DELIVERED");
+    expect(engagement.data?.totalSent).toBe(1);
+
+    // 2. Simulate OPEN
+    const openRes = await simulateLeadEmailEngagementAction({
+      leadId: "lead_alpha",
+      dispatchId,
+      event: "OPEN",
+    });
+    expect(openRes.success).toBe(true);
+
+    engagement = await getLeadEmailEngagementAction("lead_alpha");
+    expect(engagement.data?.overallStatus).toBe("OPENED");
+    expect(engagement.data?.totalOpens).toBe(1);
+    expect(engagement.data?.items[0].status).toBe("OPENED");
+
+    // 3. Simulate CLICK
+    const clickRes = await simulateLeadEmailEngagementAction({
+      leadId: "lead_alpha",
+      dispatchId,
+      event: "CLICK",
+      targetUrl: "https://roxx-crm.com/live-demo",
+    });
+    expect(clickRes.success).toBe(true);
+
+    engagement = await getLeadEmailEngagementAction("lead_alpha");
+    expect(engagement.data?.overallStatus).toBe("CLICKED");
+    expect(engagement.data?.totalClicks).toBe(1);
+    expect(engagement.data?.items[0].status).toBe("CLICKED");
+    expect(engagement.data?.items[0].lastClickedUrl).toBe("https://roxx-crm.com/live-demo");
+
+    // 4. Simulate BOUNCE
+    const bounceRes = await simulateLeadEmailEngagementAction({
+      leadId: "lead_alpha",
+      dispatchId,
+      event: "BOUNCED",
+      bounceReason: "550 5.1.1 Mailbox does not exist",
+    });
+    expect(bounceRes.success).toBe(true);
+
+    engagement = await getLeadEmailEngagementAction("lead_alpha");
+    expect(engagement.data?.overallStatus).toBe("BOUNCED");
+    expect(engagement.data?.isBounced).toBe(true);
+    expect(engagement.data?.items[0].status).toBe("BOUNCED");
+
+    // 5. Simulate RESET
+    const resetRes = await simulateLeadEmailEngagementAction({
+      leadId: "lead_alpha",
+      dispatchId,
+      event: "RESET",
+    });
+    expect(resetRes.success).toBe(true);
+
+    engagement = await getLeadEmailEngagementAction("lead_alpha");
+    expect(engagement.data?.overallStatus).toBe("DELIVERED");
+    expect(engagement.data?.isBounced).toBe(false);
+    expect(engagement.data?.totalOpens).toBe(0);
+    expect(engagement.data?.totalClicks).toBe(0);
+  });
+
+  it("should automatically include email activities logged via mail client into the Outbound Email Log", async () => {
+    // Simulate user sending via mail client, which logs an activity
+    mockActivitiesStore.push({
+      id: "act_mail_client_1",
+      organizationId: "org_lead_test",
+      type: "EMAIL",
+      subject: "Regarding our discussion — Roxx CRM",
+      description: "To: bob@beta-tech.com\n\nHi Bob, great speaking with you today.",
+      leadId: "lead_beta",
+      leadName: "Bob Beta",
+      companyId: null,
+      companyName: null,
+      contactId: null,
+      contactName: null,
+      opportunityId: null,
+      opportunityName: null,
+      userId: "usr_lead_rep",
+      userName: "Sarah Sales",
+      activityAt: new Date().toISOString(),
+      durationMinutes: null,
+      outcome: "SENT",
+      createdAt: new Date().toISOString(),
+    });
+
+    const res = await getLeadEmailEngagementAction("lead_beta");
+    expect(res.success).toBe(true);
+    expect(res.data?.totalSent).toBe(1);
+    expect(res.data?.items[0].subject).toBe("Regarding our discussion — Roxx CRM");
+    expect(res.data?.items[0].source).toBe("DIRECT_EMAIL");
+    expect(res.data?.items[0].status).toBe("DELIVERED");
   });
 });

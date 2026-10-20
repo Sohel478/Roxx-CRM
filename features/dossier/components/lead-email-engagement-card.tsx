@@ -15,23 +15,48 @@ import {
   ExternalLink,
   ShieldCheck,
   RefreshCw,
+  Copy,
+  Check,
+  Info,
+  Sparkles,
+  RotateCcw,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { LeadEmailEngagementSummary, LeadEmailDispatchItem } from "@/actions/marketing";
+import {
+  simulateLeadEmailEngagementAction,
+  sendTestTrackedEmailAction,
+} from "@/actions/marketing";
+import { generateTrackingUrls } from "@/lib/email/tracking";
 
 interface LeadEmailEngagementCardProps {
   summary: LeadEmailEngagementSummary | null;
   isLoading?: boolean;
   onRefresh?: () => void;
+  leadId?: string;
+  leadEmail?: string | null;
+  leadName?: string | null;
 }
 
 export function LeadEmailEngagementCard({
   summary,
   isLoading = false,
   onRefresh,
+  leadId,
+  leadEmail,
+  leadName,
 }: LeadEmailEngagementCardProps) {
   const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  const [activeSimId, setActiveSimId] = useState<string | null>(null);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [simBanner, setSimBanner] = useState<{ type: "success" | "error"; message: string } | null>(
+    null
+  );
 
   if (isLoading && !summary) {
     return (
@@ -52,6 +77,71 @@ export function LeadEmailEngagementCard({
 
   const openRate = totalSent > 0 ? Math.round((totalOpens / totalSent) * 100) : 0;
   const clickRate = totalOpens > 0 ? Math.round((totalClicks / totalOpens) * 100) : 0;
+
+  const handleSimulate = async (
+    dispatchId: string,
+    event: "OPEN" | "CLICK" | "BOUNCED" | "UNSUBSCRIBE" | "RESET"
+  ) => {
+    if (!leadId) return;
+    setActiveSimId(`${dispatchId}_${event}`);
+    try {
+      const res = await simulateLeadEmailEngagementAction({
+        leadId,
+        dispatchId,
+        event,
+        targetUrl: "https://roxx-crm.com/demo",
+      });
+      if (res.success) {
+        setSimBanner({ type: "success", message: res.message });
+        onRefresh?.();
+        setTimeout(() => setSimBanner(null), 4500);
+      } else {
+        setSimBanner({ type: "error", message: res.error || "Simulation failed" });
+      }
+    } catch (e: any) {
+      setSimBanner({ type: "error", message: e?.message || "Simulation failed" });
+    } finally {
+      setActiveSimId(null);
+    }
+  };
+
+  const handleSendTestOutreach = async () => {
+    if (!leadId) return;
+    setIsSendingTest(true);
+    try {
+      const res = await sendTestTrackedEmailAction({
+        leadId,
+        toEmail: leadEmail || undefined,
+        subject: `Product Overview & Demo for ${leadName || "Client"}`,
+      });
+      if (res.success) {
+        setSimBanner({ type: "success", message: res.message });
+        onRefresh?.();
+        setTimeout(() => setSimBanner(null), 5000);
+      } else {
+        setSimBanner({ type: "error", message: res.error || "Failed to dispatch test email" });
+      }
+    } catch (e: any) {
+      setSimBanner({ type: "error", message: e?.message || "Failed to dispatch test email" });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
+  const handleCopyTrackingLink = (dispatchId: string) => {
+    if (!leadId) return;
+    const urls = generateTrackingUrls(dispatchId, leadId, leadEmail || undefined);
+    navigator.clipboard.writeText(urls.openTrackingUrl);
+    setCopiedId(dispatchId);
+    setSimBanner({
+      type: "success",
+      message: "Open tracking pixel URL copied! Paste it in a browser tab to test immediate trigger.",
+    });
+    setTimeout(() => {
+      setCopiedId(null);
+      setSimBanner(null);
+    }, 4000);
+  };
 
   const renderStatusBadge = (
     status: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" | "NONE",
@@ -178,6 +268,29 @@ export function LeadEmailEngagementCard({
 
       {isCardExpanded && (
         <>
+          {/* Action / Simulation Feedback Banner */}
+          {simBanner && (
+            <div
+              className={`px-5 py-2.5 text-xs font-medium border-b flex items-center justify-between gap-2 transition-all ${
+                simBanner.type === "success"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-red-50 text-red-800 border-red-200"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{simBanner.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSimBanner(null)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                &times;
+              </button>
+            </div>
+          )}
+
           {/* Bounce Warning Alert */}
       {isBounced && (
         <div className="bg-red-50/90 border-b border-red-200 px-5 py-3.5 flex items-start gap-3">
@@ -274,29 +387,57 @@ export function LeadEmailEngagementCard({
             </h4>
           </div>
 
-          {items.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsHistoryExpanded((prev) => !prev)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
-            >
-              <span>{isHistoryExpanded ? "Collapse History" : "View All Dispatches"}</span>
-              {isHistoryExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {leadId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSendTestOutreach}
+                disabled={isSendingTest}
+                className="h-7 px-2.5 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 font-medium flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3 text-blue-500" />
+                <span>{isSendingTest ? "Sending..." : "Send Test Tracked Email"}</span>
+              </Button>
+            )}
+
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsHistoryExpanded((prev) => !prev)}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"
+              >
+                <span>{isHistoryExpanded ? "Collapse History" : "View All Dispatches"}</span>
+                {isHistoryExpanded ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {items.length === 0 ? (
-          <div className="py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            <Mail className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-bold text-slate-700">No outbound emails dispatched yet</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 max-w-sm mx-auto">
-              Emails sent via Marketing Campaigns, AI Sequences, or the 1-on-1 composer below will appear here with live open &amp; click tracking.
+          <div className="py-7 px-4 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <Mail className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-800">No outbound emails dispatched yet</p>
+            <p className="text-[11px] text-slate-500 mt-1 max-w-md mx-auto leading-relaxed">
+              Emails sent via Marketing Campaigns, AI Sequences, or the 1-on-1 composer will appear
+              here with live open and click tracking.
             </p>
+            {leadId && (
+              <Button
+                type="button"
+                onClick={handleSendTestOutreach}
+                disabled={isSendingTest}
+                className="mt-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8 px-4 inline-flex items-center gap-1.5 shadow-xs"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{isSendingTest ? "Dispatching..." : "Send Test Outreach Email Now"}</span>
+              </Button>
+            )}
           </div>
         ) : isHistoryExpanded ? (
           <div className="space-y-3">
@@ -305,7 +446,7 @@ export function LeadEmailEngagementCard({
                 key={item.id}
                 className="p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all bg-white shadow-2xs space-y-2.5"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-bold text-slate-900 truncate">
@@ -320,12 +461,13 @@ export function LeadEmailEngagementCard({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      To <span className="font-semibold text-slate-600">{item.recipientEmail}</span> &bull; Sent {formatDateTime(item.sentAt)}
+                      To <span className="font-semibold text-slate-600">{item.recipientEmail}</span>{" "}
+                      &bull; Sent {formatDateTime(item.sentAt)}
                       {item.senderName ? ` by ${item.senderName}` : ""}
                     </p>
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-2 flex-wrap">
                     {renderStatusBadge(item.status, item.openCount, item.clickCount)}
                   </div>
                 </div>
@@ -335,14 +477,16 @@ export function LeadEmailEngagementCard({
                   {item.openedAt && (
                     <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
                       <Eye className="w-3 h-3 text-emerald-600" />
-                      Opened {formatDateTime(item.openedAt)} ({item.openCount} {item.openCount === 1 ? "open" : "opens"})
+                      Opened {formatDateTime(item.openedAt)} ({item.openCount}{" "}
+                      {item.openCount === 1 ? "open" : "opens"})
                     </span>
                   )}
 
                   {item.clickedAt && (
                     <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                       <MousePointerClick className="w-3 h-3 text-blue-600" />
-                      Clicked {formatDateTime(item.clickedAt)} ({item.clickCount} {item.clickCount === 1 ? "click" : "clicks"})
+                      Clicked {formatDateTime(item.clickedAt)} ({item.clickCount}{" "}
+                      {item.clickCount === 1 ? "click" : "clicks"})
                     </span>
                   )}
 
@@ -373,17 +517,156 @@ export function LeadEmailEngagementCard({
                     </span>
                   )}
 
-                  {!item.openedAt && !item.bouncedAt && !item.unsubscribedAt && item.status === "DELIVERED" && (
-                    <span className="inline-flex items-center gap-1 text-slate-400">
-                      <Clock className="w-3 h-3" />
-                      Delivered &bull; Awaiting recipient open
+                  {!item.openedAt &&
+                    !item.bouncedAt &&
+                    !item.unsubscribedAt &&
+                    item.status === "DELIVERED" && (
+                      <span className="inline-flex items-center gap-1 text-slate-400">
+                        <Clock className="w-3 h-3" />
+                        Delivered &bull; Awaiting recipient open
+                      </span>
+                    )}
+                </div>
+
+                {/* Interactive Tracking Simulation & Verification Bar */}
+                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60 -mx-3.5 -mb-3.5 p-2.5 rounded-b-xl">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                      Live Test Actions:
                     </span>
-                  )}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSimulate(item.id, "OPEN")}
+                      disabled={Boolean(activeSimId)}
+                      className="h-6 px-2 text-[11px] font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 bg-white"
+                      title="Simulate recipient opening this email"
+                    >
+                      <Eye className="w-3 h-3 text-emerald-600 mr-1" />
+                      {activeSimId === `${item.id}_OPEN` ? "Recording..." : "Test Open"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSimulate(item.id, "CLICK")}
+                      disabled={Boolean(activeSimId)}
+                      className="h-6 px-2 text-[11px] font-semibold text-blue-700 border-blue-200 hover:bg-blue-50 bg-white"
+                      title="Simulate recipient clicking a link"
+                    >
+                      <MousePointerClick className="w-3 h-3 text-blue-600 mr-1" />
+                      {activeSimId === `${item.id}_CLICK` ? "Recording..." : "Test Click"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSimulate(item.id, "BOUNCED")}
+                      disabled={Boolean(activeSimId)}
+                      className="h-6 px-2 text-[11px] font-semibold text-red-700 border-red-200 hover:bg-red-50 bg-white"
+                      title="Simulate a remote delivery bounce"
+                    >
+                      <AlertTriangle className="w-3 h-3 text-red-600 mr-1" />
+                      {activeSimId === `${item.id}_BOUNCED` ? "Recording..." : "Test Bounce"}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCopyTrackingLink(item.id)}
+                      className="h-6 px-2 text-[11px] text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                      title="Copy tracking pixel URL to test in browser"
+                    >
+                      {copiedId === item.id ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-700 font-bold">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3 text-slate-400" />
+                          <span>Copy Pixel Link</span>
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSimulate(item.id, "RESET")}
+                      disabled={Boolean(activeSimId)}
+                      className="h-6 px-2 text-[11px] text-slate-400 hover:text-slate-600"
+                      title="Reset tracking stats back to Delivered"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-400 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         ) : null}
+
+        {/* Diagnostics & Live Help Drawer */}
+        <div className="mt-4 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setShowDiagnostics((prev) => !prev)}
+            className="text-[11px] text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
+            <span className="font-semibold">How Live Email Behavior Tracking Works</span>
+            <ChevronDown
+              className={`w-3 h-3 transition-transform ${showDiagnostics ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {showDiagnostics && (
+            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-2">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Open Tracking:</strong> Embedded 1&times;1 transparent GIF pixel (
+                  <code className="text-[11px] bg-slate-200/80 px-1 py-0.5 rounded">
+                    /api/v1/email/track/open
+                  </code>
+                  ). When the client&apos;s email program loads images, the open count and timestamp
+                  automatically update.
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Click Tracking:</strong> Hyperlinks are automatically wrapped with our secure 302
+                  redirector (
+                  <code className="text-[11px] bg-slate-200/80 px-1 py-0.5 rounded">
+                    /api/v1/email/track/click
+                  </code>
+                  ), instantly recording CTR before redirecting to the target URL.
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Localhost vs Remote Notice:</strong> Remote mail providers (such as Gmail
+                  Image Proxy) cannot load images hosted on <code className="text-[11px] bg-slate-200/80 px-1 py-0.5 rounded">localhost</code>.
+                  For live local testing, use the <strong>Test Open</strong> or <strong>Test Click</strong> buttons
+                  above, copy the live pixel link into a browser, or set{" "}
+                  <code className="text-[11px] bg-slate-200/80 px-1 py-0.5 rounded">NEXT_PUBLIC_APP_URL</code> to a public domain / ngrok tunnel.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
         </>
       )}

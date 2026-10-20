@@ -761,6 +761,9 @@ export default function LeadDetailPage() {
           <LeadEmailEngagementCard
             summary={emailEngagement}
             onRefresh={loadLead}
+            leadId={lead.id}
+            leadEmail={lead.email}
+            leadName={lead.fullName}
           />
 
           {/* Inline Activity & Email Composer */}
