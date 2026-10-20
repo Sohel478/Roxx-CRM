@@ -15,6 +15,7 @@ import {
   Snowflake,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Play,
   UserCheck,
   X,
@@ -85,7 +86,7 @@ export const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
   "actions",
 ];
 
-const LOCAL_STORAGE_KEY = "roxx_leads_table_columns_v2";
+const LOCAL_STORAGE_KEY = "roxx_leads_table_columns_v3";
 
 interface LeadTableProps {
   leads: LeadItem[];
@@ -611,8 +612,8 @@ export function LeadTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-3.5 w-10 text-center">
+              <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-2.5 px-2.5 w-9 text-center">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -622,18 +623,22 @@ export function LeadTable({
                     title="Select all on this page"
                   />
                 </th>
-                {isVisible("lead") && <th className="py-3 px-4">Lead</th>}
-                {isVisible("emailStatus") && <th className="py-3 px-4">Email Status</th>}
-                {isVisible("notes") && <th className="py-3 px-4">Notes</th>}
-                {isVisible("company") && <th className="py-3 px-4">Company &amp; Title</th>}
-                {isVisible("status") && <th className="py-3 px-4">Status</th>}
-                {isVisible("rating") && <th className="py-3 px-4">Rating</th>}
-                {isVisible("value") && <th className="py-3 px-4 text-right">Estimated Value</th>}
-                {isVisible("owner") && <th className="py-3 px-4">Owner</th>}
-                {isVisible("contact") && <th className="py-3 px-4">Contact Info</th>}
-                {isVisible("source") && <th className="py-3 px-4">Source</th>}
-                {isVisible("createdAt") && <th className="py-3 px-4">Created Date</th>}
-                {isVisible("actions") && <th className="py-3 px-4 text-right">Actions</th>}
+                {isVisible("lead") && <th className="py-2.5 px-2.5 whitespace-nowrap min-w-[180px]">Lead / Calling</th>}
+                {isVisible("emailStatus") && <th className="py-2.5 px-2 whitespace-nowrap">Email Status</th>}
+                {isVisible("notes") && <th className="py-2.5 px-2.5 whitespace-nowrap">Notes</th>}
+                {isVisible("company") && <th className="py-2.5 px-2.5 whitespace-nowrap">Company &amp; Title</th>}
+                {isVisible("status") && <th className="py-2.5 px-2 whitespace-nowrap">Status</th>}
+                {isVisible("rating") && <th className="py-2.5 px-2 whitespace-nowrap">Rating</th>}
+                {isVisible("value") && <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Est. Value</th>}
+                {isVisible("owner") && <th className="py-2.5 px-2 whitespace-nowrap">Owner</th>}
+                {isVisible("contact") && <th className="py-2.5 px-2.5 whitespace-nowrap">Contact Info</th>}
+                {isVisible("source") && <th className="py-2.5 px-2 whitespace-nowrap">Source</th>}
+                {isVisible("createdAt") && <th className="py-2.5 px-2 whitespace-nowrap">Created</th>}
+                {isVisible("actions") && (
+                  <th className="py-2.5 px-3 text-right whitespace-nowrap sticky right-0 bg-slate-50/95 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
+                    Actions
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
@@ -653,12 +658,12 @@ export function LeadTable({
                   return (
                     <tr
                       key={lead.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${
+                      className={`group hover:bg-slate-50/80 transition-colors ${
                         isSelected ? "bg-blue-50/50" : ""
                       }`}
                     >
                       {/* Selection Checkbox */}
-                      <td className="py-3.5 px-3.5 w-10 text-center">
+                      <td className="py-2.5 px-2.5 w-9 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -668,130 +673,109 @@ export function LeadTable({
                         />
                       </td>
 
-                      {/* Lead Name & Number */}
+                      {/* Lead Name & Calling Info */}
                       {isVisible("lead") && (
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <div className="flex flex-col font-semibold text-slate-900 min-w-0">
+                        <td className="py-2.5 px-2.5 min-w-[180px]">
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
                               <Link
                                 href={`/leads/${lead.id}`}
-                                className="group hover:text-blue-600 truncate"
+                                className="font-bold text-slate-900 hover:text-blue-600 truncate text-xs"
+                                title={lead.fullName}
                               >
-                                <span className="group-hover:underline">{lead.fullName}</span>
+                                <span className="hover:underline">{lead.fullName}</span>
                               </Link>
-                              <span className="text-[11px] text-slate-400 font-mono font-normal">
-                                {lead.leadNumber} &bull; {lead.source}
-                              </span>
-                              {(lead.email || lead.supportEmail) && (
-                                <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
-                                  {lead.email && (
-                                    <span className="inline-flex items-center gap-1 text-slate-600 truncate max-w-[190px]" title={`Customer Email: ${lead.email}`}>
-                                      <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                                      <span className="truncate">{lead.email}</span>
-                                    </span>
-                                  )}
-                                  {lead.supportEmail && (
-                                    <span className="inline-flex items-center gap-1 text-indigo-600 font-medium truncate max-w-[190px]" title={`Support Email: ${lead.supportEmail}`}>
-                                      <span className="text-[10px] bg-indigo-50 border border-indigo-200 px-1 rounded text-indigo-700 font-semibold">Support</span>
-                                      <span className="truncate">{lead.supportEmail}</span>
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {/* Email Status & Notes sub-row in Lead Column */}
-                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                <span className="text-[10px] text-slate-400 font-medium">Email:</span>
-                                {renderEmailStatusBadge(lead.emailStatus || "NA", "xs")}
-                              </div>
-                              {lead.description ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewNoteLead(lead)}
-                                  className="flex items-start gap-1 text-[11px] text-slate-500 mt-1 cursor-pointer hover:text-blue-600 group/note text-left max-w-[240px]"
-                                  title={`Notes for ${lead.fullName}:\n${lead.description}`}
+                              {lead.customerLinkedin && (
+                                <a
+                                  href={lead.customerLinkedin}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-slate-400 hover:text-blue-600 shrink-0"
+                                  title={`LinkedIn: ${lead.customerLinkedin}`}
                                 >
-                                  <FileText className="w-3 h-3 text-slate-400 shrink-0 mt-0.5 group-hover/note:text-blue-500" />
-                                  <span className="line-clamp-1 group-hover/note:underline">
-                                    {lead.description.replace(/\n+/g, " • ").trim()}
-                                  </span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => onEdit(lead)}
-                                  className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-500 mt-0.5"
-                                  title="Add note for this lead"
-                                >
-                                  <FileText className="w-2.5 h-2.5 text-slate-300" />
-                                  <span className="text-slate-400 italic">No notes</span>
-                                  <span className="text-blue-500 underline ml-0.5">+ Add</span>
-                                </button>
+                                  <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                                    <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v7.6H9.2v-7.6H6.46M7.83 6.25c-.9 0-1.63.73-1.63 1.63s.73 1.63 1.63 1.63 1.63-.73 1.63-1.63-.73-1.63-1.63-1.63" />
+                                  </svg>
+                                </a>
                               )}
                             </div>
-                            {lead.customerLinkedin && (
+                            <span className="text-[10px] text-slate-400 font-mono font-normal">
+                              {lead.leadNumber} &bull; {lead.source || "Website"}
+                            </span>
+                            {/* Fast Calling Action for rep */}
+                            {lead.phone ? (
                               <a
-                                href={lead.customerLinkedin}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0 self-start mt-0.5"
-                                title={`Customer LinkedIn: ${lead.customerLinkedin}`}
+                                href={`tel:${lead.phone}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-1.5 py-0.5 rounded w-fit transition-colors mt-0.5"
+                                title={`Direct Call: ${lead.phone}`}
                               >
-                                <span className="sr-only">Customer LinkedIn</span>
-                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                                  <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v7.6H9.2v-7.6H6.46M7.83 6.25c-.9 0-1.63.73-1.63 1.63s.73 1.63 1.63 1.63 1.63-.73 1.63-1.63-.73-1.63-1.63-1.63" />
-                                </svg>
+                                <Phone className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                <span>{lead.phone}</span>
                               </a>
-                            )}
+                            ) : (lead.email || lead.supportEmail) ? (
+                              <a
+                                href={`mailto:${lead.email || lead.supportEmail}`}
+                                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-blue-600 truncate max-w-[170px] mt-0.5"
+                                title={lead.email || lead.supportEmail || ""}
+                              >
+                                <Mail className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                <span className="truncate">{lead.email || lead.supportEmail}</span>
+                              </a>
+                            ) : null}
                           </div>
                         </td>
                       )}
 
                       {/* Email Status Column */}
                       {isVisible("emailStatus") && (
-                        <td className="py-3.5 px-4 text-xs whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            {renderEmailStatusBadge(lead.emailStatus || "NA", "sm")}
-                            {onUpdateEmailStatus && (
-                              <select
-                                value={lead.emailStatus || "NA"}
-                                onChange={(e) =>
-                                  onUpdateEmailStatus(
-                                    lead.id,
-                                    e.target.value as "Sent" | "Follow up" | "NA"
-                                  )
-                                }
-                                className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 cursor-pointer hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                title="Change email status"
-                              >
-                                <option value="Sent">Sent</option>
-                                <option value="Follow up">Follow up</option>
-                                <option value="NA">NA</option>
-                              </select>
-                            )}
+                        <td className="py-2.5 px-2 text-xs whitespace-nowrap">
+                          <div className="relative inline-block">
+                            <select
+                              value={lead.emailStatus || "NA"}
+                              onChange={(e) =>
+                                onUpdateEmailStatus?.(
+                                  lead.id,
+                                  e.target.value as "Sent" | "Follow up" | "NA"
+                                )
+                              }
+                              className={`appearance-none pl-2.5 pr-6 py-0.5 text-[11px] font-bold rounded-full border shadow-2xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors ${
+                                lead.emailStatus === "Sent"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                                  : lead.emailStatus === "Follow up"
+                                  ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                              }`}
+                              title="Click to change email status"
+                            >
+                              <option value="Sent">✓ Sent</option>
+                              <option value="Follow up">⏰ Follow up</option>
+                              <option value="NA">NA</option>
+                            </select>
+                            <ChevronDown className="w-2.5 h-2.5 text-slate-400 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                           </div>
                         </td>
                       )}
 
                       {/* Notes & Discovery Context */}
                       {isVisible("notes") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600 max-w-[240px]">
+                        <td className="py-2.5 px-2.5 text-xs text-slate-600 max-w-[130px]">
                           {lead.description ? (
                             <button
                               type="button"
                               onClick={() => setPreviewNoteLead(lead)}
-                              className="text-left group w-full flex items-start gap-1.5 p-1 -m-1 rounded-md hover:bg-slate-100 transition-colors"
+                              className="text-left group/note flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 transition-all max-w-[130px]"
                               title="Click to view full notes & context"
                             >
-                              <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5 group-hover:text-blue-600" />
-                              <span className="line-clamp-2 text-[12px] text-slate-700 leading-tight group-hover:text-blue-700">
-                                {lead.description.replace(/\n+/g, " • ").trim()}
+                              <FileText className="w-3 h-3 text-blue-500 shrink-0 group-hover/note:text-blue-600" />
+                              <span className="truncate text-[11px] text-slate-700 font-medium group-hover/note:text-blue-700">
+                                {lead.description.replace(/\n+/g, " ").trim()}
                               </span>
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => onEdit(lead)}
-                              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 py-1 transition-colors"
+                              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 py-0.5 transition-colors"
                               title="Add notes for this lead"
                             >
                               <span className="text-slate-300 italic">—</span>
@@ -805,41 +789,47 @@ export function LeadTable({
 
                       {/* Company & Title */}
                       {isVisible("company") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600">
-                          <div className="flex items-center gap-1.5">
-                            <p className="font-medium text-slate-800 truncate">{lead.companyName || "Independent"}</p>
+                        <td className="py-2.5 px-2.5 text-xs text-slate-600 max-w-[140px]">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <p className="font-medium text-slate-800 truncate" title={lead.companyName || "Independent"}>
+                              {lead.companyName || "Independent"}
+                            </p>
                             {lead.companyLinkedin && (
                               <a
                                 href={lead.companyLinkedin}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                                className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
                                 title={`Company LinkedIn: ${lead.companyLinkedin}`}
                               >
                                 <span className="sr-only">Company LinkedIn</span>
-                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                                <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
                                   <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v7.6H9.2v-7.6H6.46M7.83 6.25c-.9 0-1.63.73-1.63 1.63s.73 1.63 1.63 1.63 1.63-.73 1.63-1.63-.73-1.63-1.63-1.63" />
                                 </svg>
                               </a>
                             )}
                           </div>
-                          {lead.jobTitle && <p className="text-[11px] text-slate-400">{lead.jobTitle}</p>}
+                          {lead.jobTitle && (
+                            <p className="text-[10px] text-slate-400 truncate" title={lead.jobTitle}>
+                              {lead.jobTitle}
+                            </p>
+                          )}
                         </td>
                       )}
 
                       {/* Status */}
                       {isVisible("status") && (
-                        <td className="py-3.5 px-4">{getStatusBadge(lead.status)}</td>
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">{getStatusBadge(lead.status)}</td>
                       )}
 
                       {/* Rating */}
                       {isVisible("rating") && (
-                        <td className="py-3.5 px-4">{getRatingPill(lead.rating)}</td>
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">{getRatingPill(lead.rating)}</td>
                       )}
 
                       {/* Estimated Value */}
                       {isVisible("value") && (
-                        <td className="py-3.5 px-4 text-right font-semibold text-slate-900 text-xs">
+                        <td className="py-2.5 px-2.5 text-right font-semibold text-slate-900 text-xs whitespace-nowrap">
                           {lead.estimatedValue > 0
                             ? `$${lead.estimatedValue.toLocaleString()}`
                             : "—"}
@@ -848,29 +838,29 @@ export function LeadTable({
 
                       {/* Owner */}
                       {isVisible("owner") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600">
+                        <td className="py-2.5 px-2.5 text-xs text-slate-600 max-w-[110px] truncate" title={lead.ownerName || "Unassigned"}>
                           {lead.ownerName || "Unassigned"}
                         </td>
                       )}
 
                       {/* Contact Info (Phone & Email) */}
                       {isVisible("contact") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600 whitespace-nowrap">
-                          <div className="flex flex-col gap-1">
+                        <td className="py-2.5 px-2.5 text-xs text-slate-600 whitespace-nowrap">
+                          <div className="flex flex-col gap-0.5">
                             {lead.phone ? (
                               <a
                                 href={`tel:${lead.phone}`}
-                                className="inline-flex items-center gap-1.5 text-slate-700 hover:text-blue-600 font-medium text-[11px]"
+                                className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-semibold text-[11px]"
                                 title={`Call ${lead.phone}`}
                               >
-                                <Phone className="w-3 h-3 text-emerald-500 shrink-0" />
+                                <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                                 <span>{lead.phone}</span>
                               </a>
                             ) : null}
                             {(lead.email || lead.supportEmail) ? (
                               <a
                                 href={`mailto:${lead.email || lead.supportEmail}`}
-                                className="inline-flex items-center gap-1.5 text-slate-600 hover:text-blue-600 text-[11px] truncate max-w-[170px]"
+                                className="inline-flex items-center gap-1 text-slate-500 hover:text-blue-600 text-[11px] truncate max-w-[140px]"
                                 title={lead.email || lead.supportEmail || ""}
                               >
                                 <Mail className="w-3 h-3 text-slate-400 shrink-0" />
@@ -886,9 +876,9 @@ export function LeadTable({
 
                       {/* Source */}
                       {isVisible("source") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                            <Tag className="w-3 h-3 text-slate-400" />
+                        <td className="py-2.5 px-2.5 text-xs text-slate-600 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            <Tag className="w-2.5 h-2.5 text-slate-400" />
                             {lead.source || "Website"}
                           </span>
                         </td>
@@ -896,8 +886,8 @@ export function LeadTable({
 
                       {/* Created Date */}
                       {isVisible("createdAt") && (
-                        <td className="py-3.5 px-4 text-xs text-slate-600 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 text-slate-600 text-[11px]">
+                        <td className="py-2.5 px-2 text-xs text-slate-600 whitespace-nowrap">
+                          <div className="flex items-center gap-1 text-slate-600 text-[11px]">
                             <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
                             <span>
                               {new Date(lead.createdAt).toLocaleDateString(undefined, {
@@ -910,15 +900,25 @@ export function LeadTable({
                         </td>
                       )}
 
-                      {/* Actions */}
+                      {/* Actions Column (Sticky on right) */}
                       {isVisible("actions") && (
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-2.5 px-2.5 text-right whitespace-nowrap sticky right-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
                           <div className="flex items-center justify-end gap-1">
+                            {/* Fast direct call button */}
+                            {lead.phone && (
+                              <a
+                                href={`tel:${lead.phone}`}
+                                className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                title={`Direct Call: ${lead.fullName} (${lead.phone})`}
+                              >
+                                <Phone className="w-3.5 h-3.5 fill-emerald-100" />
+                              </a>
+                            )}
                             {lead.status === "Scraped" && onPickLead && (
                               <button
                                 type="button"
                                 onClick={() => onPickLead(lead.id)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shadow-2xs mr-1"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-md transition-colors shadow-2xs mr-0.5"
                                 title="Pick Lead & Activate to New"
                               >
                                 <Play className="w-3 h-3 fill-indigo-600 text-indigo-600" />
@@ -930,7 +930,7 @@ export function LeadTable({
                               className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
                               title="View Lead Details"
                             >
-                              <ExternalLink className="w-4 h-4" />
+                              <ExternalLink className="w-3.5 h-3.5" />
                             </Link>
                             <button
                               type="button"
@@ -938,7 +938,7 @@ export function LeadTable({
                               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                               title="Edit"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
@@ -950,7 +950,7 @@ export function LeadTable({
                               className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>

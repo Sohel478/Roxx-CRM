@@ -285,43 +285,50 @@ export default function LeadsPage() {
             Prospects, qualifications, deal value estimates, and conversion pipeline.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
+            size="sm"
             onClick={() => setIsImportModalOpen(true)}
+            className="text-xs"
           >
-            <Upload className="w-4 h-4 mr-1.5 text-slate-500" />
+            <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
             <span>Import CSV</span>
           </Button>
           <Button
             type="button"
             variant="outline"
+            size="sm"
             disabled={isExporting}
             onClick={handleExportCsv}
+            className="text-xs"
           >
-            <Download className="w-4 h-4 mr-1.5 text-slate-500" />
+            <Download className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
             <span>{isExporting ? "Exporting..." : "Export"}</span>
           </Button>
           {isAdmin && (
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => setIsResetModalOpen(true)}
-              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+              className="text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
             >
-              <Trash2 className="w-4 h-4 mr-1.5 text-red-500" />
+              <Trash2 className="w-3.5 h-3.5 mr-1.5 text-red-500" />
               <span>Reset Leads</span>
             </Button>
           )}
           <Button
             type="button"
+            size="sm"
             onClick={() => {
               setLeadToEdit(null);
               setIsModalOpen(true);
             }}
+            className="text-xs"
           >
-            <Plus className="w-4 h-4 mr-1.5" />
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
             <span>Add Lead</span>
           </Button>
         </div>
