@@ -670,6 +670,8 @@ export async function exportEntityCsvAction(
         "Rating",
         "Estimated Value (USD)",
         "Owner",
+        "Email Status",
+        "Notes",
         "Created Date",
       ];
       const rows = mockLeadsStore.map((l) => [
@@ -684,6 +686,8 @@ export async function exportEntityCsvAction(
         l.rating,
         l.estimatedValue,
         l.ownerName,
+        l.emailStatus || "NA",
+        l.description || "",
         l.createdAt.split("T")[0],
       ]);
       csv = serializeCsv(headers, rows);

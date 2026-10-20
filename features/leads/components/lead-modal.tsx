@@ -50,6 +50,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     estimatedValue: leadToEdit?.estimatedValue || 0,
     currency: leadToEdit?.currency || "USD",
     description: leadToEdit?.description || "",
+    emailStatus: leadToEdit?.emailStatus || "NA",
     ownerId: leadToEdit?.ownerId || undefined,
   });
 
@@ -98,6 +99,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         estimatedValue: leadToEdit.estimatedValue || 0,
         currency: leadToEdit.currency || "USD",
         description: leadToEdit.description || "",
+        emailStatus: leadToEdit.emailStatus || "NA",
         ownerId: leadToEdit.ownerId || undefined,
       });
     } else {
@@ -117,6 +119,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         estimatedValue: 0,
         currency: "USD",
         description: "",
+        emailStatus: "NA",
         ownerId: undefined,
       });
     }

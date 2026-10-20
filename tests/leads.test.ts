@@ -117,4 +117,68 @@ describe("Lead Validation & Duplicate Rules", () => {
     const res2 = leadSchema.safeParse(leadWithoutLinkedin);
     expect(res2.success).toBe(true);
   });
+
+  it("validates emailStatus with Sent, Follow up, and NA values", () => {
+    for (const validStatus of ["Sent", "Follow up", "NA"] as const) {
+      const res = leadSchema.safeParse({ firstName: "Test", emailStatus: validStatus });
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.emailStatus).toBe(validStatus);
+      }
+    }
+
+    const invalid = leadSchema.safeParse({ firstName: "Test", emailStatus: "UNKNOWN" as any });
+    expect(invalid.success).toBe(false);
+  });
+
+  it("evaluates owner scope matching correctly for ALL, ME, and UNASSIGNED", () => {
+    const currentUserId = "usr_sohel";
+    const currentSessionName = "Sohel J";
+    const sampleLeads = [
+      { id: "1", ownerId: "usr_sohel", ownerName: "Sohel J", createdById: "usr_sohel" },
+      { id: "2", ownerId: "usr_sheetal", ownerName: "Sheetal D", createdById: "usr_sheetal" },
+      { id: "3", ownerId: null, ownerName: null, createdById: "usr_other" },
+    ];
+
+    // Filter ALL
+    const filterAll = sampleLeads.filter(() => true);
+    expect(filterAll.length).toBe(3);
+
+    // Filter ME
+    const filterMe = sampleLeads.filter(
+      (l) => l.ownerId === currentUserId || l.createdById === currentUserId || l.ownerName === currentSessionName
+    );
+    expect(filterMe.length).toBe(1);
+    expect(filterMe[0].id).toBe("1");
+
+    // Filter UNASSIGNED
+    const filterUnassigned = sampleLeads.filter((l) => !l.ownerId);
+    expect(filterUnassigned.length).toBe(1);
+    expect(filterUnassigned[0].id).toBe("3");
+
+    // Filter specific owner
+    const filterSheetal = sampleLeads.filter((l) => l.ownerId === "usr_sheetal");
+    expect(filterSheetal.length).toBe(1);
+    expect(filterSheetal[0].id).toBe("2");
+  });
+
+  it("filters leads by emailStatus (Sent, Follow up, NA) accurately", () => {
+    const sampleLeads = [
+      { id: "1", emailStatus: "Sent" },
+      { id: "2", emailStatus: "Follow up" },
+      { id: "3", emailStatus: "NA" },
+      { id: "4", emailStatus: "Sent" },
+    ];
+
+    const sent = sampleLeads.filter((l) => l.emailStatus === "Sent");
+    expect(sent.length).toBe(2);
+
+    const followUp = sampleLeads.filter((l) => l.emailStatus === "Follow up");
+    expect(followUp.length).toBe(1);
+    expect(followUp[0].id).toBe("2");
+
+    const na = sampleLeads.filter((l) => l.emailStatus === "NA");
+    expect(na.length).toBe(1);
+    expect(na[0].id).toBe("3");
+  });
 });

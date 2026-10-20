@@ -94,6 +94,7 @@ export interface MockLead {
   createdAt: string;
   updatedAt?: string;
   description?: string | null;
+  emailStatus?: "Sent" | "Follow up" | "NA" | string | null;
   convertedAt?: string | null;
   convertedCompanyId?: string | null;
   convertedContactId?: string | null;

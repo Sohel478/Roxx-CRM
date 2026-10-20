@@ -15,6 +15,7 @@ import {
   pickLeadAction,
   bulkAssignLeadsAction,
   bulkDeleteLeadsAction,
+  updateLeadEmailStatusAction,
 } from "@/actions/leads";
 import { getCurrentUserAction } from "@/actions/auth";
 import { getUsersAction } from "@/actions/users";
@@ -27,6 +28,8 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [rating, setRating] = useState("ALL");
+  const [ownerFilter, setOwnerFilter] = useState("ALL");
+  const [emailStatusFilter, setEmailStatusFilter] = useState("ALL");
   const [isTechfluxOrg, setIsTechfluxOrg] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isManager, setIsManager] = useState(false);
@@ -59,11 +62,11 @@ export default function LeadsPage() {
     } catch {
       // Fallback to client leads export
       const csvContent =
-        "data:text/csv;charset=utf-8,Number,Name,Company,Status,Rating,Value,Email,Phone\n" +
+        "data:text/csv;charset=utf-8,Number,Name,Company,Status,Rating,Value,Email,Phone,Email Status,Notes\n" +
         leads
           .map(
             (l) =>
-              `"${l.leadNumber}","${l.fullName}","${l.companyName || ""}","${l.status}","${l.rating}",${l.estimatedValue},"${l.email || ""}","${l.phone || ""}"`
+              `"${l.leadNumber}","${l.fullName}","${l.companyName || ""}","${l.status}","${l.rating}",${l.estimatedValue},"${l.email || ""}","${l.phone || ""}","${l.emailStatus || "NA"}","${(l.description || "").replace(/"/g, '""')}"`
           )
           .join("\n");
       const encodedUri = encodeURI(csvContent);
@@ -78,8 +81,29 @@ export default function LeadsPage() {
     }
   };
 
+  const handleUpdateEmailStatus = async (
+    leadId: string,
+    emailStatus: "Sent" | "Follow up" | "NA"
+  ) => {
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, emailStatus } : l))
+    );
+    try {
+      await updateLeadEmailStatusAction(leadId, emailStatus);
+    } catch (err) {
+      console.error("Failed to update email status:", err);
+    }
+  };
+
   const loadLeads = useCallback(
-    (page = 1, query = search, filterStatus = status, filterRating = rating) => {
+    (
+      page = 1,
+      query = search,
+      filterStatus = status,
+      filterRating = rating,
+      filterOwner = ownerFilter,
+      filterEmailStatus = emailStatusFilter
+    ) => {
       startTransition(async () => {
         try {
           const res = await getLeadsAction({
@@ -88,6 +112,8 @@ export default function LeadsPage() {
             search: query,
             status: filterStatus,
             rating: filterRating,
+            ownerId: filterOwner,
+            emailStatus: filterEmailStatus,
           });
           if (res?.success && res.data) {
             setLeads(res.data.items);
@@ -101,7 +127,7 @@ export default function LeadsPage() {
         }
       });
     },
-    [search, status, rating]
+    [search, status, rating, ownerFilter, emailStatusFilter]
   );
 
   useEffect(() => {
@@ -132,17 +158,17 @@ export default function LeadsPage() {
   }, []);
 
   useEffect(() => {
-    loadLeads(1, search, status, rating);
-  }, [loadLeads, search, status, rating]);
+    loadLeads(1, search, status, rating, ownerFilter, emailStatusFilter);
+  }, [loadLeads, search, status, rating, ownerFilter, emailStatusFilter]);
 
   // Listen for global lead creation events (e.g. from top header navbar)
   useEffect(() => {
     const handleLeadCreated = () => {
-      loadLeads(1, search, status, rating);
+      loadLeads(1, search, status, rating, ownerFilter, emailStatusFilter);
     };
     window.addEventListener("leadCreated", handleLeadCreated);
     return () => window.removeEventListener("leadCreated", handleLeadCreated);
-  }, [loadLeads, search, status, rating]);
+  }, [loadLeads, search, status, rating, ownerFilter, emailStatusFilter]);
 
   const handleToggleSelectLead = (id: string) => {
     setSelectedLeadIds((prev) =>
@@ -307,6 +333,9 @@ export default function LeadsPage() {
         meta={meta}
         selectedStatus={status}
         selectedRating={rating}
+        selectedOwner={ownerFilter}
+        selectedEmailStatus={emailStatusFilter}
+        searchQuery={search}
         isTechfluxOrg={isTechfluxOrg}
         selectedLeadIds={selectedLeadIds}
         isAdminOrManager={isAdmin || isManager}
@@ -325,6 +354,22 @@ export default function LeadsPage() {
           setSelectedLeadIds([]);
           setRating(r);
         }}
+        onOwnerChange={(o) => {
+          setSelectedLeadIds([]);
+          setOwnerFilter(o);
+        }}
+        onEmailStatusChange={(eStatus) => {
+          setSelectedLeadIds([]);
+          setEmailStatusFilter(eStatus);
+        }}
+        onResetAllFilters={() => {
+          setSelectedLeadIds([]);
+          setSearch("");
+          setStatus("ALL");
+          setRating("ALL");
+          setOwnerFilter("ALL");
+          setEmailStatusFilter("ALL");
+        }}
         onPageChange={(p) => loadLeads(p)}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -335,6 +380,7 @@ export default function LeadsPage() {
         onBulkDelete={handleBulkDelete}
         onClearSelection={handleClearSelection}
         onCreateMarketingBatch={() => setIsBatchModalOpen(true)}
+        onUpdateEmailStatus={handleUpdateEmailStatus}
       />
 
       {/* Modal Dialog */}

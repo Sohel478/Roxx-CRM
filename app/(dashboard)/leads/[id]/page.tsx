@@ -76,6 +76,7 @@ interface LeadDetailData {
   estimatedValue: number;
   currency: string;
   description?: string | null;
+  emailStatus?: string | null;
   createdAt: string;
   owner?: { id: string; name: string } | null;
   ownerId?: string | null;
@@ -874,6 +875,7 @@ export default function LeadDetailPage() {
                 estimatedValue: lead.estimatedValue,
                 currency: lead.currency || "USD",
                 description: lead.description || "",
+                emailStatus: (lead.emailStatus as "Sent" | "Follow up" | "NA") || "NA",
                 ownerId: lead.owner?.id || lead.ownerId || undefined,
               }
             : null

@@ -10,6 +10,9 @@ import {
   mockContactsStore,
   mockOpportunitiesStore,
   mockUsersStore,
+  mockDirectEmailsStore,
+  mockMarketingCampaignsStore,
+  mockActivitiesStore,
 } from "@/lib/db/mock-store";
 import {
   leadSchema,
@@ -19,6 +22,51 @@ import {
 } from "@/lib/validations/leads";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
 import { createNotificationHelper } from "@/actions/notifications";
+
+/**
+ * Helper to determine or resolve a lead's email status: "Sent" | "Follow up" | "NA"
+ */
+function resolveLeadEmailStatus(l: {
+  emailStatus?: string | null;
+  email?: string | null;
+  supportEmail?: string | null;
+  status?: string | null;
+  id?: string;
+}): "Sent" | "Follow up" | "NA" {
+  if (l.emailStatus === "Sent" || l.emailStatus === "Follow up" || l.emailStatus === "NA") {
+    return l.emailStatus;
+  }
+  // If no email address exists, status is NA
+  if (!l.email && !l.supportEmail) {
+    return "NA";
+  }
+  // If lead is in Contacted or Nurture stage, it's Follow up
+  if (l.status === "Contacted" || l.status === "Nurture") {
+    return "Follow up";
+  }
+  // Check direct email store
+  const hasDirectEmail = mockDirectEmailsStore?.some(
+    (d) => (l.id && d.leadId === l.id) || (l.email && d.recipientEmail?.toLowerCase() === l.email.toLowerCase())
+  );
+  if (hasDirectEmail) {
+    return "Sent";
+  }
+  // Check campaign dispatches
+  const hasCampaignDispatch = mockMarketingCampaignsStore?.some(
+    (c) => l.id && c.recipientLogs?.some((r) => r.leadId === l.id)
+  );
+  if (hasCampaignDispatch) {
+    return "Sent";
+  }
+  // Check email activities
+  const hasActivity = mockActivitiesStore?.some(
+    (a) => a.leadId === l.id && a.type === "EMAIL"
+  );
+  if (hasActivity) {
+    return "Sent";
+  }
+  return "NA";
+}
 
 /**
  * Check if a lead with matching email or normalized phone already exists
@@ -96,6 +144,8 @@ export async function getLeadsAction(params: {
   status?: string;
   source?: string;
   rating?: string;
+  ownerId?: string;
+  emailStatus?: string;
 }) {
   const session = await requireAuth();
   const { organizationId, userId } = await resolveTenantContext(session);
@@ -131,6 +181,27 @@ export async function getLeadsAction(params: {
       ];
     }
 
+    // Owner / Scope filter
+    if (params.ownerId && params.ownerId !== "ALL") {
+      if (params.ownerId === "ME") {
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { ownerId: session.id },
+              { ownerId: userId },
+              { createdById: session.id },
+              { createdById: userId },
+            ],
+          },
+        ];
+      } else if (params.ownerId === "UNASSIGNED") {
+        where.ownerId = null;
+      } else {
+        where.ownerId = params.ownerId;
+      }
+    }
+
     if (params.status && params.status !== "ALL") {
       where.status = params.status;
     }
@@ -153,47 +224,52 @@ export async function getLeadsAction(params: {
       ];
     }
 
-    const [total, items] = await Promise.all([
-      prisma.lead.count({ where }),
-      prisma.lead.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include: {
-          owner: { select: { id: true, name: true } },
-        },
-      }),
-    ]);
+    const allMatching = await prisma.lead.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        owner: { select: { id: true, name: true } },
+      },
+    });
+
+    let mappedItems = allMatching.map((l) => ({
+      id: l.id,
+      leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
+      email: l.email,
+      supportEmail: l.supportEmail || null,
+      phone: l.phone,
+      companyName: l.companyName,
+      jobTitle: l.jobTitle,
+      companyLinkedin: l.companyLinkedin || null,
+      customerLinkedin: l.customerLinkedin || null,
+      source: l.source,
+      status: l.status,
+      rating: l.rating || "Warm",
+      estimatedValue: Number(l.estimatedValue || 0),
+      currency: l.currency,
+      description: l.description,
+      emailStatus: resolveLeadEmailStatus(l),
+      ownerId: l.ownerId || null,
+      createdById: l.createdById || null,
+      ownerName: l.owner?.name || null,
+      createdAt: l.createdAt.toISOString(),
+    }));
+
+    if (params.emailStatus && params.emailStatus !== "ALL") {
+      mappedItems = mappedItems.filter((i) => i.emailStatus === params.emailStatus);
+    }
+
+    const total = mappedItems.length;
+    const paginatedItems = mappedItems.slice(skip, skip + limit);
 
     return {
       success: true,
       data: {
         isTechfluxOrg,
-        items: items.map((l) => ({
-          id: l.id,
-          leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
-          firstName: l.firstName,
-          lastName: l.lastName,
-          fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
-          email: l.email,
-          supportEmail: l.supportEmail || null,
-          phone: l.phone,
-          companyName: l.companyName,
-          jobTitle: l.jobTitle,
-          companyLinkedin: l.companyLinkedin || null,
-          customerLinkedin: l.customerLinkedin || null,
-          source: l.source,
-          status: l.status,
-          rating: l.rating || "Warm",
-          estimatedValue: Number(l.estimatedValue || 0),
-          currency: l.currency,
-          description: l.description,
-          ownerId: l.ownerId || null,
-          createdById: l.createdById || null,
-          ownerName: l.owner?.name || null,
-          createdAt: l.createdAt.toISOString(),
-        })),
+        items: paginatedItems,
         meta: {
           page,
           limit,
@@ -228,7 +304,31 @@ export async function getLeadsAction(params: {
       const matchesSource = !params.source || params.source === "ALL" || l.source === params.source;
       const matchesRating = !params.rating || params.rating === "ALL" || l.rating === params.rating;
 
-      return matchesSearch && matchesStatus && matchesSource && matchesRating;
+      // Owner / Scope filter
+      let matchesOwner = true;
+      if (params.ownerId && params.ownerId !== "ALL") {
+        if (params.ownerId === "ME") {
+          matchesOwner = Boolean(
+            l.ownerId === session.id ||
+            l.ownerId === userId ||
+            l.createdById === session.id ||
+            l.createdById === userId ||
+            (l.ownerName && (l.ownerName === session.name || l.ownerName === "Alex Sales"))
+          );
+        } else if (params.ownerId === "UNASSIGNED") {
+          matchesOwner = !l.ownerId;
+        } else {
+          matchesOwner = l.ownerId === params.ownerId;
+        }
+      }
+
+      // Email status filter
+      let matchesEmailStatus = true;
+      if (params.emailStatus && params.emailStatus !== "ALL") {
+        matchesEmailStatus = resolveLeadEmailStatus(l) === params.emailStatus;
+      }
+
+      return matchesSearch && matchesStatus && matchesSource && matchesRating && matchesOwner && matchesEmailStatus;
     });
 
     const total = filtered.length;
@@ -238,7 +338,10 @@ export async function getLeadsAction(params: {
       success: true,
       data: {
         isTechfluxOrg,
-        items: paginated,
+        items: paginated.map((l) => ({
+          ...l,
+          emailStatus: resolveLeadEmailStatus(l),
+        })),
         meta: {
           page,
           limit,
@@ -320,6 +423,7 @@ export async function getLeadByIdAction(id: string) {
           success: true,
           data: {
             ...mock,
+            emailStatus: resolveLeadEmailStatus(mock),
             convertedInfo,
             owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
             activities: [],
@@ -384,6 +488,7 @@ export async function getLeadByIdAction(id: string) {
       success: true,
       data: {
         ...lead,
+        emailStatus: resolveLeadEmailStatus(lead),
         convertedInfo,
         estimatedValue: Number(lead.estimatedValue || 0),
         fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
@@ -427,6 +532,7 @@ export async function getLeadByIdAction(id: string) {
         success: true,
         data: {
           ...mock,
+          emailStatus: resolveLeadEmailStatus(mock),
           convertedInfo,
           owner: { id: mock.ownerId || "usr_alex", name: mock.ownerName || "Alex Sales" },
           activities: [],
@@ -481,6 +587,7 @@ export async function createLeadAction(data: LeadFormData) {
     estimatedValue,
     currency,
     description,
+    emailStatus,
     ownerId,
   } = parsed.data;
 
@@ -567,6 +674,7 @@ export async function createLeadAction(data: LeadFormData) {
       ownerName: assignedUser ? assignedUser.name : (finalOwnerId === userId ? session.name : "Sales Rep"),
       createdAt: new Date().toISOString(),
       description,
+      emailStatus: emailStatus || "NA",
     };
     mockLeadsStore.unshift(newLead);
 
@@ -616,6 +724,7 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
     if (data.estimatedValue !== undefined) updatePayload.estimatedValue = Number(data.estimatedValue) || 0;
     if (data.currency !== undefined) updatePayload.currency = data.currency || "USD";
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
+    if (data.emailStatus !== undefined) updatePayload.emailStatus = data.emailStatus;
     if (data.ownerId !== undefined && isAdminOrManager) {
       updatePayload.ownerId = data.ownerId || null;
       updatePayload.assignedAt = new Date();
@@ -677,6 +786,40 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       throw err;
     }
     return { success: false, error: err?.message || "Failed to update lead" };
+  }
+}
+
+/**
+ * Quick inline update of a lead's email status (Sent / Follow up / NA)
+ */
+export async function updateLeadEmailStatusAction(
+  leadId: string,
+  emailStatus: "Sent" | "Follow up" | "NA"
+) {
+  const session = await requireAuth();
+  const valid = ["Sent", "Follow up", "NA"];
+  if (!valid.includes(emailStatus)) {
+    return { success: false, error: "Invalid email status" };
+  }
+
+  try {
+    try {
+      await prisma.lead.update({
+        where: { id: leadId, organizationId: session.organizationId },
+        data: { updatedAt: new Date() },
+      });
+    } catch {}
+
+    const idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    if (idx !== -1) {
+      mockLeadsStore[idx].emailStatus = emailStatus;
+    }
+
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${leadId}`);
+    return { success: true, data: { id: leadId, emailStatus } };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to update email status" };
   }
 }
 

@@ -18,6 +18,7 @@ export const leadSchema = z.object({
   estimatedValue: z.coerce.number().min(0, "Estimated value cannot be negative").default(0),
   currency: z.string().default("USD"),
   description: z.string().optional(),
+  emailStatus: z.enum(["Sent", "Follow up", "NA"]).optional(),
 });
 
 export type LeadFormData = z.infer<typeof leadSchema>;
@@ -48,6 +49,7 @@ export interface LeadItem {
   estimatedValue: number;
   currency: string;
   description?: string | null;
+  emailStatus?: "Sent" | "Follow up" | "NA" | string | null;
   industry?: string | null;
   website?: string | null;
   ownerId?: string | null;
