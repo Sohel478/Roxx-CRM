@@ -16,7 +16,7 @@ interface LeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null; website?: string | null }) | null;
+  leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null; ownerName?: string | null; website?: string | null }) | null;
   isTechfluxOrg?: boolean;
 }
 
@@ -66,6 +66,12 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     getCurrentUserAction().then((u) => {
       if (u) {
         setCurrentUser(u);
+        if (!leadToEdit) {
+          setFormData((prev) => ({
+            ...prev,
+            ownerId: prev.ownerId || u.id,
+          }));
+        }
         const rUpper = u.role?.toUpperCase();
         if (
           rUpper === "ADMIN" ||
@@ -81,7 +87,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         }
       }
     });
-  }, []);
+  }, [leadToEdit]);
 
   // Synchronize form fields whenever modal opens or leadToEdit changes
   useEffect(() => {
@@ -109,7 +115,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         currency: leadToEdit.currency || "USD",
         description: leadToEdit.description || "",
         emailStatus: leadToEdit.emailStatus || "NA",
-        ownerId: leadToEdit.ownerId || undefined,
+        ownerId: leadToEdit.ownerId || (leadToEdit.ownerId === null ? "UNASSIGNED" : undefined),
       });
     } else {
       setFormData({
@@ -130,10 +136,10 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         currency: "USD",
         description: "",
         emailStatus: "NA",
-        ownerId: undefined,
+        ownerId: currentUser?.id || undefined,
       });
     }
-  }, [isOpen, leadToEdit, isTechfluxOrg]);
+  }, [isOpen, leadToEdit, isTechfluxOrg, currentUser?.id]);
 
   // Duplicate detection debounced check
   useEffect(() => {
@@ -164,11 +170,15 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
 
     startTransition(async () => {
       try {
+        const payload: LeadFormData = {
+          ...formData,
+          ownerId: formData.ownerId === "UNASSIGNED" ? null : (formData.ownerId || undefined),
+        };
         let result;
         if (leadToEdit) {
-          result = await updateLeadAction(leadToEdit.id, formData);
+          result = await updateLeadAction(leadToEdit.id, payload);
         } else {
-          result = await createLeadAction(formData);
+          result = await createLeadAction(payload);
         }
 
         if (result?.success) {
@@ -413,16 +423,37 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
                 <span>Assign To (Sales Rep / Account Owner)</span>
               </label>
               <select
-                value={formData.ownerId || ""}
-                onChange={(e) => setFormData({ ...formData, ownerId: e.target.value || undefined })}
+                value={formData.ownerId ?? (currentUser?.id || "")}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({
+                    ...formData,
+                    ownerId: val === "UNASSIGNED" ? null : (val || undefined),
+                  });
+                }}
                 className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <option value="">Assign to Self ({currentUser?.name || "You"})</option>
-                {teamMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} — {member.role.replace(/_/g, " ")} ({member.email})
-                  </option>
-                ))}
+                {currentUser && (
+                  <option value={currentUser.id}>Assign to Self ({currentUser.name})</option>
+                )}
+                <option value="UNASSIGNED">Unassigned</option>
+                {teamMembers
+                  .filter((member) => member.id !== currentUser?.id && member.id !== formData.ownerId)
+                  .map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} — {member.role.replace(/_/g, " ")} ({member.email})
+                    </option>
+                  ))}
+                {formData.ownerId &&
+                  formData.ownerId !== "UNASSIGNED" &&
+                  formData.ownerId !== currentUser?.id && (
+                    <option value={formData.ownerId}>
+                      {teamMembers.find((m) => m.id === formData.ownerId)?.name ||
+                        leadToEdit?.ownerName ||
+                        (formData.ownerId === "usr_alex" ? "Alex Sales" : "Assigned Sales Rep")}{" "}
+                      (Current Owner)
+                    </option>
+                  )}
               </select>
               <p className="text-[11px] text-slate-400">
                 Only the assigned sales rep, org managers, and admins will have access to this lead record.

@@ -218,9 +218,9 @@ export default function LeadDetailPage() {
   }, [id, autoSyncEnabled, handleSyncEmails]);
 
   const handleAssignLead = (newOwnerId: string) => {
-    if (!newOwnerId) return;
     startTransition(async () => {
-      const res = await assignLeadAction(id, newOwnerId);
+      const targetId = newOwnerId === "UNASSIGNED" ? "" : newOwnerId;
+      const res = await assignLeadAction(id, targetId);
       if (res.success) {
         await loadLead();
       }
@@ -652,12 +652,23 @@ export default function LeadDetailPage() {
                 onChange={(e) => handleAssignLead(e.target.value)}
                 className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
-                <option value="">Choose Sales Rep / Manager</option>
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.role.replace(/_/g, " ")})
-                  </option>
-                ))}
+                <option value="UNASSIGNED">Unassigned</option>
+                {currentUser && (
+                  <option value={currentUser.id}>Assign to Self ({currentUser.name})</option>
+                )}
+                {teamMembers
+                  .filter((m) => m.id !== currentUser?.id && m.id !== (lead.owner?.id || lead.ownerId))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.role.replace(/_/g, " ")})
+                    </option>
+                  ))}
+                {(lead.owner?.id || lead.ownerId) &&
+                  (lead.owner?.id || lead.ownerId) !== currentUser?.id && (
+                    <option value={lead.owner?.id || lead.ownerId || ""}>
+                      {lead.owner?.name || lead.ownerName || "Current Owner"} (Current Owner)
+                    </option>
+                  )}
               </select>
               <p className="text-[11px] text-slate-400 leading-normal">
                 Reassigning immediately grants access to the chosen sales rep while preserving manager/admin oversight.
@@ -883,6 +894,7 @@ export default function LeadDetailPage() {
                 description: lead.description || "",
                 emailStatus: (lead.emailStatus as "Sent" | "Follow up" | "NA") || "NA",
                 ownerId: lead.owner?.id || lead.ownerId || undefined,
+                ownerName: lead.owner?.name || lead.ownerName || null,
               }
             : null
         }

@@ -42,7 +42,7 @@ export default function LeadsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string }) | null>(null);
+  const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string; ownerId?: string | null; ownerName?: string | null; website?: string | null }) | null>(null);
   const [, startTransition] = useTransition();
 
   const handleExportCsv = async () => {
@@ -259,6 +259,8 @@ export default function LeadsPage() {
       currency: lead.currency || "USD",
       description: lead.description || "",
       ownerId: lead.ownerId || undefined,
+      ownerName: lead.ownerName || null,
+      website: lead.website || null,
     });
     setIsModalOpen(true);
   };

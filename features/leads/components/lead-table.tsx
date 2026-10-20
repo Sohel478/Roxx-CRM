@@ -1029,6 +1029,8 @@ export function LeadTable({
                 className="text-xs bg-slate-800 text-slate-100 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Assign To...</option>
+                <option value="ME">Assign to Me</option>
+                <option value="UNASSIGNED">Unassigned</option>
                 {teamMembers.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name} ({m.role.replace("_", " ")})

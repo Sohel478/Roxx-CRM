@@ -343,11 +343,21 @@ export async function getLeadsAction(params: {
       success: true,
       data: {
         isTechfluxOrg,
-        items: paginated.map((l) => ({
-          ...l,
-          website: l.website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
-          emailStatus: resolveLeadEmailStatus(l),
-        })),
+        items: paginated.map((l) => {
+          const ownerUser = l.ownerId ? mockUsersStore.find((u) => u.id === l.ownerId) : null;
+          const resolvedOwnerName =
+            ownerUser?.name ||
+            (l.ownerId === session.id || l.ownerId === userId ? session.name : null) ||
+            l.ownerName ||
+            (l.ownerId ? "Assigned User" : null);
+
+          return {
+            ...l,
+            website: l.website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
+            emailStatus: resolveLeadEmailStatus(l),
+            ownerName: resolvedOwnerName,
+          };
+        }),
         meta: {
           page,
           limit,
@@ -429,10 +439,11 @@ export async function getLeadByIdAction(id: string) {
           };
         }
 
+        const ownerUser = mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId) : null;
         const resolvedOwnerName =
+          ownerUser?.name ||
+          (mock.ownerId === session.id || mock.ownerId === userId ? session.name : null) ||
           mock.ownerName ||
-          (mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId)?.name : null) ||
-          (mock.ownerId === session.id ? session.name : null) ||
           null;
 
         const ownerObj =
@@ -555,10 +566,11 @@ export async function getLeadByIdAction(id: string) {
         };
       }
 
+      const ownerUser = mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId) : null;
       const resolvedOwnerName =
+        ownerUser?.name ||
+        (mock.ownerId === session.id || mock.ownerId === userId ? session.name : null) ||
         mock.ownerName ||
-        (mock.ownerId ? mockUsersStore.find((u) => u.id === mock.ownerId)?.name : null) ||
-        (mock.ownerId === session.id ? session.name : null) ||
         null;
 
       const ownerObj =
@@ -631,7 +643,10 @@ export async function createLeadAction(data: LeadFormData) {
     ownerId,
   } = parsed.data;
 
-  const finalOwnerId = isAdminOrManager && ownerId ? ownerId : userId;
+  const isUnassigned = ownerId === "UNASSIGNED" || ownerId === null || ownerId === "";
+  const finalOwnerId = isUnassigned
+    ? (isAdminOrManager ? null : userId)
+    : (ownerId || userId);
   const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
   const cleanWebsite = website?.trim()
     ? (website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`)
@@ -693,7 +708,12 @@ export async function createLeadAction(data: LeadFormData) {
   } catch (err) {
     console.error("[createLeadAction] Database error:", err);
     const fullName = `${firstName} ${lastName || ""}`.trim();
-    const assignedUser = mockUsersStore.find((u) => u.id === finalOwnerId);
+    const assignedUser = finalOwnerId ? mockUsersStore.find((u) => u.id === finalOwnerId) : null;
+    const finalOwnerName = isUnassigned
+      ? null
+      : (assignedUser
+          ? assignedUser.name
+          : (finalOwnerId === session.id || finalOwnerId === userId ? session.name : "Assigned User"));
     const newLead: LeadItem & { organizationId: string; description?: string } = {
       id: `lead_${Date.now()}`,
       organizationId,
@@ -716,7 +736,7 @@ export async function createLeadAction(data: LeadFormData) {
       currency,
       ownerId: finalOwnerId,
       createdById: userId,
-      ownerName: assignedUser ? assignedUser.name : (finalOwnerId === userId ? session.name : "Sales Rep"),
+      ownerName: finalOwnerName,
       createdAt: new Date().toISOString(),
       description,
       emailStatus: emailStatus || "NA",
@@ -746,6 +766,7 @@ export async function createLeadAction(data: LeadFormData) {
 export async function updateLeadAction(id: string, data: Partial<LeadFormData>) {
   try {
     const session = await requirePermission("lead:update");
+    const { userId } = await resolveTenantContext(session);
     const roleUpper = session.role?.toUpperCase();
     const isAdminOrManager =
       roleUpper === "ADMIN" ||
@@ -777,7 +798,8 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
     if (data.emailStatus !== undefined) updatePayload.emailStatus = data.emailStatus;
     if (data.ownerId !== undefined && isAdminOrManager) {
-      updatePayload.ownerId = data.ownerId || null;
+      const isUnassign = !data.ownerId || data.ownerId === "UNASSIGNED";
+      updatePayload.ownerId = isUnassign ? null : data.ownerId;
       updatePayload.assignedAt = new Date();
     }
 
@@ -825,9 +847,13 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
         updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
       }
       if (updatePayload.ownerId !== undefined) {
-        const assignedUser = mockUsersStore.find((u) => u.id === updatePayload.ownerId);
+        const assignedUser = updatePayload.ownerId ? mockUsersStore.find((u) => u.id === updatePayload.ownerId) : null;
         updated.ownerId = updatePayload.ownerId;
-        updated.ownerName = assignedUser ? assignedUser.name : (updatePayload.ownerId ? "Assigned User" : null);
+        updated.ownerName = updatePayload.ownerId === null
+          ? null
+          : (assignedUser
+              ? assignedUser.name
+              : (updatePayload.ownerId === session.id || updatePayload.ownerId === userId ? session.name : "Assigned User"));
       }
       mockLeadsStore[idx] = updated;
       persistMockLeads();
@@ -961,6 +987,10 @@ export async function assignLeadAction(id: string, ownerId: string) {
     return { success: false, error: "Unauthorized: Only Admins and Managers can reassign leads" };
   }
 
+  const { userId } = await resolveTenantContext(session);
+  const isUnassign = !ownerId || ownerId === "UNASSIGNED";
+  const targetOwnerId = isUnassign ? null : ownerId;
+
   try {
     const updated = await prisma.lead.update({
       where: {
@@ -968,7 +998,7 @@ export async function assignLeadAction(id: string, ownerId: string) {
         organizationId: session.organizationId,
       },
       data: {
-        ownerId,
+        ownerId: targetOwnerId,
         assignedAt: new Date(),
       },
       include: {
@@ -984,7 +1014,7 @@ export async function assignLeadAction(id: string, ownerId: string) {
           action: "LEAD_ASSIGNED",
           entityType: "Lead",
           entityId: id,
-          newValues: { ownerId },
+          newValues: { ownerId: targetOwnerId },
         },
       });
     } catch {}
@@ -999,9 +1029,13 @@ export async function assignLeadAction(id: string, ownerId: string) {
       idx = mockLeadsStore.findIndex((l) => l.id === id);
     }
     if (idx !== -1) {
-      const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
-      mockLeadsStore[idx].ownerId = ownerId;
-      mockLeadsStore[idx].ownerName = assignedUser ? assignedUser.name : "Assigned User";
+      const assignedUser = targetOwnerId ? mockUsersStore.find((u) => u.id === targetOwnerId) : null;
+      mockLeadsStore[idx].ownerId = targetOwnerId;
+      mockLeadsStore[idx].ownerName = isUnassign
+        ? null
+        : (assignedUser
+            ? assignedUser.name
+            : (targetOwnerId === session.id || targetOwnerId === userId ? session.name : "Assigned User"));
       persistMockLeads();
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
@@ -1078,6 +1112,7 @@ export async function pickLeadAction(id: string) {
     }
     if (idx !== -1) {
       mockLeadsStore[idx].status = "New";
+      mockLeadsStore[idx].ownerId = session.id || userId;
       mockLeadsStore[idx].ownerName = session.name || "Current User";
       persistMockLeads();
       revalidatePath("/leads");
@@ -1184,6 +1219,13 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
     }
 
     const { organizationId, userId } = await resolveTenantContext(session);
+    const isUnassign = !ownerId || ownerId === "UNASSIGNED";
+    const isMe = ownerId === "ME" || ownerId === session.id || ownerId === userId;
+    const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId) : ownerId);
+    const assignedUser = targetOwnerId ? mockUsersStore.find((u) => u.id === targetOwnerId) : null;
+    const assignedName = isUnassign
+      ? null
+      : (isMe ? session.name : (assignedUser ? assignedUser.name : "Assigned User"));
 
     let updatedCount = 0;
     try {
@@ -1194,7 +1236,7 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
           deletedAt: null,
         },
         data: {
-          ownerId,
+          ownerId: targetOwnerId,
           assignedAt: new Date(),
         },
       });
@@ -1208,7 +1250,7 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
             action: "LEADS_BULK_ASSIGNED",
             entityType: "Lead",
             entityId: leadIds[0] || "bulk",
-            newValues: { leadIds, ownerId, count: updatedCount },
+            newValues: { leadIds, ownerId: targetOwnerId, count: updatedCount },
           },
         });
       } catch {}
@@ -1218,12 +1260,10 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
 
     // Update mockLeadsStore as well
     syncMockLeadsFromDisk();
-    const assignedUser = mockUsersStore.find((u) => u.id === ownerId);
-    const assignedName = assignedUser ? assignedUser.name : "Assigned User";
     let mockUpdatedCount = 0;
     for (const lead of mockLeadsStore) {
-      if (leadIds.includes(lead.id) && lead.organizationId === organizationId) {
-        lead.ownerId = ownerId;
+      if (leadIds.includes(lead.id)) {
+        lead.ownerId = targetOwnerId;
         lead.ownerName = assignedName;
         mockUpdatedCount++;
       }
@@ -1304,7 +1344,7 @@ export async function bulkDeleteLeadsAction(leadIds: string[]) {
     let mockDeletedCount = 0;
     for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
       const l = mockLeadsStore[i];
-      if (leadIds.includes(l.id) && l.organizationId === organizationId) {
+      if (leadIds.includes(l.id)) {
         if (isAdminOrManager || l.ownerId === userId || l.createdById === userId) {
           mockLeadsStore.splice(i, 1);
           mockDeletedCount++;
