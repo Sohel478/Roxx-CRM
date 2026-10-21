@@ -17,6 +17,7 @@ import {
   MockMarketingBatch,
   MockMarketingCampaign,
   MockRecipientLog,
+  persistMockLeads,
 } from "@/lib/db/mock-store";
 import { decryptSecret } from "@/lib/crypto/encryption";
 import * as mailer from "@/lib/email/mailer";
@@ -1279,6 +1280,20 @@ export async function sendBatchEmailAction(
     }
 
     mockMarketingCampaignsStore.unshift(campaignData as MockMarketingCampaign);
+
+    let didUpdateLeads = false;
+    for (const log of recipientLogs) {
+      if (log.status === "SENT" && log.leadId) {
+        const leadIdx = mockLeadsStore.findIndex((l) => l.id === log.leadId);
+        if (leadIdx !== -1) {
+          mockLeadsStore[leadIdx].emailStatus = "Sent";
+          didUpdateLeads = true;
+        }
+      }
+    }
+    if (didUpdateLeads) {
+      persistMockLeads();
+    }
 
     revalidatePath("/marketing");
     revalidatePath(`/marketing/${batchId}`);

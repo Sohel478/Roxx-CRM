@@ -67,7 +67,13 @@ export function loadInitialLeads(fallback: MockLead[]): MockLead[] {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const stat = fs.statSync(LEADS_FILE_PATH);
           globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
-          return parsed;
+          const fallbackMap = new Map(fallback.map((f) => [f.id, f]));
+          return parsed.map((item: MockLead) => {
+            if (!item.emailStatus && fallbackMap.has(item.id)) {
+              item.emailStatus = fallbackMap.get(item.id)!.emailStatus || "NA";
+            }
+            return item;
+          });
         }
       }
     }

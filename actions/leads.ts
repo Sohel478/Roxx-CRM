@@ -36,17 +36,16 @@ function resolveLeadEmailStatus(l: {
   status?: string | null;
   id?: string;
 }): "Sent" | "Follow up" | "NA" {
-  if (l.emailStatus === "Sent" || l.emailStatus === "Follow up" || l.emailStatus === "NA") {
-    return l.emailStatus;
-  }
-  // If no email address exists, status is NA
+  // If no email address exists, status is always NA
   if (!l.email && !l.supportEmail) {
     return "NA";
   }
-  // If lead is in Contacted or Nurture stage, it's Follow up
-  if (l.status === "Contacted" || l.status === "Nurture") {
-    return "Follow up";
+
+  // If explicit emailStatus has been set to Sent or Follow up, honor it
+  if (l.emailStatus === "Sent" || l.emailStatus === "Follow up") {
+    return l.emailStatus;
   }
+
   // Check direct email store
   const hasDirectEmail = mockDirectEmailsStore?.some(
     (d) => (l.id && d.leadId === l.id) || (l.email && d.recipientEmail?.toLowerCase() === l.email.toLowerCase())
@@ -54,13 +53,15 @@ function resolveLeadEmailStatus(l: {
   if (hasDirectEmail) {
     return "Sent";
   }
+
   // Check campaign dispatches
   const hasCampaignDispatch = mockMarketingCampaignsStore?.some(
-    (c) => l.id && c.recipientLogs?.some((r) => r.leadId === l.id)
+    (c) => l.id && c.recipientLogs?.some((r) => r.leadId === l.id && (r.status === "SENT" || r.status === "DELIVERED"))
   );
   if (hasCampaignDispatch) {
     return "Sent";
   }
+
   // Check email activities
   const hasActivity = mockActivitiesStore?.some(
     (a) => a.leadId === l.id && a.type === "EMAIL"
@@ -68,6 +69,12 @@ function resolveLeadEmailStatus(l: {
   if (hasActivity) {
     return "Sent";
   }
+
+  // If lead is in Contacted or Nurture stage, it's Follow up
+  if (l.status === "Contacted" || l.status === "Nurture") {
+    return "Follow up";
+  }
+
   return "NA";
 }
 

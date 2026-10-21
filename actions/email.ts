@@ -13,6 +13,7 @@ import {
   mockLeadsStore,
   mockOpportunitiesStore,
   mockDirectEmailsStore,
+  persistMockLeads,
 } from "@/lib/db/mock-store";
 import { suppressEmail } from "@/lib/email/tracking";
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/crypto/encryption";
@@ -628,6 +629,12 @@ export async function sendLeadEmailAction(
         sentAt: nowIso,
         deliveredAt: nowIso,
       });
+
+      const leadIdx = mockLeadsStore.findIndex((l) => l.id === entityId);
+      if (leadIdx !== -1) {
+        mockLeadsStore[leadIdx].emailStatus = "Sent";
+        persistMockLeads();
+      }
     }
 
     // Automatically record touchpoint to activity timeline

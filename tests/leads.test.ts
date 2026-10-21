@@ -229,4 +229,58 @@ describe("Lead Validation & Duplicate Rules", () => {
     const customMember = resolveOwnerNameFromStore("usr_sheetal_custom", session, "Sheetal D");
     expect(customMember).toBe("Sheetal D");
   });
+
+  it("ensures initial-leads.json contains explicit emailStatus across reps and defaults unassigned to NA", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const filePath = path.join(process.cwd(), "lib/db/initial-leads.json");
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const leads = JSON.parse(raw);
+
+    expect(leads.length).toBe(414);
+
+    // 1. Every lead must have a valid emailStatus
+    for (const lead of leads) {
+      expect(["Sent", "Follow up", "NA"]).toContain(lead.emailStatus);
+
+      // If no email exists, it MUST be NA
+      if (!lead.email && !lead.supportEmail) {
+        expect(lead.emailStatus).toBe("NA");
+      }
+    }
+
+    // 2. Rep assignment integrity
+    const sheetalLeads = leads.filter((l: any) => l.ownerId === "usr_sheetal");
+    const alexLeads = leads.filter((l: any) => l.ownerId === "usr_alex");
+    const unassignedLeads = leads.filter((l: any) => !l.ownerId);
+
+    expect(sheetalLeads.length).toBe(150);
+    expect(alexLeads.length).toBe(150);
+    expect(unassignedLeads.length).toBe(114);
+
+    // 3. Sheetal leads have a realistic distribution of Sent, Follow up, and NA
+    const sheetalSent = sheetalLeads.filter((l: any) => l.emailStatus === "Sent").length;
+    const sheetalFollowUp = sheetalLeads.filter((l: any) => l.emailStatus === "Follow up").length;
+    const sheetalNA = sheetalLeads.filter((l: any) => l.emailStatus === "NA").length;
+
+    expect(sheetalSent).toBeGreaterThan(40);
+    expect(sheetalFollowUp).toBeGreaterThan(40);
+    expect(sheetalNA).toBeGreaterThan(30);
+    expect(sheetalSent + sheetalFollowUp + sheetalNA).toBe(150);
+
+    // 4. Alex leads have a realistic distribution of Sent, Follow up, and NA
+    const alexSent = alexLeads.filter((l: any) => l.emailStatus === "Sent").length;
+    const alexFollowUp = alexLeads.filter((l: any) => l.emailStatus === "Follow up").length;
+    const alexNA = alexLeads.filter((l: any) => l.emailStatus === "NA").length;
+
+    expect(alexSent).toBeGreaterThan(40);
+    expect(alexFollowUp).toBeGreaterThan(40);
+    expect(alexNA).toBeGreaterThan(30);
+    expect(alexSent + alexFollowUp + alexNA).toBe(150);
+
+    // 5. Unassigned leads must all be NA
+    for (const lead of unassignedLeads) {
+      expect(lead.emailStatus).toBe("NA");
+    }
+  });
 });
