@@ -179,15 +179,17 @@ export async function getLeadsAction(params: {
     };
 
     if (!isAdminOrManager) {
+      const allowedConditions = [
+        session.id ? { ownerId: session.id } : null,
+        userId && userId !== session.id ? { ownerId: userId } : null,
+        session.id ? { createdById: session.id } : null,
+        userId && userId !== session.id ? { createdById: userId } : null,
+      ].filter(Boolean) as any[];
+
       where.AND = [
         ...(where.AND || []),
         {
-          OR: [
-            { ownerId: session.id },
-            { ownerId: userId },
-            { createdById: session.id },
-            { createdById: userId },
-          ],
+          OR: allowedConditions,
         },
       ];
     }
@@ -347,6 +349,12 @@ export async function getLeadsAction(params: {
       }
 
       return matchesSearch && matchesStatus && matchesSource && matchesRating && matchesOwner && matchesEmailStatus;
+    });
+
+    filtered.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
     });
 
     const total = filtered.length;
@@ -709,9 +717,41 @@ export async function createLeadAction(data: LeadFormData) {
       entityId: created.id,
     });
 
+    const finalOwnerName = resolveOwnerNameFromStore(
+      finalOwnerId,
+      session,
+      (data as any).ownerName
+    );
+    const createdItem: LeadItem = {
+      id: created.id,
+      leadNumber: created.leadNumber || leadNumber,
+      firstName: created.firstName,
+      lastName: created.lastName,
+      fullName: `${created.firstName} ${created.lastName || ""}`.trim(),
+      email: created.email,
+      supportEmail: created.supportEmail,
+      phone: created.phone,
+      companyName: created.companyName,
+      jobTitle: created.jobTitle,
+      website: created.website,
+      companyLinkedin: created.companyLinkedin,
+      customerLinkedin: created.customerLinkedin,
+      source: created.source,
+      status: created.status,
+      rating: created.rating || "Warm",
+      estimatedValue: Number(created.estimatedValue || 0),
+      currency: created.currency || "USD",
+      description: created.description,
+      emailStatus: emailStatus || "NA",
+      ownerId: finalOwnerId,
+      ownerName: finalOwnerName,
+      createdById: userId,
+      createdAt: created.createdAt.toISOString(),
+    };
+
     revalidatePath("/leads");
     revalidatePath("/dashboard");
-    return { success: true, data: created };
+    return { success: true, data: createdItem };
   } catch (err) {
     console.error("[createLeadAction] Database error:", err);
     const fullName = `${firstName} ${lastName || ""}`.trim();
@@ -816,6 +856,9 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
           organizationId: session.organizationId,
         },
         data: updatePayload,
+        include: {
+          owner: { select: { id: true, name: true } },
+        },
       });
 
       try {
@@ -831,10 +874,37 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
         });
       } catch {}
 
+      const updatedItem: LeadItem = {
+        id: updated.id,
+        leadNumber: updated.leadNumber || `LEAD-${updated.id.slice(-4).toUpperCase()}`,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        fullName: `${updated.firstName} ${updated.lastName || ""}`.trim(),
+        email: updated.email,
+        supportEmail: updated.supportEmail,
+        phone: updated.phone,
+        companyName: updated.companyName,
+        jobTitle: updated.jobTitle,
+        website: updated.website,
+        companyLinkedin: updated.companyLinkedin,
+        customerLinkedin: updated.customerLinkedin,
+        source: updated.source,
+        status: updated.status,
+        rating: updated.rating || "Warm",
+        estimatedValue: Number(updated.estimatedValue || 0),
+        currency: updated.currency || "USD",
+        description: updated.description,
+        emailStatus: resolveLeadEmailStatus(updated),
+        ownerId: updated.ownerId,
+        ownerName: updated.owner?.name || null,
+        createdById: updated.createdById,
+        createdAt: updated.createdAt.toISOString(),
+      };
+
       revalidatePath("/leads");
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
-      return { success: true, data: updated };
+      return { success: true, data: updatedItem };
     } catch (dbErr) {
       console.warn("[updateLeadAction] Live database update error:", dbErr);
     }

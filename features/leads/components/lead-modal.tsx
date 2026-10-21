@@ -8,19 +8,27 @@ import { Button } from "@/components/ui/button";
 import { createLeadAction, updateLeadAction, checkLeadDuplicateAction } from "@/actions/leads";
 import { getCurrentUserAction } from "@/actions/auth";
 import { getUsersAction } from "@/actions/users";
-import type { LeadFormData } from "@/lib/validations/leads";
+import type { LeadFormData, LeadItem } from "@/lib/validations/leads";
 import type { SessionUser } from "@/lib/auth/session";
 import type { UserItem } from "@/lib/validations/settings";
 
 interface LeadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (lead?: LeadItem | null) => void;
   leadToEdit?: (LeadFormData & { id: string; ownerId?: string | null; ownerName?: string | null; website?: string | null }) | null;
   isTechfluxOrg?: boolean;
+  defaultStatus?: string;
 }
 
-export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOrg = false }: LeadModalProps) {
+export function LeadModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  leadToEdit,
+  isTechfluxOrg = false,
+  defaultStatus = "New",
+}: LeadModalProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<any>(null);
@@ -53,7 +61,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
     companyLinkedin: leadToEdit?.companyLinkedin || "",
     customerLinkedin: leadToEdit?.customerLinkedin || "",
     source: leadToEdit?.source || "Website",
-    status: (leadToEdit?.status as any) || (isTechfluxOrg ? "Scraped" : "New"),
+    status: (leadToEdit?.status as any) || (defaultStatus && defaultStatus !== "ALL" ? defaultStatus : "New"),
     rating: (leadToEdit?.rating as any) || "Warm",
     estimatedValue: leadToEdit?.estimatedValue || 0,
     currency: leadToEdit?.currency || "USD",
@@ -130,7 +138,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         companyLinkedin: "",
         customerLinkedin: "",
         source: "Website",
-        status: isTechfluxOrg ? "Scraped" : "New",
+        status: defaultStatus && defaultStatus !== "ALL" ? (defaultStatus as any) : "New",
         rating: "Warm",
         estimatedValue: 0,
         currency: "USD",
@@ -139,7 +147,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         ownerId: currentUser?.id || undefined,
       });
     }
-  }, [isOpen, leadToEdit, isTechfluxOrg, currentUser?.id]);
+  }, [isOpen, leadToEdit, defaultStatus, currentUser?.id]);
 
   // Duplicate detection debounced check
   useEffect(() => {
@@ -191,7 +199,7 @@ export function LeadModal({ isOpen, onClose, onSuccess, leadToEdit, isTechfluxOr
         }
 
         if (result?.success) {
-          onSuccess();
+          onSuccess(result.data as LeadItem | null);
           onClose();
         } else {
           setError(result?.error || "Failed to save lead");

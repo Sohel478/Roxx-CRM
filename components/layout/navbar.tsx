@@ -180,9 +180,9 @@ export function Navbar({ session: initialSession }: NavbarProps = {}) {
       <LeadModal
         isOpen={isLeadModalOpen}
         onClose={() => setIsLeadModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={(createdLead) => {
           setIsLeadModalOpen(false);
-          window.dispatchEvent(new CustomEvent("leadCreated"));
+          window.dispatchEvent(new CustomEvent("leadCreated", { detail: createdLead }));
           router.push("/leads");
           router.refresh();
         }}

@@ -108,6 +108,7 @@ interface LeadTableProps {
   teamMembers?: { id: string; name: string; email: string; role: string }[];
   isBulkAssigning?: boolean;
   isBulkDeleting?: boolean;
+  highlightedLeadId?: string | null;
   onPageChange: (page: number) => void;
   onSearchChange: (search: string) => void;
   onStatusChange: (status: string) => void;
@@ -141,6 +142,7 @@ export function LeadTable({
   teamMembers = [],
   isBulkAssigning = false,
   isBulkDeleting = false,
+  highlightedLeadId = null,
   onPageChange,
   onSearchChange,
   onStatusChange,
@@ -656,11 +658,16 @@ export function LeadTable({
               ) : (
                 leads.map((lead) => {
                   const isSelected = selectedLeadIds.includes(lead.id);
+                  const isHighlighted = highlightedLeadId === lead.id;
                   return (
                     <tr
                       key={lead.id}
-                      className={`group hover:bg-slate-50/80 transition-colors ${
-                        isSelected ? "bg-blue-50/50" : ""
+                      className={`group hover:bg-slate-50/80 transition-all duration-300 ${
+                        isHighlighted
+                          ? "bg-emerald-50/70 ring-2 ring-emerald-500/40 ring-inset"
+                          : isSelected
+                          ? "bg-blue-50/50"
+                          : ""
                       }`}
                     >
                       {/* Selection Checkbox */}
@@ -686,6 +693,11 @@ export function LeadTable({
                               >
                                 <span className="hover:underline">{lead.fullName}</span>
                               </Link>
+                              {isHighlighted && (
+                                <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 rounded border border-emerald-300 animate-pulse">
+                                  Just Added
+                                </span>
+                              )}
                               {lead.customerLinkedin && (
                                 <a
                                   href={lead.customerLinkedin}

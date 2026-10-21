@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useTransition } from "react";
-import { Plus, Download, Upload, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Download, Upload, Trash2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadTable } from "@/features/leads/components/lead-table";
 import { LeadModal } from "@/features/leads/components/lead-modal";
@@ -42,6 +43,8 @@ export default function LeadsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null);
+  const [successBanner, setSuccessBanner] = useState<{ name: string; id: string } | null>(null);
   const [leadToEdit, setLeadToEdit] = useState<(LeadFormData & { id: string; ownerId?: string | null; ownerName?: string | null; website?: string | null }) | null>(null);
   const [, startTransition] = useTransition();
 
@@ -157,18 +160,78 @@ export default function LeadsPage() {
     });
   }, []);
 
+  const handleLeadSaved = useCallback(
+    (savedLead?: LeadItem | null) => {
+      if (savedLead && savedLead.id) {
+        // Reset search so newly saved lead is never hidden by previous search query
+        setSearch("");
+
+        // Auto-align status tab if current filter excludes the lead
+        if (status !== "ALL" && status !== savedLead.status) {
+          setStatus("ALL");
+        }
+
+        // Auto-align owner filter
+        if (ownerFilter !== "ALL") {
+          setOwnerFilter("ALL");
+        }
+
+        // Auto-align rating & email filters
+        if (rating !== "ALL" && rating !== savedLead.rating) {
+          setRating("ALL");
+        }
+        if (emailStatusFilter !== "ALL" && emailStatusFilter !== savedLead.emailStatus) {
+          setEmailStatusFilter("ALL");
+        }
+
+        // Optimistic instant update: place new lead at index 0 or update existing lead
+        setLeads((prev) => {
+          const idx = prev.findIndex((l) => l.id === savedLead.id);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...savedLead };
+            return next;
+          }
+          return [savedLead, ...prev];
+        });
+
+        setMeta((prev) => ({
+          ...prev,
+          page: 1,
+          total: prev.total + 1,
+          totalPages: Math.max(1, Math.ceil((prev.total + 1) / prev.limit)),
+        }));
+
+        setHighlightedLeadId(savedLead.id);
+        const displayName = savedLead.fullName || `${savedLead.firstName} ${savedLead.lastName || ""}`.trim();
+        setSuccessBanner({ name: displayName, id: savedLead.id });
+        setTimeout(() => setHighlightedLeadId(null), 5000);
+        setTimeout(() => setSuccessBanner(null), 6000);
+      }
+
+      // Reload leads from server with all filters cleared to guarantee synchronized data
+      loadLeads(1, "", "ALL", "ALL", "ALL", "ALL");
+    },
+    [status, ownerFilter, rating, emailStatusFilter, loadLeads]
+  );
+
   useEffect(() => {
     loadLeads(1, search, status, rating, ownerFilter, emailStatusFilter);
   }, [loadLeads, search, status, rating, ownerFilter, emailStatusFilter]);
 
   // Listen for global lead creation events (e.g. from top header navbar)
   useEffect(() => {
-    const handleLeadCreated = () => {
-      loadLeads(1, search, status, rating, ownerFilter, emailStatusFilter);
+    const handleGlobalLeadCreated = (e: Event) => {
+      const customEvent = e as CustomEvent<LeadItem>;
+      if (customEvent?.detail) {
+        handleLeadSaved(customEvent.detail);
+      } else {
+        handleLeadSaved();
+      }
     };
-    window.addEventListener("leadCreated", handleLeadCreated);
-    return () => window.removeEventListener("leadCreated", handleLeadCreated);
-  }, [loadLeads, search, status, rating, ownerFilter, emailStatusFilter]);
+    window.addEventListener("leadCreated", handleGlobalLeadCreated);
+    return () => window.removeEventListener("leadCreated", handleGlobalLeadCreated);
+  }, [handleLeadSaved]);
 
   const handleToggleSelectLead = (id: string) => {
     setSelectedLeadIds((prev) =>
@@ -336,6 +399,24 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* Success Notification Banner */}
+      {successBanner && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 shadow-2xs animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <p>
+              Lead <span className="font-bold">{successBanner.name}</span> added successfully and is now active at the top of your CRM table.
+            </p>
+          </div>
+          <Link
+            href={`/leads/${successBanner.id}`}
+            className="font-bold underline hover:text-emerald-950 ml-4 shrink-0 text-emerald-700"
+          >
+            View Dossier &rarr;
+          </Link>
+        </div>
+      )}
+
       {/* Table Component */}
       <LeadTable
         leads={leads}
@@ -351,6 +432,7 @@ export default function LeadsPage() {
         teamMembers={teamMembers}
         isBulkAssigning={isBulkAssigning}
         isBulkDeleting={isBulkDeleting}
+        highlightedLeadId={highlightedLeadId}
         onSearchChange={(q) => {
           setSelectedLeadIds([]);
           setSearch(q);
@@ -399,9 +481,10 @@ export default function LeadsPage() {
           setIsModalOpen(false);
           setLeadToEdit(null);
         }}
-        onSuccess={() => loadLeads()}
+        onSuccess={(savedLead) => handleLeadSaved(savedLead)}
         leadToEdit={leadToEdit}
         isTechfluxOrg={isTechfluxOrg}
+        defaultStatus={status !== "ALL" ? status : "New"}
       />
 
       {/* Import Modal */}
