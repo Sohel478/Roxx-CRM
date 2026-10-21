@@ -243,6 +243,7 @@ describe("AI Key & Settings Role-Based Access Control (RBAC)", () => {
         fullName: "Marcus Aurelius",
         email: "marcus@meditations.org",
         website: "https://meditations.org",
+        customerLinkedin: "https://www.linkedin.com/in/marcus-aurelius",
         phone: "+1 555-0101",
         companyName: "Stoic Philosophy Inc",
         source: "Inbound",
@@ -251,6 +252,7 @@ describe("AI Key & Settings Role-Based Access Control (RBAC)", () => {
         estimatedValue: 25000,
         currency: "USD",
         createdAt: new Date().toISOString(),
+        description: "Stoic philosophy publishing and executive leadership coaching looking for modernized web platform and member portal.",
       });
 
       // 3. Sales rep runs discovery

@@ -29,6 +29,7 @@ vi.mock("@/lib/auth/session", () => ({
 import {
   getLeadDiscoveryAction,
   generateLeadDiscoveryAction,
+  checkLeadResearchUrlAction,
 } from "@/actions/lead-discovery";
 import {
   generateLeadDiscovery,
@@ -597,6 +598,66 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       const res = await generateLeadDiscoveryAction("lead_linkedin_only", { forceRefresh: true });
       expect(res.success).toBe(true);
       expect(res.data).toBeDefined();
+    });
+
+    it("strictly rejects discovery generation when research URL is unreachable and lead has no substantive description notes", async () => {
+      mockLeadsStore.push({
+        id: "lead_unreachable_site_mohsin",
+        organizationId: "org_discovery_test",
+        leadNumber: "LEAD-7777",
+        firstName: "Mohsin",
+        lastName: "Owner",
+        fullName: "Mohsin",
+        email: "mohsin@bellawoman.com",
+        website: "https://www.bellawoman.com/",
+        source: "Direct",
+        status: "New",
+        rating: "Cold",
+        estimatedValue: 0,
+        currency: "USD",
+        createdAt: new Date().toISOString(),
+        description: "",
+      });
+
+      const res = await generateLeadDiscoveryAction("lead_unreachable_site_mohsin", { forceRefresh: true });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("not working or is unreachable");
+      expect(res.error).toContain("bellawoman.com");
+    });
+
+    it("accurately synthesizes unique discovery for Women's Fashion & Apparel Boutique without generic commercial operations boilerplate", () => {
+      const discovery = synthesizeHeuristicDiscovery(
+        {
+          id: "lead_bella_fashion",
+          fullName: "Mohsin",
+          firstName: "Mohsin",
+          companyName: "Bella Woman Boutique",
+          website: "https://www.bellawoman.com",
+          email: "contact@bellawoman.com",
+          description: "Curated women's fashion apparel, seasonal dresses, evening wear collections, and boutique accessories.",
+        },
+        {
+          websiteUrl: "https://roxx-crm.com",
+          serviceOfferings: ["Web Design", "Web Development", "SEO & Search Visibility"],
+        }
+      );
+
+      expect(discovery.clientBusiness).toContain("Women's Fashion");
+      expect(discovery.businessSummary.toLowerCase()).toContain("fashion");
+      expect(discovery.businessSummary.toLowerCase()).not.toContain("commercial enterprise");
+      expect(discovery.targetOffering.toLowerCase()).toContain("fashion");
+      expect(discovery.recommendations.some((r) => r.toLowerCase().includes("fashion") || r.toLowerCase().includes("lookbook"))).toBe(true);
+      expect(discovery.talkingPoints.some((p) => p.toLowerCase().includes("mobile") || p.toLowerCase().includes("collection"))).toBe(true);
+    });
+
+    it("verifies URL reachability via checkLeadResearchUrlAction", async () => {
+      const safeLinkedin = await checkLeadResearchUrlAction("https://www.linkedin.com/company/roxx-crm");
+      expect(safeLinkedin.isWorking).toBe(true);
+      expect(safeLinkedin.title).toContain("Roxx Crm");
+
+      const blockedSsrf = await checkLeadResearchUrlAction("http://127.0.0.1:8080");
+      expect(blockedSsrf.isWorking).toBe(false);
+      expect(blockedSsrf.error).toContain("security policy");
     });
   });
 });

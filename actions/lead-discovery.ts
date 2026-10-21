@@ -60,10 +60,11 @@ export async function getLeadDiscoveryAction(leadId: string): Promise<{
     }
 
     return { success: true, data: null };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = (err as Error)?.message || "Failed to load lead discovery summary";
     return {
       success: false,
-      error: err?.message || "Failed to load lead discovery summary",
+      error: errorMsg,
       data: null,
     };
   }
@@ -79,6 +80,11 @@ export async function generateLeadDiscoveryAction(
   success: boolean;
   data?: LeadDiscoveryData;
   error?: string;
+  urlStatus?: {
+    url: string;
+    isWorking: boolean;
+    error?: string;
+  };
 }> {
   try {
     const session = await requireAuth();
@@ -160,14 +166,14 @@ export async function generateLeadDiscoveryAction(
           jobTitle: mockLead.jobTitle,
           email: mockLead.email,
           phone: mockLead.phone,
-          website: (mockLead as any).website || null,
+          website: mockLead.website || null,
           source: mockLead.source,
           sourceDetail: mockLead.sourceDetail,
           status: mockLead.status,
           rating: mockLead.rating,
           description: mockLead.description,
-          customerLinkedin: (mockLead as any).customerLinkedin || null,
-          companyLinkedin: (mockLead as any).companyLinkedin || null,
+          customerLinkedin: mockLead.customerLinkedin || null,
+          companyLinkedin: mockLead.companyLinkedin || null,
           estimatedValue: mockLead.estimatedValue,
           pastActivitiesSummary: null,
         };
@@ -193,33 +199,73 @@ export async function generateLeadDiscoveryAction(
     leadInput.customerLinkedin = sources.customerLinkedin;
     leadInput.companyLinkedin = sources.companyLinkedin;
 
+    // 2b. Attempt to scrape candidate research URLs in priority order (Website -> Company LinkedIn -> Personal LinkedIn)
+    const candidateUrls = [
+      sources.website,
+      sources.companyLinkedin,
+      sources.customerLinkedin,
+    ].filter(Boolean) as string[];
+
     let scrapedWebsiteText: string | null = null;
     let researchSourceInfo: {
       url?: string;
       title?: string;
       accessedAt?: string;
       error?: string;
+      isReachable?: boolean;
     } | null = null;
+    let lastScrapeError: string | null = null;
+    let attemptedUrl: string = candidateUrls[0] || "";
 
-    const targetUrl = sources.primarySourceUrl;
-    if (targetUrl) {
+    const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
+
+    for (const targetUrl of candidateUrls) {
+      attemptedUrl = targetUrl;
       try {
-        const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
         const textRes = await extractTextFromUrl(targetUrl);
         researchSourceInfo = {
           url: textRes.url || targetUrl,
           title: textRes.title,
           accessedAt: textRes.accessedAt,
           error: textRes.error,
+          isReachable: textRes.success,
         };
-        if (textRes.success && textRes.text) {
+
+        if (textRes.success && textRes.text && textRes.text.length >= 50) {
           scrapedWebsiteText = textRes.text;
+          lastScrapeError = null;
+          break; // Successfully scraped valid content
+        } else {
+          lastScrapeError =
+            textRes.error ||
+            "Unable to extract readable content from the provided website URL.";
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        lastScrapeError = (err as Error)?.message || "Failed to reach website/profile URL";
         researchSourceInfo = {
           url: targetUrl,
-          error: err?.message || "Failed to reach website/profile URL",
+          error: lastScrapeError,
           accessedAt: new Date().toISOString(),
+          isReachable: false,
+        };
+      }
+    }
+
+    // 2c. Guard: If scraping failed on the URL(s) AND there are no substantive business description notes,
+    // we MUST NOT generate generic discovery! Halt and tell the sales rep the URL is not working.
+    if (!scrapedWebsiteText) {
+      const hasSubstantiveDescription =
+        Boolean(leadInput.description && leadInput.description.trim().length >= 80);
+
+      if (!hasSubstantiveDescription) {
+        return {
+          success: false,
+          error: `The provided research URL (${attemptedUrl}) is not working or is unreachable (${lastScrapeError || "Connection failed"}). Without active website or social profile content to scrape, AI Discovery cannot determine whether this prospect is a good fit. Please check the URL or provide a working website or active LinkedIn link.`,
+          urlStatus: {
+            url: attemptedUrl,
+            isWorking: false,
+            error: lastScrapeError || "Connection failed",
+          },
         };
       }
     }
@@ -275,10 +321,51 @@ export async function generateLeadDiscoveryAction(
     }
 
     return { success: true, data: discovery };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err?.message || "Failed to generate AI discovery summary",
+      error: (err as Error)?.message || "Failed to generate AI discovery summary",
+    };
+  }
+}
+
+/**
+ * Pre-flight URL reachability & scrape verification action for sales reps
+ */
+export async function checkLeadResearchUrlAction(rawUrl: string): Promise<{
+  success: boolean;
+  isWorking: boolean;
+  url: string;
+  title?: string;
+  error?: string;
+  textPreview?: string;
+}> {
+  try {
+    await requireAuth();
+    if (!rawUrl || !rawUrl.trim()) {
+      return {
+        success: false,
+        isWorking: false,
+        url: "",
+        error: "No URL provided",
+      };
+    }
+    const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
+    const res = await extractTextFromUrl(rawUrl);
+    return {
+      success: true,
+      isWorking: res.success,
+      url: res.url || rawUrl,
+      title: res.title,
+      error: res.error,
+      textPreview: res.text ? res.text.slice(0, 180) : undefined,
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      isWorking: false,
+      url: rawUrl,
+      error: (err as Error)?.message || "Failed to test URL connection",
     };
   }
 }

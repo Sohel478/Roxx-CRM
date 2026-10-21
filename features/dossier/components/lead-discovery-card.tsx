@@ -15,7 +15,6 @@ import {
   Quote,
   Key,
   Globe,
-  Settings,
   CheckCircle2,
   AlertTriangle,
   Flame,
@@ -28,7 +27,6 @@ import {
   CheckSquare,
   DollarSign,
   ExternalLink,
-  ShieldCheck,
   Mail,
   Edit3,
   RotateCcw,
@@ -43,14 +41,13 @@ import { Input } from "@/components/ui/input";
 import {
   getLeadDiscoveryAction,
   generateLeadDiscoveryAction,
+  checkLeadResearchUrlAction,
 } from "@/actions/lead-discovery";
-import { saveAiConfigAction, getAiConfigAction } from "@/actions/ai-email";
+import { saveAiConfigAction } from "@/actions/ai-email";
 import { getCurrentUserAction } from "@/actions/auth";
 import type { SessionUser } from "@/lib/auth/session";
 import {
   type LeadDiscoveryData,
-  type EvidenceStatus,
-  type ConfidenceLevel,
   extractLeadResearchSources,
 } from "@/lib/validations/lead-discovery";
 
@@ -173,6 +170,52 @@ export function LeadDiscoveryCard({
   const [openAiKeyInput, setOpenAiKeyInput] = useState("");
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [keySaveMessage, setKeySaveMessage] = useState<string | null>(null);
+  const [isTestingUrl, setIsTestingUrl] = useState(false);
+  const [urlCheckResult, setUrlCheckResult] = useState<{
+    url: string;
+    isWorking: boolean;
+    title?: string;
+    error?: string;
+  } | null>(null);
+
+  const isUrlUnreachableError =
+    Boolean(errorMessage) &&
+    (errorMessage!.includes("not working") ||
+      errorMessage!.includes("unreachable") ||
+      errorMessage!.includes("Connection refused") ||
+      errorMessage!.includes("timed out") ||
+      errorMessage!.includes("Domain not found") ||
+      errorMessage!.includes("offline") ||
+      errorMessage!.includes("URL unreachable"));
+
+  const handleTestUrl = async (targetUrl: string) => {
+    setIsTestingUrl(true);
+    setUrlCheckResult(null);
+    try {
+      const res = await checkLeadResearchUrlAction(targetUrl);
+      setUrlCheckResult({
+        url: targetUrl,
+        isWorking: res.isWorking,
+        title: res.title,
+        error: res.error,
+      });
+      if (!res.isWorking) {
+        setErrorMessage(
+          `The research URL (${targetUrl}) is not working or is unreachable (${res.error || "Connection failed"}). AI Discovery cannot scrape prospect data to evaluate fit.`
+        );
+      } else {
+        setErrorMessage(null);
+      }
+    } catch (err: unknown) {
+      setUrlCheckResult({
+        url: targetUrl,
+        isWorking: false,
+        error: (err as Error)?.message || "Failed to reach URL",
+      });
+    } finally {
+      setIsTestingUrl(false);
+    }
+  };
 
   // Load discovery if not supplied via props
   useEffect(() => {
@@ -243,8 +286,8 @@ export function LeadDiscoveryCard({
       } else {
         setKeySaveMessage(saveRes.error || "Failed to save key");
       }
-    } catch (err: any) {
-      setKeySaveMessage(err?.message || "Error saving key");
+    } catch (err: unknown) {
+      setKeySaveMessage((err as Error)?.message || "Error saving key");
     } finally {
       setIsSavingKey(false);
     }
@@ -488,9 +531,59 @@ export function LeadDiscoveryCard({
 
         {/* Error message alert banner if server action returns an error */}
         {isExpanded && errorMessage && (
-          <div className="mx-5 mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-            <span>{errorMessage}</span>
+          <div className="mx-5 mt-4">
+            {isUrlUnreachableError ? (
+              <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-300 text-xs text-amber-950 space-y-3 shadow-2xs">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-amber-100 text-amber-800 border border-amber-200 shrink-0 mt-0.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  </div>
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
+                        URL Unreachable / Scrape Failed
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                      {errorMessage}
+                    </p>
+                    <p className="text-[11px] text-amber-800/80 leading-normal">
+                      💡 <strong>Why discovery is paused:</strong> Roxx CRM requires live prospect content to understand your client&apos;s true business model, products, and operational gaps. Without working website or social data, AI will not generate generic filler or guess fit.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-amber-200 flex-wrap">
+                  {onEditLead && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={onEditLead}
+                      className="h-8 px-3.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-2xs gap-1.5"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit Lead / Fix URL</span>
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleGenerateOrRefresh(true)}
+                    disabled={isPending}
+                    className="h-8 px-3 text-xs bg-white text-slate-700 border-amber-300 hover:bg-amber-100/60 gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isPending ? "animate-spin" : ""}`} />
+                    <span>Re-test URL Connection</span>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -579,10 +672,31 @@ export function LeadDiscoveryCard({
                       Scraping Sources:
                     </span>
                     {sources.website && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">
                         <Globe className="w-3 h-3 text-blue-500 shrink-0" />
                         <span className="truncate max-w-[190px]">{sources.website.replace(/^https?:\/\//, "")}</span>
-                      </span>
+                        {urlCheckResult?.url === sources.website ? (
+                          urlCheckResult.isWorking ? (
+                            <span className="inline-flex items-center text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded">
+                              ✓ Working
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1 rounded">
+                              ✗ Down
+                            </span>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleTestUrl(sources.website!)}
+                            disabled={isTestingUrl}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 hover:underline font-normal ml-0.5 cursor-pointer"
+                            title="Test if website URL is active and reachable"
+                          >
+                            {isTestingUrl ? "Testing..." : "Test URL"}
+                          </button>
+                        )}
+                      </div>
                     )}
                     {sources.customerLinkedin && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">

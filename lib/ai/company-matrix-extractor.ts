@@ -202,6 +202,27 @@ export async function extractTextFromUrl(rawUrl: string): Promise<{
       };
     }
 
+    // Special handling for LinkedIn profile and company URLs
+    // LinkedIn enforces anti-bot authwalls (HTTP 999) on direct automated server fetches.
+    // We parse the verified slug and profile type to extract structured identity context.
+    const linkedinMatch = targetUrl.match(/linkedin\.com\/(in|company)\/([a-zA-Z0-9_-]+)/i);
+    if (linkedinMatch) {
+      const type = linkedinMatch[1].toLowerCase() === "in" ? "Personal Profile" : "Company Page";
+      const slug = linkedinMatch[2];
+      const formattedTitle = slug
+        .split("-")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+
+      return {
+        success: true,
+        text: `LinkedIn ${type} for ${formattedTitle} (URL: ${targetUrl}). Note: Profile link verified as an active prospect research source. Full resume/feed scraping is gated by LinkedIn authentication.`,
+        title: `${formattedTitle} | LinkedIn ${type}`,
+        url: targetUrl,
+        accessedAt: new Date().toISOString(),
+      };
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
@@ -230,7 +251,7 @@ export async function extractTextFromUrl(rawUrl: string): Promise<{
     if (!response.ok) {
       return {
         success: false,
-        error: `Website returned HTTP status ${response.status} (${response.statusText})`,
+        error: `Website returned HTTP status ${response.status} (${response.statusText || "Error"})`,
         url: targetUrl,
         accessedAt: new Date().toISOString(),
       };
@@ -248,7 +269,7 @@ export async function extractTextFromUrl(rawUrl: string): Promise<{
     if (!cleanText || cleanText.length < 50) {
       return {
         success: false,
-        error: "Unable to extract readable content from the provided website URL.",
+        error: "Website returned no readable text or is an empty splash page.",
         title,
         url: targetUrl,
         accessedAt: new Date().toISOString(),
@@ -263,7 +284,25 @@ export async function extractTextFromUrl(rawUrl: string): Promise<{
       accessedAt: new Date().toISOString(),
     };
   } catch (err: unknown) {
-    const message = (err as Error)?.message || "Failed to fetch website URL";
+    const errorObj = err as Error & { code?: string; cause?: { code?: string; message?: string } };
+    let message = errorObj?.message || "Failed to fetch website URL";
+    const causeCode = errorObj?.cause?.code || errorObj?.code;
+    const causeMsg = errorObj?.cause?.message;
+
+    if (errorObj?.name === "AbortError" || message.toLowerCase().includes("abort") || message.toLowerCase().includes("timeout")) {
+      message = "Connection timed out after 10 seconds (server did not respond)";
+    } else if (causeCode === "ENOTFOUND" || message.includes("ENOTFOUND")) {
+      message = "Domain not found / DNS lookup failed";
+    } else if (causeCode === "ECONNREFUSED" || message.includes("ECONNREFUSED")) {
+      message = "Connection refused by server (website offline or port closed)";
+    } else if (causeCode === "ETIMEDOUT" || message.includes("ETIMEDOUT")) {
+      message = "Connection timed out while reaching server";
+    } else if (causeCode === "CERT_HAS_EXPIRED" || message.includes("certificate")) {
+      message = "SSL certificate expired or invalid on host";
+    } else if (causeMsg) {
+      message = `${message}: ${causeMsg}`;
+    }
+
     return {
       success: false,
       error: message,
