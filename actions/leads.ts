@@ -293,7 +293,7 @@ export async function getLeadsAction(params: {
       },
     };
   } catch {
-    syncMockLeadsFromDisk();
+    syncMockLeadsFromDisk(true);
     // In-memory fallback
     let filtered = mockLeadsStore.filter((l) => {
       if (!isAdminOrManager) {
@@ -427,11 +427,8 @@ export async function getLeadByIdAction(id: string) {
     });
 
     if (!lead) {
+      syncMockLeadsFromDisk(true);
       let mock = mockLeadsStore.find((l) => l.id === id);
-      if (!mock) {
-        syncMockLeadsFromDisk();
-        mock = mockLeadsStore.find((l) => l.id === id);
-      }
       if (mock) {
         if (!isAdminOrManager) {
           const isOwner =
@@ -551,11 +548,8 @@ export async function getLeadByIdAction(id: string) {
       return { success: false, error: err.message };
     }
     console.error("[getLeadByIdAction] Database error:", err);
+    syncMockLeadsFromDisk(true);
     let mock = mockLeadsStore.find((l) => l.id === id);
-    if (!mock) {
-      syncMockLeadsFromDisk();
-      mock = mockLeadsStore.find((l) => l.id === id);
-    }
     if (mock) {
       if (!isAdminOrManager) {
         const isOwner =
@@ -658,10 +652,12 @@ export async function createLeadAction(data: LeadFormData) {
     ownerId,
   } = parsed.data;
 
-  const isUnassigned = ownerId === "UNASSIGNED" || ownerId === null || ownerId === "";
-  const finalOwnerId = isUnassigned
-    ? (isAdminOrManager ? null : userId)
-    : (ownerId || userId);
+  const isExplicitlyUnassigned = ownerId === "UNASSIGNED" || ownerId === "unassigned";
+  const finalOwnerId = isExplicitlyUnassigned
+    ? null
+    : (ownerId && typeof ownerId === "string" && ownerId.trim() !== ""
+        ? ownerId.trim()
+        : (userId || session.id || "platform-owner-sohel"));
   const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
   const cleanWebsite = website?.trim()
     ? (website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`)
@@ -754,6 +750,7 @@ export async function createLeadAction(data: LeadFormData) {
     return { success: true, data: createdItem };
   } catch (err) {
     console.error("[createLeadAction] Database error:", err);
+    syncMockLeadsFromDisk(true);
     const fullName = `${firstName} ${lastName || ""}`.trim();
     const finalOwnerName = resolveOwnerNameFromStore(
       finalOwnerId,
@@ -909,11 +906,8 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       console.warn("[updateLeadAction] Live database update error:", dbErr);
     }
 
+    syncMockLeadsFromDisk(true);
     let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === id);
-    }
     if (idx !== -1) {
       const updated = {
         ...mockLeadsStore[idx],
@@ -923,8 +917,13 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
         updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
       }
       if (updatePayload.ownerId !== undefined) {
-        const targetOwnerId =
-          updatePayload.ownerId === "UNASSIGNED" ? null : updatePayload.ownerId;
+        const isExplicitlyUnassigned =
+          updatePayload.ownerId === "UNASSIGNED" || updatePayload.ownerId === "unassigned";
+        const targetOwnerId = isExplicitlyUnassigned
+          ? null
+          : (updatePayload.ownerId && typeof updatePayload.ownerId === "string" && updatePayload.ownerId.trim() !== ""
+              ? updatePayload.ownerId.trim()
+              : null);
         updated.ownerId = targetOwnerId;
         updated.ownerName = resolveOwnerNameFromStore(
           targetOwnerId,
@@ -1065,8 +1064,14 @@ export async function assignLeadAction(id: string, ownerId: string) {
   }
 
   const { userId } = await resolveTenantContext(session);
-  const isUnassign = !ownerId || ownerId === "UNASSIGNED";
-  const targetOwnerId = isUnassign ? null : ownerId;
+  const isUnassign = !ownerId || ownerId === "UNASSIGNED" || ownerId === "unassigned";
+  const isMe =
+    ownerId === "ME" ||
+    ownerId === session.id ||
+    ownerId === userId ||
+    ownerId === "usr_sohel" ||
+    ownerId === "platform-owner-sohel";
+  const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId || "platform-owner-sohel") : ownerId);
 
   try {
     const updated = await prisma.lead.update({
@@ -1100,11 +1105,8 @@ export async function assignLeadAction(id: string, ownerId: string) {
     revalidatePath(`/leads/${id}`);
     return { success: true, data: updated };
   } catch {
+    syncMockLeadsFromDisk(true);
     let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === id);
-    }
     if (idx !== -1) {
       mockLeadsStore[idx].ownerId = targetOwnerId;
       mockLeadsStore[idx].ownerName = resolveOwnerNameFromStore(
@@ -1181,11 +1183,8 @@ export async function pickLeadAction(id: string) {
       console.warn("[pickLeadAction] Database error, falling back to mock store:", dbErr);
     }
 
+    syncMockLeadsFromDisk(true);
     let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === id);
-    }
     if (idx !== -1) {
       mockLeadsStore[idx].status = "New";
       mockLeadsStore[idx].ownerId = session.id || userId;
@@ -1238,11 +1237,8 @@ export async function deleteLeadAction(id: string) {
         });
       } catch {}
     } else {
+      syncMockLeadsFromDisk(true);
       let idx = mockLeadsStore.findIndex((l) => l.id === id);
-      if (idx === -1) {
-        syncMockLeadsFromDisk();
-        idx = mockLeadsStore.findIndex((l) => l.id === id);
-      }
       if (idx !== -1) {
         mockLeadsStore.splice(idx, 1);
         persistMockLeads();
@@ -1254,11 +1250,8 @@ export async function deleteLeadAction(id: string) {
     return { success: true };
   } catch (err) {
     console.error("[deleteLeadAction] Error deleting lead:", err);
+    syncMockLeadsFromDisk(true);
     let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === id);
-    }
     if (idx !== -1) {
       mockLeadsStore.splice(idx, 1);
       persistMockLeads();
@@ -1337,7 +1330,7 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
     }
 
     // Update mockLeadsStore as well
-    syncMockLeadsFromDisk();
+    syncMockLeadsFromDisk(true);
     let mockUpdatedCount = 0;
     for (const lead of mockLeadsStore) {
       if (leadIds.includes(lead.id)) {
@@ -1418,7 +1411,7 @@ export async function bulkDeleteLeadsAction(leadIds: string[]) {
     }
 
     // Mock store deletion
-    syncMockLeadsFromDisk();
+    syncMockLeadsFromDisk(true);
     let mockDeletedCount = 0;
     for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
       const l = mockLeadsStore[i];

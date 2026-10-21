@@ -5,7 +5,7 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-import { createLeadAction, getLeadsAction } from "@/actions/leads";
+import { createLeadAction, getLeadsAction, getLeadByIdAction, assignLeadAction } from "@/actions/leads";
 import * as sessionModule from "@/lib/auth/session";
 import { mockLeadsStore } from "@/lib/db/mock-store";
 
@@ -128,5 +128,69 @@ describe("Lead Creation & Table Visibility", () => {
 
     expect(searchRes.success).toBe(true);
     expect(searchRes.data.items.some((l) => l.id === createRes.data.id)).toBe(true);
+  });
+
+  it("getLeadByIdAction immediately retrieves the newly created lead with all details", async () => {
+    const payload = {
+      firstName: "Tariq",
+      lastName: "Mansoor",
+      companyName: "Mansoor Logistics",
+      email: "tariq@mansoor.io",
+      website: "https://mansoor.io",
+      status: "New" as const,
+      rating: "Hot" as const,
+      estimatedValue: 45000,
+      currency: "USD",
+    };
+
+    const createRes = await createLeadAction(payload);
+    expect(createRes.success).toBe(true);
+    const newId = createRes.data.id;
+
+    // Simulate page refresh / dossier fetch
+    const detailRes = await getLeadByIdAction(newId);
+    expect(detailRes.success).toBe(true);
+    expect(detailRes.data).toBeDefined();
+    expect(detailRes.data?.id).toBe(newId);
+    expect(detailRes.data?.fullName).toBe("Tariq Mansoor");
+    expect(detailRes.data?.companyName).toBe("Mansoor Logistics");
+    expect(detailRes.data?.ownerId).toBe("usr_sohel");
+    expect(detailRes.data?.ownerName).toBe("Sohel Jatu");
+  });
+
+  it("assignLeadAction successfully reassigns owner and persists across subsequent queries", async () => {
+    const payload = {
+      firstName: "Ranya",
+      lastName: "Habib",
+      companyName: "Habib Designs",
+      email: "ranya@habib.art",
+      status: "New" as const,
+      rating: "Warm" as const,
+      estimatedValue: 15000,
+      currency: "USD",
+    };
+
+    const createRes = await createLeadAction(payload);
+    expect(createRes.success).toBe(true);
+    const leadId = createRes.data.id;
+
+    // Reassign to Sheetal D
+    const assignRes = await assignLeadAction(leadId, "usr_sheetal");
+    expect(assignRes.success).toBe(true);
+
+    // Verify detail
+    const detailRes = await getLeadByIdAction(leadId);
+    expect(detailRes.success).toBe(true);
+    expect(detailRes.data?.ownerId).toBe("usr_sheetal");
+    expect(detailRes.data?.ownerName).toBe("Sheetal D");
+
+    // Reassign to Unassigned explicitly
+    const unassignRes = await assignLeadAction(leadId, "UNASSIGNED");
+    expect(unassignRes.success).toBe(true);
+
+    const detailUnassigned = await getLeadByIdAction(leadId);
+    expect(detailUnassigned.success).toBe(true);
+    expect(detailUnassigned.data?.ownerId).toBeNull();
+    expect(detailUnassigned.data?.ownerName).toBeNull();
   });
 });

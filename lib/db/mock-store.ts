@@ -421,48 +421,48 @@ export function persistMockLeads(): void {
   storagePersistLeads(mockLeadsStore);
 }
 
-export function syncMockLeadsFromDisk(): void {
-  storageSyncLeads(mockLeadsStore);
+export function syncMockLeadsFromDisk(force: boolean = false): void {
+  storageSyncLeads(mockLeadsStore, force);
 }
 
 export function persistMockCompanies(): void {
   storagePersistCompanies(mockCompaniesStore);
 }
 
-export function syncMockCompaniesFromDisk(): void {
-  storageSyncCompanies(mockCompaniesStore);
+export function syncMockCompaniesFromDisk(force: boolean = false): void {
+  storageSyncCompanies(mockCompaniesStore, force);
 }
 
 export function persistMockContacts(): void {
   storagePersistContacts(mockContactsStore);
 }
 
-export function syncMockContactsFromDisk(): void {
-  storageSyncContacts(mockContactsStore);
+export function syncMockContactsFromDisk(force: boolean = false): void {
+  storageSyncContacts(mockContactsStore, force);
 }
 
 export function persistMockOpportunities(): void {
   storagePersistOpportunities(mockOpportunitiesStore);
 }
 
-export function syncMockOpportunitiesFromDisk(): void {
-  storageSyncOpportunities(mockOpportunitiesStore);
+export function syncMockOpportunitiesFromDisk(force: boolean = false): void {
+  storageSyncOpportunities(mockOpportunitiesStore, force);
 }
 
 export function persistMockTasks(): void {
   storagePersistTasks(mockTasksStore);
 }
 
-export function syncMockTasksFromDisk(): void {
-  storageSyncTasks(mockTasksStore);
+export function syncMockTasksFromDisk(force: boolean = false): void {
+  storageSyncTasks(mockTasksStore, force);
 }
 
 export function persistMockActivities(): void {
   storagePersistActivities(mockActivitiesStore);
 }
 
-export function syncMockActivitiesFromDisk(): void {
-  storageSyncActivities(mockActivitiesStore);
+export function syncMockActivitiesFromDisk(force: boolean = false): void {
+  storageSyncActivities(mockActivitiesStore, force);
 }
 
 export interface MockAuditLog {

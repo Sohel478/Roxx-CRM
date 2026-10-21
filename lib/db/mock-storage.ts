@@ -29,12 +29,19 @@ const USERS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-users.json") : "
 
 const globalForMockStorage = globalThis as unknown as {
   _mockLeadsMtime?: number;
+  _mockLeadsSize?: number;
   _mockCompaniesMtime?: number;
+  _mockCompaniesSize?: number;
   _mockContactsMtime?: number;
+  _mockContactsSize?: number;
   _mockOpportunitiesMtime?: number;
+  _mockOpportunitiesSize?: number;
   _mockTasksMtime?: number;
+  _mockTasksSize?: number;
   _mockActivitiesMtime?: number;
+  _mockActivitiesSize?: number;
   _mockUsersMtime?: number;
+  _mockUsersSize?: number;
 };
 
 function safeWriteJson(filePath: string, data: unknown): void {
@@ -67,6 +74,7 @@ export function loadInitialLeads(fallback: MockLead[]): MockLead[] {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const stat = fs.statSync(LEADS_FILE_PATH);
           globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
+          globalForMockStorage._mockLeadsSize = stat.size;
           const fallbackMap = new Map(fallback.map((f) => [f.id, f]));
           return parsed.map((item: MockLead) => {
             if (!item.emailStatus && fallbackMap.has(item.id)) {
@@ -90,19 +98,24 @@ export function storagePersistLeads(leads: MockLead[]): void {
     if (fs.existsSync(LEADS_FILE_PATH)) {
       const stat = fs.statSync(LEADS_FILE_PATH);
       globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
+      globalForMockStorage._mockLeadsSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncLeads(targetStore: MockLead[]): void {
+export function storageSyncLeads(targetStore: MockLead[], force = false): void {
   if (isClient || isTestEnv || !LEADS_FILE_PATH || !fs || !fs.existsSync) return;
   try {
     if (fs.existsSync(LEADS_FILE_PATH)) {
       const stat = fs.statSync(LEADS_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockLeadsMtime ||
-        stat.mtimeMs > globalForMockStorage._mockLeadsMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockLeadsMtime ||
+        stat.size !== globalForMockStorage._mockLeadsSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(LEADS_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -110,6 +123,7 @@ export function storageSyncLeads(targetStore: MockLead[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
+            globalForMockStorage._mockLeadsSize = stat.size;
           }
         }
       }
@@ -133,6 +147,7 @@ export function loadInitialCompanies(fallback: MockCompany[] = []): MockCompany[
         if (Array.isArray(parsed)) {
           const stat = fs.statSync(COMPANIES_FILE_PATH);
           globalForMockStorage._mockCompaniesMtime = stat.mtimeMs;
+          globalForMockStorage._mockCompaniesSize = stat.size;
           return parsed;
         }
       }
@@ -150,19 +165,24 @@ export function storagePersistCompanies(companies: MockCompany[]): void {
     if (fs.existsSync(COMPANIES_FILE_PATH)) {
       const stat = fs.statSync(COMPANIES_FILE_PATH);
       globalForMockStorage._mockCompaniesMtime = stat.mtimeMs;
+      globalForMockStorage._mockCompaniesSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncCompanies(targetStore: MockCompany[]): void {
+export function storageSyncCompanies(targetStore: MockCompany[], force = false): void {
   if (isTestEnv) return;
   try {
     if (fs.existsSync(COMPANIES_FILE_PATH)) {
       const stat = fs.statSync(COMPANIES_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockCompaniesMtime ||
-        stat.mtimeMs > globalForMockStorage._mockCompaniesMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockCompaniesMtime ||
+        stat.size !== globalForMockStorage._mockCompaniesSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(COMPANIES_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -170,6 +190,7 @@ export function storageSyncCompanies(targetStore: MockCompany[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockCompaniesMtime = stat.mtimeMs;
+            globalForMockStorage._mockCompaniesSize = stat.size;
           }
         }
       }
@@ -193,6 +214,7 @@ export function loadInitialContacts(fallback: MockContact[] = []): MockContact[]
         if (Array.isArray(parsed)) {
           const stat = fs.statSync(CONTACTS_FILE_PATH);
           globalForMockStorage._mockContactsMtime = stat.mtimeMs;
+          globalForMockStorage._mockContactsSize = stat.size;
           return parsed;
         }
       }
@@ -210,19 +232,24 @@ export function storagePersistContacts(contacts: MockContact[]): void {
     if (fs.existsSync(CONTACTS_FILE_PATH)) {
       const stat = fs.statSync(CONTACTS_FILE_PATH);
       globalForMockStorage._mockContactsMtime = stat.mtimeMs;
+      globalForMockStorage._mockContactsSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncContacts(targetStore: MockContact[]): void {
+export function storageSyncContacts(targetStore: MockContact[], force = false): void {
   if (isTestEnv) return;
   try {
     if (fs.existsSync(CONTACTS_FILE_PATH)) {
       const stat = fs.statSync(CONTACTS_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockContactsMtime ||
-        stat.mtimeMs > globalForMockStorage._mockContactsMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockContactsMtime ||
+        stat.size !== globalForMockStorage._mockContactsSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(CONTACTS_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -230,6 +257,7 @@ export function storageSyncContacts(targetStore: MockContact[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockContactsMtime = stat.mtimeMs;
+            globalForMockStorage._mockContactsSize = stat.size;
           }
         }
       }
@@ -253,6 +281,7 @@ export function loadInitialOpportunities(fallback: MockOpportunity[] = []): Mock
         if (Array.isArray(parsed)) {
           const stat = fs.statSync(OPPORTUNITIES_FILE_PATH);
           globalForMockStorage._mockOpportunitiesMtime = stat.mtimeMs;
+          globalForMockStorage._mockOpportunitiesSize = stat.size;
           return parsed;
         }
       }
@@ -270,19 +299,24 @@ export function storagePersistOpportunities(opportunities: MockOpportunity[]): v
     if (fs.existsSync(OPPORTUNITIES_FILE_PATH)) {
       const stat = fs.statSync(OPPORTUNITIES_FILE_PATH);
       globalForMockStorage._mockOpportunitiesMtime = stat.mtimeMs;
+      globalForMockStorage._mockOpportunitiesSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncOpportunities(targetStore: MockOpportunity[]): void {
+export function storageSyncOpportunities(targetStore: MockOpportunity[], force = false): void {
   if (isTestEnv) return;
   try {
     if (fs.existsSync(OPPORTUNITIES_FILE_PATH)) {
       const stat = fs.statSync(OPPORTUNITIES_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockOpportunitiesMtime ||
-        stat.mtimeMs > globalForMockStorage._mockOpportunitiesMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockOpportunitiesMtime ||
+        stat.size !== globalForMockStorage._mockOpportunitiesSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(OPPORTUNITIES_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -290,6 +324,7 @@ export function storageSyncOpportunities(targetStore: MockOpportunity[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockOpportunitiesMtime = stat.mtimeMs;
+            globalForMockStorage._mockOpportunitiesSize = stat.size;
           }
         }
       }
@@ -313,6 +348,7 @@ export function loadInitialTasks(fallback: MockTask[]): MockTask[] {
         if (Array.isArray(parsed)) {
           const stat = fs.statSync(TASKS_FILE_PATH);
           globalForMockStorage._mockTasksMtime = stat.mtimeMs;
+          globalForMockStorage._mockTasksSize = stat.size;
           return parsed;
         }
       }
@@ -330,19 +366,24 @@ export function storagePersistTasks(tasks: MockTask[]): void {
     if (fs.existsSync(TASKS_FILE_PATH)) {
       const stat = fs.statSync(TASKS_FILE_PATH);
       globalForMockStorage._mockTasksMtime = stat.mtimeMs;
+      globalForMockStorage._mockTasksSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncTasks(targetStore: MockTask[]): void {
+export function storageSyncTasks(targetStore: MockTask[], force = false): void {
   if (isTestEnv) return;
   try {
     if (fs.existsSync(TASKS_FILE_PATH)) {
       const stat = fs.statSync(TASKS_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockTasksMtime ||
-        stat.mtimeMs > globalForMockStorage._mockTasksMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockTasksMtime ||
+        stat.size !== globalForMockStorage._mockTasksSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(TASKS_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -350,6 +391,7 @@ export function storageSyncTasks(targetStore: MockTask[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockTasksMtime = stat.mtimeMs;
+            globalForMockStorage._mockTasksSize = stat.size;
           }
         }
       }
@@ -369,6 +411,7 @@ export function loadInitialActivities(fallback: MockActivity[]): MockActivity[] 
         if (Array.isArray(parsed)) {
           const stat = fs.statSync(ACTIVITIES_FILE_PATH);
           globalForMockStorage._mockActivitiesMtime = stat.mtimeMs;
+          globalForMockStorage._mockActivitiesSize = stat.size;
           return parsed;
         }
       }
@@ -386,19 +429,24 @@ export function storagePersistActivities(activities: MockActivity[]): void {
     if (fs.existsSync(ACTIVITIES_FILE_PATH)) {
       const stat = fs.statSync(ACTIVITIES_FILE_PATH);
       globalForMockStorage._mockActivitiesMtime = stat.mtimeMs;
+      globalForMockStorage._mockActivitiesSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncActivities(targetStore: MockActivity[]): void {
+export function storageSyncActivities(targetStore: MockActivity[], force = false): void {
   if (isTestEnv) return;
   try {
     if (fs.existsSync(ACTIVITIES_FILE_PATH)) {
       const stat = fs.statSync(ACTIVITIES_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockActivitiesMtime ||
-        stat.mtimeMs > globalForMockStorage._mockActivitiesMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockActivitiesMtime ||
+        stat.size !== globalForMockStorage._mockActivitiesSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(ACTIVITIES_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -406,6 +454,7 @@ export function storageSyncActivities(targetStore: MockActivity[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockActivitiesMtime = stat.mtimeMs;
+            globalForMockStorage._mockActivitiesSize = stat.size;
           }
         }
       }
@@ -429,6 +478,7 @@ export function loadInitialUsers(fallback: MockUser[]): MockUser[] {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const stat = fs.statSync(USERS_FILE_PATH);
           globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+          globalForMockStorage._mockUsersSize = stat.size;
           // Merge fallback users if any core users are missing
           const existingIds = new Set(parsed.map((u: MockUser) => u.id));
           const existingEmails = new Set(parsed.map((u: MockUser) => u.email.toLowerCase()));
@@ -455,19 +505,24 @@ export function storagePersistUsers(users: MockUser[]): void {
     if (fs.existsSync(USERS_FILE_PATH)) {
       const stat = fs.statSync(USERS_FILE_PATH);
       globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+      globalForMockStorage._mockUsersSize = stat.size;
     }
   } catch {}
 }
 
-export function storageSyncUsers(targetStore: MockUser[]): void {
+export function storageSyncUsers(targetStore: MockUser[], force = false): void {
   if (isTestEnv || !USERS_FILE_PATH || !fs || !fs.existsSync) return;
   try {
     if (fs.existsSync(USERS_FILE_PATH)) {
       const stat = fs.statSync(USERS_FILE_PATH);
-      if (
+      const needsSync =
+        force ||
         !globalForMockStorage._mockUsersMtime ||
-        stat.mtimeMs > globalForMockStorage._mockUsersMtime
-      ) {
+        stat.mtimeMs !== globalForMockStorage._mockUsersMtime ||
+        stat.size !== globalForMockStorage._mockUsersSize ||
+        targetStore.length === 0;
+
+      if (needsSync) {
         const raw = fs.readFileSync(USERS_FILE_PATH, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
@@ -475,6 +530,7 @@ export function storageSyncUsers(targetStore: MockUser[]): void {
             targetStore.length = 0;
             targetStore.push(...data);
             globalForMockStorage._mockUsersMtime = stat.mtimeMs;
+            globalForMockStorage._mockUsersSize = stat.size;
           }
         }
       }

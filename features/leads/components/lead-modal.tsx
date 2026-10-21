@@ -178,7 +178,10 @@ export function LeadModal({
 
     startTransition(async () => {
       try {
-        const targetOwnerId = formData.ownerId === "UNASSIGNED" ? null : (formData.ownerId || undefined);
+        const isExplicitlyUnassigned = formData.ownerId === "UNASSIGNED" || formData.ownerId === null;
+        const targetOwnerId = isExplicitlyUnassigned
+          ? null
+          : (formData.ownerId || currentUser?.id || undefined);
         const selectedMember = teamMembers.find((m) => m.id === targetOwnerId);
         const resolvedName =
           targetOwnerId === null
@@ -440,13 +443,17 @@ export function LeadModal({
                 <span>Assign To (Sales Rep / Account Owner)</span>
               </label>
               <select
-                value={formData.ownerId === null ? "UNASSIGNED" : (formData.ownerId || currentUser?.id || "")}
+                value={
+                  formData.ownerId === null || formData.ownerId === "UNASSIGNED"
+                    ? "UNASSIGNED"
+                    : (formData.ownerId || currentUser?.id || "")
+                }
                 onChange={(e) => {
                   const val = e.target.value;
-                  setFormData({
-                    ...formData,
-                    ownerId: val === "UNASSIGNED" ? null : (val || undefined),
-                  });
+                  setFormData((prev) => ({
+                    ...prev,
+                    ownerId: val === "UNASSIGNED" ? "UNASSIGNED" : (val || currentUser?.id || undefined),
+                  }));
                 }}
                 className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
