@@ -325,31 +325,32 @@ export function LeadDiscoveryCard({
   // 1. Initial Empty State (Not yet generated)
   if (hasLoaded && !discovery) {
     return (
-      <div className={`rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-sky-50/30 ${isExpanded ? "p-5" : "px-5 py-3"} shadow-xs transition-all`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-xs shrink-0">
+      <div className="rounded-2xl border border-indigo-200/80 bg-white shadow-xs overflow-hidden transition-all">
+        {/* Header Bar */}
+        <div
+          className={`px-5 py-3.5 bg-gradient-to-r from-indigo-50/70 via-sky-50/30 to-white flex items-center justify-between gap-3 ${
+            isExpanded ? "border-b border-indigo-100/70" : ""
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-bold text-slate-900">
                   AI Client Discovery &amp; Sales Pitch Intelligence
                 </h3>
                 <Badge
                   variant="outline"
-                  className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold"
+                  className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold shrink-0"
                 >
                   Discovery Phase
                 </Badge>
               </div>
-              {isExpanded && (
-                <p className="text-xs text-slate-500 mt-1 max-w-xl">
-                  Synthesize {companyName || leadName || "client"}&apos;s specific business profile,
-                  diagnose their exact operational needs, and formulate tailored sales recommendations
-                  for your discovery call.
-                </p>
-              )}
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                AI-driven prospect profiling &amp; strategic pitch recommendations
+              </p>
             </div>
           </div>
 
@@ -359,7 +360,7 @@ export function LeadDiscoveryCard({
                 onClick={() => setIsKeyModalOpen(true)}
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-xs text-slate-600 border-slate-200 hover:bg-slate-50"
+                className="h-8 gap-1.5 text-xs text-slate-600 border-slate-200 hover:bg-slate-50"
               >
                 <Key className="w-3.5 h-3.5 text-amber-500" />
                 <span>AI Key</span>
@@ -367,30 +368,11 @@ export function LeadDiscoveryCard({
             )}
 
             <Button
-              onClick={() => handleGenerateOrRefresh(true)}
-              disabled={isPending}
-              size="sm"
-              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0"
-            >
-              {isPending ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Analyzing Client...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate Client Discovery</span>
-                </>
-              )}
-            </Button>
-
-            <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/60 flex items-center gap-1.5"
+              className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5 shrink-0"
               title={isExpanded ? "Collapse AI Client Discovery card" : "Expand AI Client Discovery card"}
             >
               <span>{isExpanded ? "Collapse" : "Expand"}</span>
@@ -405,7 +387,7 @@ export function LeadDiscoveryCard({
 
         {/* Quick OpenAI Key Modal (Admin Only) */}
         {isAdmin && isKeyModalOpen && (
-          <div className="mt-4 pt-4 border-t border-indigo-100 bg-white/90 p-4 rounded-xl border space-y-3">
+          <div className="p-4 bg-slate-50 border-b border-indigo-100 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-amber-600" />
@@ -442,6 +424,34 @@ export function LeadDiscoveryCard({
             {keySaveMessage && (
               <p className="text-[11px] text-emerald-600 font-medium">{keySaveMessage}</p>
             )}
+          </div>
+        )}
+
+        {/* Expanded Content Body */}
+        {isExpanded && (
+          <div className="p-5 bg-gradient-to-br from-indigo-50/30 via-white to-sky-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
+              Synthesize <span className="font-semibold text-slate-900">{companyName || leadName || "client"}</span>&apos;s specific business profile, diagnose their exact operational needs, and formulate tailored sales recommendations for your discovery call.
+            </p>
+
+            <Button
+              onClick={() => handleGenerateOrRefresh(true)}
+              disabled={isPending}
+              size="sm"
+              className="h-9 px-4 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0 self-start sm:self-auto"
+            >
+              {isPending ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Analyzing Client...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate Client Discovery</span>
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>
@@ -516,7 +526,7 @@ export function LeadDiscoveryCard({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -554,7 +564,7 @@ export function LeadDiscoveryCard({
             variant="ghost"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5"
+            className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5 shrink-0"
             title={isExpanded ? "Collapse AI Client Discovery card" : "Expand AI Client Discovery card"}
           >
             <span>{isExpanded ? "Collapse" : "Expand"}</span>
