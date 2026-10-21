@@ -9,6 +9,7 @@ import { getAiConfigAction } from "@/actions/ai-email";
 import { getCompanyMatrixAction } from "@/actions/company-matrix";
 import {
   leadDiscoverySchema,
+  extractLeadResearchSources,
   type LeadDiscoveryData,
   type LeadDiscoveryInputContext,
 } from "@/lib/validations/lead-discovery";
@@ -130,7 +131,7 @@ export async function generateLeadDiscoveryAction(
           jobTitle: dbLead.jobTitle,
           email: dbLead.email,
           phone: dbLead.phone,
-          website: null,
+          website: dbLead.website || null,
           source: dbLead.source,
           sourceDetail: dbLead.sourceDetail,
           status: dbLead.status,
@@ -159,14 +160,14 @@ export async function generateLeadDiscoveryAction(
           jobTitle: mockLead.jobTitle,
           email: mockLead.email,
           phone: mockLead.phone,
-          website: null,
+          website: (mockLead as any).website || null,
           source: mockLead.source,
           sourceDetail: mockLead.sourceDetail,
           status: mockLead.status,
           rating: mockLead.rating,
           description: mockLead.description,
-          customerLinkedin: mockLead.customerLinkedin,
-          companyLinkedin: mockLead.companyLinkedin,
+          customerLinkedin: (mockLead as any).customerLinkedin || null,
+          companyLinkedin: (mockLead as any).companyLinkedin || null,
           estimatedValue: mockLead.estimatedValue,
           pastActivitiesSummary: null,
         };
@@ -177,16 +178,20 @@ export async function generateLeadDiscoveryAction(
       return { success: false, error: "Lead record could not be found." };
     }
 
-    // Resolve website URL from description or email domain if not explicit
-    const urlFromDesc = leadInput.description?.match(/(https?:\/\/[^\s\n\r]+)/i)?.[1];
-    let resolvedWebsite = leadInput.website || urlFromDesc || null;
-    if (!resolvedWebsite && leadInput.email && leadInput.email.includes("@")) {
-      const domain = leadInput.email.split("@")[1].toLowerCase();
-      if (!["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "mail.com", "proton.me"].includes(domain)) {
-        resolvedWebsite = `https://${domain}`;
-      }
+    // 2a. Validate and extract research sources (Website URL, Personal LinkedIn, Company LinkedIn)
+    const sources = extractLeadResearchSources(leadInput);
+
+    if (!sources.hasAnySource) {
+      return {
+        success: false,
+        error:
+          "AI Client Discovery requires at least one research source (Company Website, Personal LinkedIn, or Company LinkedIn URL) to scrape prospect data and evaluate fit. Please add at least one URL to this lead record before generating discovery.",
+      };
     }
-    leadInput.website = resolvedWebsite;
+
+    leadInput.website = sources.website;
+    leadInput.customerLinkedin = sources.customerLinkedin;
+    leadInput.companyLinkedin = sources.companyLinkedin;
 
     let scrapedWebsiteText: string | null = null;
     let researchSourceInfo: {
@@ -196,12 +201,13 @@ export async function generateLeadDiscoveryAction(
       error?: string;
     } | null = null;
 
-    if (resolvedWebsite) {
+    const targetUrl = sources.primarySourceUrl;
+    if (targetUrl) {
       try {
         const { extractTextFromUrl } = await import("@/lib/ai/company-matrix-extractor");
-        const textRes = await extractTextFromUrl(resolvedWebsite);
+        const textRes = await extractTextFromUrl(targetUrl);
         researchSourceInfo = {
-          url: textRes.url || resolvedWebsite,
+          url: textRes.url || targetUrl,
           title: textRes.title,
           accessedAt: textRes.accessedAt,
           error: textRes.error,
@@ -211,8 +217,8 @@ export async function generateLeadDiscoveryAction(
         }
       } catch (err: any) {
         researchSourceInfo = {
-          url: resolvedWebsite,
-          error: err?.message || "Failed to reach website",
+          url: targetUrl,
+          error: err?.message || "Failed to reach website/profile URL",
           accessedAt: new Date().toISOString(),
         };
       }

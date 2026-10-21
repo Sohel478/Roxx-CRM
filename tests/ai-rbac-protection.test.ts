@@ -242,6 +242,7 @@ describe("AI Key & Settings Role-Based Access Control (RBAC)", () => {
         lastName: "Aurelius",
         fullName: "Marcus Aurelius",
         email: "marcus@meditations.org",
+        website: "https://meditations.org",
         phone: "+1 555-0101",
         companyName: "Stoic Philosophy Inc",
         source: "Inbound",

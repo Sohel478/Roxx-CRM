@@ -761,6 +761,11 @@ export default function LeadDetailPage() {
             leadId={lead.id}
             leadName={lead.fullName}
             companyName={lead.companyName}
+            website={websiteUrl}
+            companyLinkedin={companyLinkedinUrl}
+            customerLinkedin={customerLinkedinUrl}
+            description={lead.description}
+            onEditLead={() => setIsEditModalOpen(true)}
             isAdmin={
               roleUpper === "ADMIN" ||
               roleUpper === "ADMINISTRATOR" ||

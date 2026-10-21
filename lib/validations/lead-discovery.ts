@@ -247,3 +247,78 @@ export interface LeadDiscoveryInputContext {
   estimatedValue?: number | null;
   pastActivitiesSummary?: string | null;
 }
+
+export interface LeadResearchSources {
+  website: string | null;
+  customerLinkedin: string | null;
+  companyLinkedin: string | null;
+  hasAnySource: boolean;
+  primarySourceUrl: string | null;
+}
+
+/**
+ * Extracts and normalizes prospect research source URLs:
+ * 1. Company Website URL
+ * 2. Personal LinkedIn Profile URL
+ * 3. Company LinkedIn URL
+ *
+ * Scans explicit lead fields as well as formatted discovery notes in description.
+ */
+export function extractLeadResearchSources(lead?: {
+  website?: string | null;
+  customerLinkedin?: string | null;
+  companyLinkedin?: string | null;
+  description?: string | null;
+}): LeadResearchSources {
+  const desc = lead?.description || "";
+
+  const cleanUrl = (u?: string | null): string | null => {
+    if (!u || typeof u !== "string") return null;
+    const trimmed = u.trim();
+    if (!trimmed || trimmed === "null" || trimmed === "undefined") return null;
+    return trimmed;
+  };
+
+  // 1. Website: explicit field, or description note "Website: ...", or generic non-linkedin URL
+  const websiteExplicit = cleanUrl(lead?.website);
+  const websiteFromDesc = cleanUrl(
+    desc.match(/(?:Website|Site|URL):\s*([^\s\n\r]+)/i)?.[1] ||
+    desc.match(/https?:\/\/(?!www\.linkedin\.com|linkedin\.com)[^\s\n\r]+/i)?.[0]
+  );
+  let website = websiteExplicit || websiteFromDesc || null;
+  if (website && !website.startsWith("http://") && !website.startsWith("https://")) {
+    website = `https://${website}`;
+  }
+
+  // 2. Personal LinkedIn: explicit field, or description note "LinkedIn Profile: ...", or linkedin.com/in/...
+  const personalLinkedinExplicit = cleanUrl(lead?.customerLinkedin);
+  const personalLinkedinFromDesc = cleanUrl(
+    desc.match(/(?:LinkedIn Profile|Personal LinkedIn|Customer LinkedIn):\s*([^\s\n\r]+)/i)?.[1] ||
+    desc.match(/https?:\/\/(?:www\.)?linkedin\.com\/(?:in|search)\/[^\s\n\r]+/i)?.[0]
+  );
+  let customerLinkedin = personalLinkedinExplicit || personalLinkedinFromDesc || null;
+  if (customerLinkedin && !customerLinkedin.startsWith("http://") && !customerLinkedin.startsWith("https://")) {
+    customerLinkedin = `https://${customerLinkedin}`;
+  }
+
+  // 3. Company LinkedIn: explicit field, or description note "Company LinkedIn: ...", or linkedin.com/company/...
+  const companyLinkedinExplicit = cleanUrl(lead?.companyLinkedin);
+  const companyLinkedinFromDesc = cleanUrl(
+    desc.match(/Company LinkedIn:\s*([^\s\n\r]+)/i)?.[1] ||
+    desc.match(/https?:\/\/(?:www\.)?linkedin\.com\/company\/[^\s\n\r]+/i)?.[0]
+  );
+  let companyLinkedin = companyLinkedinExplicit || companyLinkedinFromDesc || null;
+  if (companyLinkedin && !companyLinkedin.startsWith("http://") && !companyLinkedin.startsWith("https://")) {
+    companyLinkedin = `https://${companyLinkedin}`;
+  }
+
+  const hasAnySource = Boolean(website || customerLinkedin || companyLinkedin);
+
+  return {
+    website,
+    customerLinkedin,
+    companyLinkedin,
+    hasAnySource,
+    primarySourceUrl: website || companyLinkedin || customerLinkedin || null,
+  };
+}

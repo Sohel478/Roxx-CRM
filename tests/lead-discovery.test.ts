@@ -52,6 +52,7 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       lastName: "Huynh",
       fullName: "Johnny Huynh",
       email: "johnny@bayviewsuites.com",
+      website: "https://bayviewsuites.com",
       phone: "+1 555-0188",
       companyName: "Bayview Luxury Suites & Hospitality",
       jobTitle: "General Manager",
@@ -549,6 +550,53 @@ describe("AI Lead Discovery & Strategic Sales Pitch Engine", () => {
       const wordCount = draft.body.trim().split(/\s+/).length;
       expect(wordCount).toBeLessThan(120);
       expect(wordCount).toBeGreaterThan(30);
+    });
+
+    it("strictly rejects discovery generation when research sources (website, personal LinkedIn, company LinkedIn) are missing", async () => {
+      mockLeadsStore.push({
+        id: "lead_no_sources_99",
+        organizationId: "org_discovery_test",
+        leadNumber: "LEAD-9999",
+        firstName: "No",
+        lastName: "Footprint",
+        fullName: "No Footprint",
+        email: "test@gmail.com",
+        phone: "+1 555-9999",
+        source: "Manual",
+        status: "New",
+        rating: "Cold",
+        estimatedValue: 0,
+        currency: "USD",
+        createdAt: new Date().toISOString(),
+        description: "No website or social profiles provided.",
+      });
+
+      const res = await generateLeadDiscoveryAction("lead_no_sources_99", { forceRefresh: true });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain("research source");
+      expect(res.error).toContain("Company Website, Personal LinkedIn, or Company LinkedIn URL");
+    });
+
+    it("allows discovery generation when lead has personal or company LinkedIn URL", async () => {
+      mockLeadsStore.push({
+        id: "lead_linkedin_only",
+        organizationId: "org_discovery_test",
+        leadNumber: "LEAD-8888",
+        firstName: "Jane",
+        lastName: "Executive",
+        fullName: "Jane Executive",
+        customerLinkedin: "https://www.linkedin.com/in/jane-executive",
+        source: "Manual",
+        status: "New",
+        rating: "Warm",
+        estimatedValue: 10000,
+        currency: "USD",
+        createdAt: new Date().toISOString(),
+      });
+
+      const res = await generateLeadDiscoveryAction("lead_linkedin_only", { forceRefresh: true });
+      expect(res.success).toBe(true);
+      expect(res.data).toBeDefined();
     });
   });
 });

@@ -32,6 +32,10 @@ import {
   Mail,
   Edit3,
   RotateCcw,
+  Linkedin,
+  Link2,
+  AlertCircle,
+  Edit2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,16 +47,22 @@ import {
 import { saveAiConfigAction, getAiConfigAction } from "@/actions/ai-email";
 import { getCurrentUserAction } from "@/actions/auth";
 import type { SessionUser } from "@/lib/auth/session";
-import type {
-  LeadDiscoveryData,
-  EvidenceStatus,
-  ConfidenceLevel,
+import {
+  type LeadDiscoveryData,
+  type EvidenceStatus,
+  type ConfidenceLevel,
+  extractLeadResearchSources,
 } from "@/lib/validations/lead-discovery";
 
 interface LeadDiscoveryCardProps {
   leadId: string;
   leadName?: string;
   companyName?: string | null;
+  website?: string | null;
+  customerLinkedin?: string | null;
+  companyLinkedin?: string | null;
+  description?: string | null;
+  onEditLead?: () => void;
   initialDiscovery?: LeadDiscoveryData | null;
   onDiscoveryGenerated?: (discovery: LeadDiscoveryData) => void;
   isAdmin?: boolean;
@@ -108,6 +118,11 @@ export function LeadDiscoveryCard({
   leadId,
   leadName,
   companyName,
+  website,
+  customerLinkedin,
+  companyLinkedin,
+  description: propsDescription,
+  onEditLead,
   initialDiscovery,
   onDiscoveryGenerated,
   isAdmin: propsIsAdmin,
@@ -133,6 +148,15 @@ export function LeadDiscoveryCard({
   );
   const [isPending, startTransition] = useTransition();
   const [isExpanded, setIsExpanded] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Extract prospect research sources (Website, Personal LinkedIn, Company LinkedIn)
+  const sources = extractLeadResearchSources({
+    website,
+    customerLinkedin,
+    companyLinkedin,
+    description: propsDescription,
+  });
   const [isRubricExpanded, setIsRubricExpanded] = useState(false);
   const [isFollowUpsExpanded, setIsFollowUpsExpanded] = useState(false);
   const [isSourcesExpanded, setIsSourcesExpanded] = useState(false);
@@ -172,6 +196,13 @@ export function LeadDiscoveryCard({
   }, [discovery]);
 
   const handleGenerateOrRefresh = (force = true) => {
+    if (!sources.hasAnySource) {
+      setErrorMessage(
+        "Cannot generate discovery: Research source required. Please add a Website URL, Personal LinkedIn, or Company LinkedIn URL to this lead record."
+      );
+      return;
+    }
+    setErrorMessage(null);
     startTransition(async () => {
       const res = await generateLeadDiscoveryAction(leadId, {
         forceRefresh: force,
@@ -181,6 +212,8 @@ export function LeadDiscoveryCard({
         if (onDiscoveryGenerated) {
           onDiscoveryGenerated(res.data);
         }
+      } else if (!res.success) {
+        setErrorMessage(res.error || "Failed to generate client discovery.");
       }
     });
   };
@@ -324,16 +357,30 @@ export function LeadDiscoveryCard({
 
   // 1. Initial Empty State (Not yet generated)
   if (hasLoaded && !discovery) {
+    const isMissingResearchSources = !sources.hasAnySource;
+
     return (
-      <div className="rounded-2xl border border-indigo-200/80 bg-white shadow-xs overflow-hidden transition-all">
+      <div
+        className={`rounded-2xl border shadow-xs overflow-hidden transition-all ${
+          isMissingResearchSources
+            ? "border-amber-200/90 bg-white"
+            : "border-indigo-200/80 bg-white"
+        }`}
+      >
         {/* Header Bar */}
         <div
-          className={`px-5 py-3.5 bg-gradient-to-r from-indigo-50/70 via-sky-50/30 to-white flex items-center justify-between gap-3 ${
-            isExpanded ? "border-b border-indigo-100/70" : ""
-          }`}
+          className={`px-5 py-3.5 flex items-center justify-between gap-3 ${
+            isMissingResearchSources
+              ? "bg-gradient-to-r from-amber-50/80 via-orange-50/30 to-white"
+              : "bg-gradient-to-r from-indigo-50/70 via-sky-50/30 to-white"
+          } ${isExpanded ? (isMissingResearchSources ? "border-b border-amber-100" : "border-b border-indigo-100/70") : ""}`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs shrink-0">
+            <div
+              className={`p-1.5 rounded-lg text-white shadow-xs shrink-0 ${
+                isMissingResearchSources ? "bg-amber-600" : "bg-indigo-600"
+              }`}
+            >
               <Sparkles className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -341,15 +388,27 @@ export function LeadDiscoveryCard({
                 <h3 className="text-sm font-bold text-slate-900">
                   AI Client Discovery &amp; Sales Pitch Intelligence
                 </h3>
-                <Badge
-                  variant="outline"
-                  className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold shrink-0"
-                >
-                  Discovery Phase
-                </Badge>
+                {isMissingResearchSources ? (
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-bold shrink-0 flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                    <span>Research Source Required</span>
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-semibold shrink-0"
+                  >
+                    Discovery Phase
+                  </Badge>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                AI-driven prospect profiling &amp; strategic pitch recommendations
+                {isMissingResearchSources
+                  ? "Website or LinkedIn URL needed to scrape & evaluate fit"
+                  : "AI-driven prospect profiling & strategic pitch recommendations"}
               </p>
             </div>
           </div>
@@ -427,32 +486,140 @@ export function LeadDiscoveryCard({
           </div>
         )}
 
+        {/* Error message alert banner if server action returns an error */}
+        {isExpanded && errorMessage && (
+          <div className="mx-5 mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {/* Expanded Content Body */}
         {isExpanded && (
-          <div className="p-5 bg-gradient-to-br from-indigo-50/30 via-white to-sky-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
-              Synthesize <span className="font-semibold text-slate-900">{companyName || leadName || "client"}</span>&apos;s specific business profile, diagnose their exact operational needs, and formulate tailored sales recommendations for your discovery call.
-            </p>
+          <>
+            {isMissingResearchSources ? (
+              /* State A: Missing Research URLs Banner (Prompt Sales Rep) */
+              <div className="p-5 bg-gradient-to-br from-amber-50/40 via-white to-slate-50 space-y-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="p-2.5 rounded-xl bg-amber-100 text-amber-800 border border-amber-200 shadow-2xs shrink-0 mt-0.5">
+                    <Link2 className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Cannot Generate Discovery: Digital Footprint Missing
+                    </h4>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      AI Client Discovery evaluates company capabilities, service fit, and personalized pitch recommendations by scraping live prospect data. All 3 research sources are currently missing for <span className="font-semibold text-slate-900">{companyName || leadName || "this lead"}</span>.
+                    </p>
+                  </div>
+                </div>
 
-            <Button
-              onClick={() => handleGenerateOrRefresh(true)}
-              disabled={isPending}
-              size="sm"
-              className="h-9 px-4 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0 self-start sm:self-auto"
-            >
-              {isPending ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Analyzing Client...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate Client Discovery</span>
-                </>
-              )}
-            </Button>
-          </div>
+                <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-4 text-xs text-slate-800 space-y-2.5">
+                  <p className="font-semibold text-amber-950 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Sales Representative Action Needed: Please get any one of the following details to enable discovery:</span>
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                    <div className="bg-white p-3 rounded-lg border border-amber-200/90 shadow-2xs flex flex-col justify-between gap-1">
+                      <div className="flex items-center gap-2 font-semibold text-slate-800">
+                        <Globe className="w-4 h-4 text-blue-500 shrink-0" />
+                        <span>Company Website</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">e.g. https://company.com</span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border border-amber-200/90 shadow-2xs flex flex-col justify-between gap-1">
+                      <div className="flex items-center gap-2 font-semibold text-slate-800">
+                        <Linkedin className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span>Personal LinkedIn</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">e.g. linkedin.com/in/...</span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border border-amber-200/90 shadow-2xs flex flex-col justify-between gap-1">
+                      <div className="flex items-center gap-2 font-semibold text-slate-800">
+                        <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Company LinkedIn</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">e.g. linkedin.com/company/...</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-amber-100">
+                  <p className="text-[11px] text-slate-500 italic">
+                    Discovery generation is disabled until at least one research source URL is provided.
+                  </p>
+
+                  {onEditLead && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={onEditLead}
+                      className="gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shadow-xs shrink-0 h-9 px-4"
+                      title="Edit lead to add website or LinkedIn URL"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Add Details / Edit Lead</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* State B: Research URLs Present -> Enable AI Discovery Generation */
+              <div className="p-5 bg-gradient-to-br from-indigo-50/30 via-white to-sky-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-2 max-w-xl">
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Synthesize <span className="font-semibold text-slate-900">{companyName || leadName || "client"}</span>&apos;s specific business profile, diagnose their exact operational needs, and formulate tailored sales recommendations for your discovery call.
+                  </p>
+
+                  {/* Detected Research Sources Pills */}
+                  <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Scraping Sources:
+                    </span>
+                    {sources.website && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                        <Globe className="w-3 h-3 text-blue-500 shrink-0" />
+                        <span className="truncate max-w-[190px]">{sources.website.replace(/^https?:\/\//, "")}</span>
+                      </span>
+                    )}
+                    {sources.customerLinkedin && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                        <Linkedin className="w-3 h-3 text-blue-600 shrink-0" />
+                        <span>Personal LinkedIn</span>
+                      </span>
+                    )}
+                    {sources.companyLinkedin && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                        <Building2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                        <span>Company LinkedIn</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => handleGenerateOrRefresh(true)}
+                  disabled={isPending}
+                  size="sm"
+                  className="h-9 px-4 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs shrink-0 self-start sm:self-auto"
+                >
+                  {isPending ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Analyzing Client...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Generate Client Discovery</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     );
