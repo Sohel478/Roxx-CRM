@@ -34,6 +34,7 @@ vi.mock("@/lib/db/migrate", () => ({
 
 // Force prisma to fail so fallback to in-memory mock store is tested
 vi.mock("@/lib/db/prisma", () => ({
+  isMockDatabase: vi.fn(() => false),
   prisma: {
     notification: {
       findMany: vi.fn().mockRejectedValue(new Error("DB offline")),

@@ -19,6 +19,9 @@ const isClient = typeof window !== "undefined";
 const PRISMA_DIR = !isClient && typeof process !== "undefined" && typeof process.cwd === "function"
   ? path.join(process.cwd(), "prisma")
   : "";
+const INITIAL_LEADS_PATH = !isClient && typeof process !== "undefined" && typeof process.cwd === "function"
+  ? path.join(process.cwd(), "lib", "db", "initial-leads.json")
+  : "";
 const LEADS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-leads.json") : "";
 const COMPANIES_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-companies.json") : "";
 const CONTACTS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-contacts.json") : "";
@@ -45,14 +48,13 @@ const globalForMockStorage = globalThis as unknown as {
 };
 
 function safeWriteJson(filePath: string, data: unknown): void {
-  if (isClient || !PRISMA_DIR || !filePath || !fs || !fs.existsSync) return;
+  if (isClient || !filePath || !fs || !fs.existsSync) return;
   try {
-    if (!fs.existsSync(PRISMA_DIR)) {
-      fs.mkdirSync(PRISMA_DIR, { recursive: true });
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    const tempPath = `${filePath}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), "utf-8");
-    fs.renameSync(tempPath, filePath);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
     console.warn(`[safeWriteJson] Disk write error for ${filePath}:`, err);
   }
@@ -63,25 +65,28 @@ function safeWriteJson(filePath: string, data: unknown): void {
 // ----------------------------------------------------------------------------
 
 export function loadInitialLeads(fallback: MockLead[]): MockLead[] {
-  if (isClient || isTestEnv || !LEADS_FILE_PATH || !fs || !fs.existsSync) {
+  if (isClient || isTestEnv || !fs || !fs.existsSync) {
     return [...fallback];
   }
   try {
-    if (fs.existsSync(LEADS_FILE_PATH)) {
-      const raw = fs.readFileSync(LEADS_FILE_PATH, "utf-8");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const stat = fs.statSync(LEADS_FILE_PATH);
-          globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
-          globalForMockStorage._mockLeadsSize = stat.size;
-          const fallbackMap = new Map(fallback.map((f) => [f.id, f]));
-          return parsed.map((item: MockLead) => {
-            if (!item.emailStatus && fallbackMap.has(item.id)) {
-              item.emailStatus = fallbackMap.get(item.id)!.emailStatus || "NA";
-            }
-            return item;
-          });
+    const candidates = [LEADS_FILE_PATH, INITIAL_LEADS_PATH].filter(Boolean);
+    for (const filePath of candidates) {
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, "utf-8");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const stat = fs.statSync(filePath);
+            globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
+            globalForMockStorage._mockLeadsSize = stat.size;
+            const fallbackMap = new Map(fallback.map((f) => [f.id, f]));
+            return parsed.map((item: MockLead) => {
+              if (!item.emailStatus && fallbackMap.has(item.id)) {
+                item.emailStatus = fallbackMap.get(item.id)!.emailStatus || "NA";
+              }
+              return item;
+            });
+          }
         }
       }
     }
@@ -92,11 +97,13 @@ export function loadInitialLeads(fallback: MockLead[]): MockLead[] {
 }
 
 export function storagePersistLeads(leads: MockLead[]): void {
-  if (isClient || isTestEnv || !LEADS_FILE_PATH || !fs || !fs.existsSync) return;
-  safeWriteJson(LEADS_FILE_PATH, leads);
+  if (isClient || isTestEnv || !fs || !fs.existsSync) return;
+  if (LEADS_FILE_PATH) safeWriteJson(LEADS_FILE_PATH, leads);
+  if (INITIAL_LEADS_PATH) safeWriteJson(INITIAL_LEADS_PATH, leads);
   try {
-    if (fs.existsSync(LEADS_FILE_PATH)) {
-      const stat = fs.statSync(LEADS_FILE_PATH);
+    const checkPath = (LEADS_FILE_PATH && fs.existsSync(LEADS_FILE_PATH)) ? LEADS_FILE_PATH : INITIAL_LEADS_PATH;
+    if (checkPath && fs.existsSync(checkPath)) {
+      const stat = fs.statSync(checkPath);
       globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
       globalForMockStorage._mockLeadsSize = stat.size;
     }
@@ -104,10 +111,13 @@ export function storagePersistLeads(leads: MockLead[]): void {
 }
 
 export function storageSyncLeads(targetStore: MockLead[], force = false): void {
-  if (isClient || isTestEnv || !LEADS_FILE_PATH || !fs || !fs.existsSync) return;
+  if (isClient || isTestEnv || !fs || !fs.existsSync) return;
   try {
-    if (fs.existsSync(LEADS_FILE_PATH)) {
-      const stat = fs.statSync(LEADS_FILE_PATH);
+    const filePath = (LEADS_FILE_PATH && fs.existsSync(LEADS_FILE_PATH))
+      ? LEADS_FILE_PATH
+      : (INITIAL_LEADS_PATH && fs.existsSync(INITIAL_LEADS_PATH) ? INITIAL_LEADS_PATH : "");
+    if (filePath) {
+      const stat = fs.statSync(filePath);
       const needsSync =
         force ||
         !globalForMockStorage._mockLeadsMtime ||
@@ -116,7 +126,7 @@ export function storageSyncLeads(targetStore: MockLead[], force = false): void {
         targetStore.length === 0;
 
       if (needsSync) {
-        const raw = fs.readFileSync(LEADS_FILE_PATH, "utf-8");
+        const raw = fs.readFileSync(filePath, "utf-8");
         if (raw) {
           const data = JSON.parse(raw);
           if (Array.isArray(data)) {

@@ -209,7 +209,12 @@ export async function requirePermission(permissionKey: string): Promise<SessionU
 
   // Admin role automatically possesses all permissions
   const roleUpper = session.role?.toUpperCase();
-  if (roleUpper === "ADMIN" || roleUpper === "ADMINISTRATOR") {
+  if (
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "SUPER_ADMIN" ||
+    Boolean(session.isSuperAdmin)
+  ) {
     return session;
   }
 

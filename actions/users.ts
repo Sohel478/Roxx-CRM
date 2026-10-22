@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import {
@@ -100,6 +100,48 @@ export async function getUsersAction(): Promise<{
   error?: string;
 }> {
   const session = await requireAuth();
+
+  if (isMockDatabase()) {
+    syncMockUsersFromDisk();
+    const isSuperAdmin = Boolean(session.isSuperAdmin || session.email?.toLowerCase() === "sohel@techflux.in");
+    let matchingUsers = mockUsersStore.filter((u) =>
+      isSuperAdmin ||
+      u.organizationId === session.organizationId ||
+      u.organizationId === "demo-org-123" ||
+      u.organizationId === "platform-system-org"
+    );
+
+    if (!matchingUsers.some((u) => u.id === session.id || u.email.toLowerCase() === session.email.toLowerCase())) {
+      matchingUsers = [
+        {
+          id: session.id,
+          organizationId: session.organizationId,
+          name: session.name,
+          email: session.email,
+          role: (session.role as any) || "ADMIN",
+          isActive: true,
+          avatarUrl: null,
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+        },
+        ...matchingUsers,
+      ];
+    }
+
+    const items: UserItem[] = matchingUsers.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      isActive: u.isActive,
+      avatarUrl: u.avatarUrl,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+    }));
+
+    return { success: true, data: items };
+  }
+
   await ensureDatabaseSchema();
 
   try {

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
@@ -39,6 +39,69 @@ export async function getTasksAction(params: {
   const session = await requireAuth();
   const { organizationId } = await resolveTenantContext(session);
   const todayStr = getTodayString();
+
+  if (isMockDatabase()) {
+    const mapped: TaskItem[] = mockTasksStore.map((t) => ({ ...t }));
+
+    let filtered = mapped.filter((t) => {
+      if (params.leadId && t.leadId !== params.leadId) return false;
+      if (params.companyId && t.companyId !== params.companyId) return false;
+      if (params.opportunityId && t.opportunityId !== params.opportunityId) return false;
+      if (params.priority && params.priority !== "ALL" && t.priority !== params.priority) {
+        return false;
+      }
+      if (params.search) {
+        const q = params.search.toLowerCase();
+        const matchesTitle = t.title.toLowerCase().includes(q);
+        const matchesDesc = t.description?.toLowerCase().includes(q);
+        const matchesEntity =
+          t.leadName?.toLowerCase().includes(q) ||
+          t.companyName?.toLowerCase().includes(q) ||
+          t.opportunityName?.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesDesc && !matchesEntity) return false;
+      }
+      return true;
+    });
+
+    if (params.filter === "today") {
+      filtered = filtered.filter((t) => t.dueAt === todayStr && t.status !== "COMPLETED");
+    } else if (params.filter === "overdue") {
+      filtered = filtered.filter(
+        (t) => t.dueAt < todayStr && t.status !== "COMPLETED" && t.status !== "CANCELLED"
+      );
+    } else if (params.filter === "upcoming") {
+      filtered = filtered.filter((t) => t.dueAt > todayStr && t.status !== "COMPLETED");
+    } else if (params.filter === "completed") {
+      filtered = filtered.filter((t) => t.status === "COMPLETED");
+    } else if (params.status && params.status !== "ALL") {
+      filtered = filtered.filter((t) => t.status === params.status);
+    }
+
+    const dueTodayCount = mapped.filter(
+      (t) => t.dueAt === todayStr && t.status !== "COMPLETED"
+    ).length;
+    const overdueCount = mapped.filter(
+      (t) => t.dueAt < todayStr && t.status !== "COMPLETED" && t.status !== "CANCELLED"
+    ).length;
+    const upcomingCount = mapped.filter(
+      (t) => t.dueAt > todayStr && t.status !== "COMPLETED"
+    ).length;
+    const completedCount = mapped.filter((t) => t.status === "COMPLETED").length;
+
+    return {
+      success: true,
+      data: {
+        items: filtered,
+        summary: {
+          total: mapped.length,
+          dueToday: dueTodayCount,
+          overdue: overdueCount,
+          upcoming: upcomingCount,
+          completed: completedCount,
+        },
+      },
+    };
+  }
 
   try {
     const where: any = {
@@ -243,6 +306,39 @@ export async function createTaskAction(raw: TaskFormData) {
     if (data.leadId) {
       const lead = mockLeadsStore.find((l) => l.id === data.leadId);
       if (lead) leadName = lead.fullName;
+    }
+
+    if (isMockDatabase()) {
+      const mockTask: any = {
+        id: taskId,
+        organizationId: session.organizationId,
+        title: data.title,
+        description: data.description || null,
+        assignedToId: data.assignedToId || session.id,
+        assignedToName: data.assignedToName || session.name || "Alex Sales",
+        createdById: session.id,
+        createdByName: session.name || "Alex Sales",
+        leadId: data.leadId || null,
+        leadName,
+        companyId: data.companyId || null,
+        companyName: compName,
+        contactId: data.contactId || null,
+        contactName,
+        opportunityId: data.opportunityId || null,
+        opportunityName: oppName,
+        dueAt: data.dueAt,
+        priority: data.priority,
+        status: data.status,
+        completedAt: null,
+        createdAt: now,
+      };
+      mockTasksStore.unshift(mockTask);
+      revalidatePath("/tasks");
+      if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
+      if (data.companyId) revalidatePath(`/companies/${data.companyId}`);
+      if (data.contactId) revalidatePath(`/contacts/${data.contactId}`);
+      if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
+      return { success: true, data: mockTask };
     }
 
     try {

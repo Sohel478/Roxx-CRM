@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
@@ -94,6 +94,29 @@ export async function checkLeadDuplicateAction(params: {
     return { isDuplicate: false };
   }
 
+  if (isMockDatabase()) {
+    syncMockLeadsFromDisk();
+    const match = mockLeadsStore.find((l) => {
+      if (params.excludeId && l.id === params.excludeId) return false;
+      const matchEmail = cleanEmail && l.email && l.email.toLowerCase() === cleanEmail;
+      const matchPhone = cleanPhone && l.phone && l.phone.replace(/[^0-9]/g, "").includes(cleanPhone);
+      return matchEmail || matchPhone;
+    });
+
+    if (match) {
+      return {
+        isDuplicate: true,
+        match: {
+          id: match.id,
+          name: match.fullName,
+          companyName: match.companyName,
+          leadNumber: match.leadNumber,
+        },
+      };
+    }
+    return { isDuplicate: false };
+  }
+
   try {
     const existing = await prisma.lead.findFirst({
       where: {
@@ -171,6 +194,10 @@ export async function getLeadsAction(params: {
     roleUpper === "ADMINISTRATOR" ||
     roleUpper === "MANAGER" ||
     Boolean(session.isSuperAdmin);
+
+  if (isMockDatabase()) {
+    return getMockLeads(params, session, userId, isAdminOrManager, isTechfluxOrg, page, limit, skip);
+  }
 
   try {
     const where: any = {
@@ -293,101 +320,184 @@ export async function getLeadsAction(params: {
       },
     };
   } catch {
-    syncMockLeadsFromDisk(true);
-    // In-memory fallback
-    let filtered = mockLeadsStore.filter((l) => {
-      if (!isAdminOrManager) {
-        const isOwner =
+    return getMockLeads(params, session, userId, isAdminOrManager, isTechfluxOrg, page, limit, skip);
+  }
+}
+
+function getMockLeads(
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    source?: string;
+    rating?: string;
+    ownerId?: string;
+    emailStatus?: string;
+  },
+  session: any,
+  userId: string | null,
+  isAdminOrManager: boolean,
+  isTechfluxOrg: boolean,
+  page: number,
+  limit: number,
+  skip: number
+) {
+  syncMockLeadsFromDisk(true);
+  let filtered = mockLeadsStore.filter((l) => {
+    if (!isAdminOrManager) {
+      const isOwner =
+        l.ownerId === session.id ||
+        l.ownerId === userId ||
+        (l.ownerName && (l.ownerName === session.name || l.ownerName === "Alex Sales" || l.ownerName === "Sheetal D"));
+      const isCreator = l.createdById === session.id || l.createdById === userId;
+      if (!isOwner && !isCreator) {
+        return false;
+      }
+    }
+
+    const matchesSearch =
+      !params.search ||
+      l.fullName.toLowerCase().includes(params.search.toLowerCase()) ||
+      (l.email && l.email.toLowerCase().includes(params.search.toLowerCase())) ||
+      (l.supportEmail && l.supportEmail.toLowerCase().includes(params.search.toLowerCase())) ||
+      (l.companyName && l.companyName.toLowerCase().includes(params.search.toLowerCase())) ||
+      (l.leadNumber && l.leadNumber.toLowerCase().includes(params.search.toLowerCase()));
+
+    const matchesStatus = !params.status || params.status === "ALL" || l.status === params.status;
+    const matchesSource = !params.source || params.source === "ALL" || l.source === params.source;
+    const matchesRating = !params.rating || params.rating === "ALL" || l.rating === params.rating;
+
+    // Owner / Scope filter
+    let matchesOwner = true;
+    if (params.ownerId && params.ownerId !== "ALL") {
+      if (params.ownerId === "ME") {
+        matchesOwner = Boolean(
           l.ownerId === session.id ||
           l.ownerId === userId ||
-          (l.ownerName && (l.ownerName === session.name || l.ownerName === "Alex Sales"));
-        const isCreator = l.createdById === session.id || l.createdById === userId;
-        if (!isOwner && !isCreator) {
-          return false;
-        }
+          l.ownerId === "usr_sohel" ||
+          l.ownerId === "platform-owner-sohel" ||
+          l.createdById === session.id ||
+          l.createdById === userId ||
+          (l.ownerName && l.ownerName === session.name)
+        );
+      } else if (params.ownerId === "UNASSIGNED") {
+        matchesOwner = !l.ownerId;
+      } else {
+        matchesOwner =
+          l.ownerId === params.ownerId ||
+          (params.ownerId === "usr_sheetal" && (l.ownerId === "usr_sheetal" || l.ownerName === "Sheetal D")) ||
+          (params.ownerId === "usr_alex" && (l.ownerId === "usr_alex" || l.ownerName === "Alex Sales"));
       }
+    }
 
-      const matchesSearch =
-        !params.search ||
-        l.fullName.toLowerCase().includes(params.search.toLowerCase()) ||
-        (l.email && l.email.toLowerCase().includes(params.search.toLowerCase())) ||
-        (l.supportEmail && l.supportEmail.toLowerCase().includes(params.search.toLowerCase())) ||
-        (l.companyName && l.companyName.toLowerCase().includes(params.search.toLowerCase())) ||
-        (l.leadNumber && l.leadNumber.toLowerCase().includes(params.search.toLowerCase()));
+    // Email status filter
+    let matchesEmailStatus = true;
+    if (params.emailStatus && params.emailStatus !== "ALL") {
+      matchesEmailStatus = resolveLeadEmailStatus(l) === params.emailStatus;
+    }
 
-      const matchesStatus = !params.status || params.status === "ALL" || l.status === params.status;
-      const matchesSource = !params.source || params.source === "ALL" || l.source === params.source;
-      const matchesRating = !params.rating || params.rating === "ALL" || l.rating === params.rating;
+    return matchesSearch && matchesStatus && matchesSource && matchesRating && matchesOwner && matchesEmailStatus;
+  });
 
-      // Owner / Scope filter
-      let matchesOwner = true;
-      if (params.ownerId && params.ownerId !== "ALL") {
-        if (params.ownerId === "ME") {
-          matchesOwner = Boolean(
-            l.ownerId === session.id ||
-            l.ownerId === userId ||
-            l.ownerId === "usr_sohel" ||
-            l.ownerId === "platform-owner-sohel" ||
-            l.createdById === session.id ||
-            l.createdById === userId ||
-            (l.ownerName && l.ownerName === session.name)
-          );
-        } else if (params.ownerId === "UNASSIGNED") {
-          matchesOwner = !l.ownerId;
+  filtered.sort((a, b) => {
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateB - dateA;
+  });
+
+  const total = filtered.length;
+  const paginated = filtered.slice(skip, skip + limit);
+
+  return {
+    success: true,
+    data: {
+      isTechfluxOrg,
+      items: paginated.map((l) => {
+        let resolvedOwnerName = l.ownerName;
+        if (!l.ownerId) {
+          resolvedOwnerName = null;
         } else {
-          matchesOwner =
-            l.ownerId === params.ownerId ||
-            (params.ownerId === "usr_sheetal" && (l.ownerId === "usr_sheetal" || l.ownerName === "Sheetal D")) ||
-            (params.ownerId === "usr_alex" && (l.ownerId === "usr_alex" || l.ownerName === "Alex Sales"));
+          resolvedOwnerName = resolveOwnerNameFromStore(l.ownerId, session, resolvedOwnerName);
         }
+
+        return {
+          ...l,
+          website: l.website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
+          emailStatus: resolveLeadEmailStatus(l),
+          ownerName: resolvedOwnerName || null,
+        };
+      }),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    },
+  };
+}
+
+function getMockLeadById(
+  id: string,
+  session: any,
+  userId: string | null,
+  isAdminOrManager: boolean
+) {
+  syncMockLeadsFromDisk(true);
+  let mock = mockLeadsStore.find((l) => l.id === id);
+  if (mock) {
+    if (!isAdminOrManager) {
+      const isOwner =
+        mock.ownerId === session.id ||
+        mock.ownerId === userId ||
+        (mock.ownerName && (mock.ownerName === session.name || mock.ownerName === "Alex Sales" || mock.ownerName === "Sheetal D"));
+      const isCreator = mock.createdById === session.id || mock.createdById === userId;
+      if (!isOwner && !isCreator) {
+        return { success: false, error: "Unauthorized: You do not have access to this lead" };
       }
+    }
 
-      // Email status filter
-      let matchesEmailStatus = true;
-      if (params.emailStatus && params.emailStatus !== "ALL") {
-        matchesEmailStatus = resolveLeadEmailStatus(l) === params.emailStatus;
-      }
+    let convertedInfo = null;
+    if (mock.convertedCompanyId || mock.convertedAt) {
+      const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
+      const cont = mockContactsStore.find((ct) => ct.id === mock.convertedContactId);
+      const opp = mockOpportunitiesStore.find((o) => o.id === mock.convertedOpportunityId);
+      convertedInfo = {
+        companyId: mock.convertedCompanyId,
+        companyName: comp?.name || mock.companyName || "Company",
+        contactId: mock.convertedContactId,
+        contactName: cont?.fullName || mock.fullName,
+        opportunityId: mock.convertedOpportunityId || null,
+        opportunityName: opp?.name || null,
+        opportunityAmount: opp?.amount || null,
+      };
+    }
 
-      return matchesSearch && matchesStatus && matchesSource && matchesRating && matchesOwner && matchesEmailStatus;
-    });
+    const resolvedOwnerName = mock.ownerId
+      ? resolveOwnerNameFromStore(mock.ownerId, session, mock.ownerName)
+      : null;
 
-    filtered.sort((a, b) => {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    const total = filtered.length;
-    const paginated = filtered.slice(skip, skip + limit);
+    const ownerObj =
+      mock.ownerId && resolvedOwnerName
+        ? { id: mock.ownerId, name: resolvedOwnerName }
+        : null;
 
     return {
       success: true,
       data: {
-        isTechfluxOrg,
-        items: paginated.map((l) => {
-          let resolvedOwnerName = l.ownerName;
-          if (!l.ownerId) {
-            resolvedOwnerName = null;
-          } else {
-            resolvedOwnerName = resolveOwnerNameFromStore(l.ownerId, session, resolvedOwnerName);
-          }
-
-          return {
-            ...l,
-            website: l.website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
-            emailStatus: resolveLeadEmailStatus(l),
-            ownerName: resolvedOwnerName || null,
-          };
-        }),
-        meta: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit) || 1,
-        },
+        ...mock,
+        website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
+        emailStatus: resolveLeadEmailStatus(mock),
+        convertedInfo,
+        owner: ownerObj,
+        activities: [],
+        tasks: [],
+        notes: [],
       },
     };
   }
+  return { success: false, error: "Lead not found" };
 }
 
 /**
@@ -402,6 +512,10 @@ export async function getLeadByIdAction(id: string) {
     roleUpper === "ADMINISTRATOR" ||
     roleUpper === "MANAGER" ||
     Boolean(session.isSuperAdmin);
+
+  if (isMockDatabase()) {
+    return getMockLeadById(id, session, userId, isAdminOrManager);
+  }
 
   try {
     const lead = await prisma.lead.findFirst({
@@ -427,60 +541,7 @@ export async function getLeadByIdAction(id: string) {
     });
 
     if (!lead) {
-      syncMockLeadsFromDisk(true);
-      let mock = mockLeadsStore.find((l) => l.id === id);
-      if (mock) {
-        if (!isAdminOrManager) {
-          const isOwner =
-            mock.ownerId === session.id ||
-            mock.ownerId === userId ||
-            (mock.ownerName && (mock.ownerName === session.name || mock.ownerName === "Alex Sales"));
-          const isCreator = mock.createdById === session.id || mock.createdById === userId;
-          if (!isOwner && !isCreator) {
-            return { success: false, error: "Unauthorized: You do not have access to this lead" };
-          }
-        }
-
-        let convertedInfo = null;
-        if (mock.convertedCompanyId || mock.convertedAt) {
-          const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
-          const cont = mockContactsStore.find((ct) => ct.id === mock.convertedContactId);
-          const opp = mockOpportunitiesStore.find((o) => o.id === mock.convertedOpportunityId);
-          convertedInfo = {
-            companyId: mock.convertedCompanyId,
-            companyName: comp?.name || mock.companyName || "Company",
-            contactId: mock.convertedContactId,
-            contactName: cont?.fullName || mock.fullName,
-            opportunityId: mock.convertedOpportunityId || null,
-            opportunityName: opp?.name || null,
-            opportunityAmount: opp?.amount || null,
-          };
-        }
-
-        const resolvedOwnerName = mock.ownerId
-          ? resolveOwnerNameFromStore(mock.ownerId, session, mock.ownerName)
-          : null;
-
-        const ownerObj =
-          mock.ownerId && resolvedOwnerName
-            ? { id: mock.ownerId, name: resolvedOwnerName }
-            : null;
-
-        return {
-          success: true,
-          data: {
-            ...mock,
-            website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
-            emailStatus: resolveLeadEmailStatus(mock),
-            convertedInfo,
-            owner: ownerObj,
-            activities: [],
-            tasks: [],
-            notes: [],
-          },
-        };
-      }
-      return { success: false, error: "Lead not found" };
+      return getMockLeadById(id, session, userId, isAdminOrManager);
     }
 
     if (!isAdminOrManager) {
@@ -548,67 +609,352 @@ export async function getLeadByIdAction(id: string) {
       return { success: false, error: err.message };
     }
     console.error("[getLeadByIdAction] Database error:", err);
-    syncMockLeadsFromDisk(true);
-    let mock = mockLeadsStore.find((l) => l.id === id);
-    if (mock) {
-      if (!isAdminOrManager) {
-        const isOwner =
-          mock.ownerId === session.id ||
-          mock.ownerId === userId ||
-          (mock.ownerName && (mock.ownerName === session.name || mock.ownerName === "Alex Sales"));
-        const isCreator = mock.createdById === session.id || mock.createdById === userId;
-        if (!isOwner && !isCreator) {
-          return { success: false, error: "Unauthorized: You do not have access to this lead" };
-        }
-      }
+    return getMockLeadById(id, session, userId, isAdminOrManager);
+  }
+}
 
-      let convertedInfo = null;
-      if (mock.convertedCompanyId || mock.convertedAt) {
-        const comp = mockCompaniesStore.find((c) => c.id === mock.convertedCompanyId);
-        const cont = mockContactsStore.find((ct) => ct.id === mock.convertedContactId);
-        const opp = mockOpportunitiesStore.find((o) => o.id === mock.convertedOpportunityId);
-        convertedInfo = {
-          companyId: mock.convertedCompanyId,
-          companyName: comp?.name || mock.companyName || "Company",
-          contactId: mock.convertedContactId,
-          contactName: cont?.fullName || mock.fullName,
-          opportunityId: mock.convertedOpportunityId || null,
-          opportunityName: opp?.name || null,
-          opportunityAmount: opp?.amount || null,
-        };
-      }
+function createMockLead(
+  data: LeadFormData,
+  session: any,
+  userId: string | null,
+  organizationId: string
+) {
+  const {
+    firstName,
+    lastName,
+    email,
+    supportEmail,
+    phone,
+    companyName,
+    jobTitle,
+    website,
+    companyLinkedin,
+    customerLinkedin,
+    source,
+    sourceDetail,
+    status,
+    rating,
+    estimatedValue,
+    currency,
+    description,
+    emailStatus,
+    ownerId,
+  } = data;
 
-      const resolvedOwnerName = mock.ownerId
-        ? resolveOwnerNameFromStore(mock.ownerId, session, mock.ownerName)
-        : null;
+  syncMockLeadsFromDisk(true);
+  const isExplicitlyUnassigned = ownerId === "UNASSIGNED" || ownerId === "unassigned";
+  const finalOwnerId = isExplicitlyUnassigned
+    ? null
+    : (ownerId && typeof ownerId === "string" && ownerId.trim() !== ""
+        ? ownerId.trim()
+        : (userId || session.id || "platform-owner-sohel"));
 
-      const ownerObj =
-        mock.ownerId && resolvedOwnerName
-          ? { id: mock.ownerId, name: resolvedOwnerName }
-          : null;
+  const finalOwnerName = resolveOwnerNameFromStore(
+    finalOwnerId,
+    session,
+    (data as any).ownerName
+  );
 
-      return {
-        success: true,
-        data: {
-          ...mock,
-          website: mock.website || mock.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
-          emailStatus: resolveLeadEmailStatus(mock),
-          convertedInfo,
-          owner: ownerObj,
-          activities: [],
-          tasks: [],
-          notes: [],
-        },
-      };
-    }
+  const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
+  const cleanWebsite = website?.trim()
+    ? (website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`)
+    : null;
+  const fullName = `${firstName} ${lastName || ""}`.trim();
+
+  const newLead: LeadItem & { organizationId: string; description?: string } = {
+    id: `lead_${Date.now()}`,
+    organizationId,
+    leadNumber,
+    firstName,
+    lastName: lastName || null,
+    fullName,
+    email: email || null,
+    supportEmail: supportEmail || null,
+    phone: phone || null,
+    companyName: companyName || null,
+    jobTitle: jobTitle || null,
+    website: cleanWebsite,
+    companyLinkedin: companyLinkedin || null,
+    customerLinkedin: customerLinkedin || null,
+    source,
+    status,
+    rating: rating || "Warm",
+    estimatedValue: Number(estimatedValue || 0),
+    currency: currency || "USD",
+    ownerId: finalOwnerId,
+    createdById: userId || session.id || "platform-owner-sohel",
+    ownerName: finalOwnerName,
+    createdAt: new Date().toISOString(),
+    description: description || undefined,
+    emailStatus: emailStatus || "NA",
+  };
+
+  mockLeadsStore.unshift(newLead);
+  persistMockLeads();
+
+  createNotificationHelper({
+    organizationId,
+    userId,
+    type: "LEAD_CREATED",
+    title: "New Lead Created",
+    message: `${fullName} (${newLead.currency} ${Number(newLead.estimatedValue).toLocaleString()}) was created.`,
+    entityType: "lead",
+    entityId: newLead.id,
+  });
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  revalidatePath(`/leads/${newLead.id}`);
+
+  return { success: true, data: newLead };
+}
+
+function updateMockLead(
+  id: string,
+  data: Partial<LeadFormData>,
+  session: any,
+  userId: string | null,
+  isAdminOrManager: boolean
+) {
+  syncMockLeadsFromDisk(true);
+  const idx = mockLeadsStore.findIndex((l) => l.id === id);
+  if (idx === -1) {
     return { success: false, error: "Lead not found" };
   }
+
+  const existing = mockLeadsStore[idx];
+  if (!isAdminOrManager) {
+    const isOwner = existing.ownerId === session.id || existing.ownerId === userId;
+    const isCreator = existing.createdById === session.id || existing.createdById === userId;
+    if (!isOwner && !isCreator) {
+      return { success: false, error: "Unauthorized: You do not have access to this lead" };
+    }
+  }
+
+  const updated: any = { ...existing };
+  if (data.firstName !== undefined) updated.firstName = data.firstName.trim();
+  if (data.lastName !== undefined) updated.lastName = data.lastName?.trim() || null;
+  if (data.firstName !== undefined || data.lastName !== undefined) {
+    updated.fullName = `${updated.firstName} ${updated.lastName || ""}`.trim();
+  }
+  if (data.email !== undefined) updated.email = data.email?.trim() || null;
+  if (data.supportEmail !== undefined) updated.supportEmail = data.supportEmail?.trim() || null;
+  if (data.phone !== undefined) updated.phone = data.phone?.trim() || null;
+  if (data.companyName !== undefined) updated.companyName = data.companyName?.trim() || null;
+  if (data.jobTitle !== undefined) updated.jobTitle = data.jobTitle?.trim() || null;
+  if (data.website !== undefined) {
+    updated.website = data.website?.trim()
+      ? (data.website.trim().startsWith("http") ? data.website.trim() : `https://${data.website.trim()}`)
+      : null;
+  }
+  if (data.companyLinkedin !== undefined) updated.companyLinkedin = data.companyLinkedin?.trim() || null;
+  if (data.customerLinkedin !== undefined) updated.customerLinkedin = data.customerLinkedin?.trim() || null;
+  if (data.source !== undefined) updated.source = data.source;
+  if (data.sourceDetail !== undefined) updated.sourceDetail = data.sourceDetail?.trim() || null;
+  if (data.status !== undefined) updated.status = data.status;
+  if (data.rating !== undefined) updated.rating = data.rating;
+  if (data.estimatedValue !== undefined) updated.estimatedValue = Number(data.estimatedValue) || 0;
+  if (data.currency !== undefined) updated.currency = data.currency || "USD";
+  if (data.description !== undefined) updated.description = data.description?.trim() || null;
+  if (data.emailStatus !== undefined) updated.emailStatus = data.emailStatus;
+
+  if (data.ownerId !== undefined && isAdminOrManager) {
+    const isUnassign = !data.ownerId || data.ownerId === "UNASSIGNED" || data.ownerId === "unassigned";
+    const targetOwnerId = isUnassign
+      ? null
+      : (typeof data.ownerId === "string" && data.ownerId.trim() !== "" ? data.ownerId.trim() : null);
+    updated.ownerId = targetOwnerId;
+    updated.ownerName = resolveOwnerNameFromStore(
+      targetOwnerId,
+      session,
+      (data as any).ownerName || updated.ownerName
+    );
+  }
+
+  mockLeadsStore[idx] = updated;
+  persistMockLeads();
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${id}`);
+  revalidatePath("/dashboard");
+
+  return { success: true, data: updated };
+}
+
+function updateMockLeadEmailStatus(
+  leadId: string,
+  emailStatus: "Sent" | "Follow up" | "NA"
+) {
+  syncMockLeadsFromDisk(true);
+  let idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+  if (idx === -1) {
+    return { success: false, error: "Lead not found" };
+  }
+  mockLeadsStore[idx].emailStatus = emailStatus;
+  persistMockLeads();
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${leadId}`);
+  return { success: true, data: { id: leadId, emailStatus } };
+}
+
+function updateMockLeadStatus(id: string, newStatus: string) {
+  syncMockLeadsFromDisk(true);
+  let idx = mockLeadsStore.findIndex((l) => l.id === id);
+  if (idx === -1) {
+    return { success: false, error: "Lead not found" };
+  }
+  mockLeadsStore[idx].status = newStatus;
+  persistMockLeads();
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${id}`);
+  revalidatePath("/dashboard");
+  return { success: true, data: mockLeadsStore[idx] };
+}
+
+function assignMockLead(id: string, targetOwnerId: string | null, session: any) {
+  syncMockLeadsFromDisk(true);
+  const idx = mockLeadsStore.findIndex((l) => l.id === id);
+  if (idx === -1) {
+    return { success: false, error: "Lead not found" };
+  }
+
+  const assignedName = resolveOwnerNameFromStore(
+    targetOwnerId,
+    session,
+    mockLeadsStore[idx].ownerName
+  );
+  mockLeadsStore[idx].ownerId = targetOwnerId;
+  mockLeadsStore[idx].ownerName = assignedName;
+  persistMockLeads();
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${id}`);
+  revalidatePath("/dashboard");
+
+  return { success: true, data: mockLeadsStore[idx] };
+}
+
+function pickMockLead(id: string, session: any, userId: string | null) {
+  syncMockLeadsFromDisk(true);
+  const idx = mockLeadsStore.findIndex((l) => l.id === id);
+  if (idx === -1) {
+    return { success: false, error: "Lead not found" };
+  }
+
+  mockLeadsStore[idx].status = "New";
+  mockLeadsStore[idx].ownerId = session.id || userId;
+  mockLeadsStore[idx].ownerName = session.name || "Sales Rep";
+  persistMockLeads();
+
+  createNotificationHelper({
+    organizationId: session.organizationId,
+    userId,
+    type: "LEAD_ASSIGNED",
+    title: "Lead Claimed & Activated",
+    message: `You picked ${mockLeadsStore[idx].firstName} ${mockLeadsStore[idx].lastName || ""}`.trim() + " from Scraped and activated it to New.",
+    entityType: "lead",
+    entityId: id,
+  });
+
+  revalidatePath("/leads");
+  revalidatePath(`/leads/${id}`);
+  revalidatePath("/dashboard");
+
+  return { success: true, data: mockLeadsStore[idx] };
+}
+
+function deleteMockLead(
+  id: string,
+  session: any,
+  userId: string | null,
+  isAdminOrManager: boolean
+) {
+  syncMockLeadsFromDisk(true);
+  const idx = mockLeadsStore.findIndex((l) => l.id === id);
+  if (idx === -1) {
+    return { success: false, error: "Lead not found" };
+  }
+
+  const l = mockLeadsStore[idx];
+  if (
+    !isAdminOrManager &&
+    l.ownerId !== userId &&
+    l.createdById !== userId &&
+    l.ownerId !== session.id &&
+    l.createdById !== session.id
+  ) {
+    return { success: false, error: "Unauthorized: You do not have permission to delete this lead" };
+  }
+
+  mockLeadsStore.splice(idx, 1);
+  persistMockLeads();
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+
+  return { success: true };
+}
+
+function bulkAssignMockLeads(leadIds: string[], targetOwnerId: string | null, session: any) {
+  syncMockLeadsFromDisk(true);
+  const assignedName = resolveOwnerNameFromStore(targetOwnerId, session);
+  let updatedCount = 0;
+  for (const lead of mockLeadsStore) {
+    if (leadIds.includes(lead.id)) {
+      lead.ownerId = targetOwnerId;
+      lead.ownerName = assignedName;
+      updatedCount++;
+    }
+  }
+  if (updatedCount > 0) {
+    persistMockLeads();
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  return { success: true, count: updatedCount };
+}
+
+function bulkDeleteMockLeads(
+  leadIds: string[],
+  session: any,
+  userId: string | null,
+  isAdminOrManager: boolean
+) {
+  syncMockLeadsFromDisk(true);
+  let deletedCount = 0;
+  for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
+    const l = mockLeadsStore[i];
+    if (leadIds.includes(l.id)) {
+      if (
+        isAdminOrManager ||
+        l.ownerId === userId ||
+        l.createdById === userId ||
+        l.ownerId === session.id ||
+        l.createdById === session.id
+      ) {
+        mockLeadsStore.splice(i, 1);
+        deletedCount++;
+      }
+    }
+  }
+  if (deletedCount > 0) {
+    persistMockLeads();
+  }
+
+  revalidatePath("/leads");
+  revalidatePath("/dashboard");
+  return { success: true, count: deletedCount };
 }
 
 /**
  * Create a new lead
  */
-export async function createLeadAction(data: LeadFormData) {
+export async function createLeadAction(
+  data: LeadFormData
+): Promise<{ success: boolean; data?: LeadItem; error?: string }> {
   const session = await requirePermission("lead:create");
   const { organizationId, userId } = await resolveTenantContext(session);
 
@@ -628,6 +974,10 @@ export async function createLeadAction(data: LeadFormData) {
 
   if (!parsed.success) {
     return { success: false, error: parsed.error.errors[0]?.message || "Invalid input" };
+  }
+
+  if (isMockDatabase()) {
+    return createMockLead(parsed.data, session, userId, organizationId);
   }
 
   const {
@@ -684,7 +1034,7 @@ export async function createLeadAction(data: LeadFormData) {
         rating,
         estimatedValue,
         currency,
-        description: description || null,
+        description: description || undefined,
         ownerId: finalOwnerId,
         createdById: userId,
       },
@@ -806,7 +1156,10 @@ export async function createLeadAction(data: LeadFormData) {
 /**
  * Update an existing lead
  */
-export async function updateLeadAction(id: string, data: Partial<LeadFormData>) {
+export async function updateLeadAction(
+  id: string,
+  data: Partial<LeadFormData>
+): Promise<{ success: boolean; data?: LeadItem; error?: string }> {
   try {
     const session = await requirePermission("lead:update");
     const { userId } = await resolveTenantContext(session);
@@ -816,6 +1169,10 @@ export async function updateLeadAction(id: string, data: Partial<LeadFormData>) 
       roleUpper === "ADMINISTRATOR" ||
       roleUpper === "MANAGER" ||
       Boolean(session.isSuperAdmin);
+
+    if (isMockDatabase()) {
+      return updateMockLead(id, data, session, userId, isAdminOrManager);
+    }
 
     const updatePayload: Record<string, any> = {};
     if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
@@ -960,6 +1317,10 @@ export async function updateLeadEmailStatusAction(
     return { success: false, error: "Invalid email status" };
   }
 
+  if (isMockDatabase()) {
+    return updateMockLeadEmailStatus(leadId, emailStatus);
+  }
+
   try {
     try {
       await prisma.lead.update({
@@ -992,6 +1353,10 @@ export async function updateLeadEmailStatusAction(
 export async function updateLeadStatusAction(id: string, newStatus: string) {
   try {
     const session = await requirePermission("lead:update");
+
+    if (isMockDatabase()) {
+      return updateMockLeadStatus(id, newStatus);
+    }
 
     try {
       const updated = await prisma.lead.update({
@@ -1073,6 +1438,10 @@ export async function assignLeadAction(id: string, ownerId: string) {
     ownerId === "platform-owner-sohel";
   const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId || "platform-owner-sohel") : ownerId);
 
+  if (isMockDatabase()) {
+    return assignMockLead(id, targetOwnerId, session);
+  }
+
   try {
     const updated = await prisma.lead.update({
       where: {
@@ -1130,6 +1499,10 @@ export async function pickLeadAction(id: string) {
   try {
     const session = await requireAuth();
     const { organizationId, userId } = await resolveTenantContext(session);
+
+    if (isMockDatabase()) {
+      return pickMockLead(id, session, userId);
+    }
 
     try {
       const updated = await prisma.lead.update({
@@ -1210,6 +1583,16 @@ export async function pickLeadAction(id: string) {
 export async function deleteLeadAction(id: string) {
   const session = await requirePermission("lead:delete");
   const { userId } = await resolveTenantContext(session);
+  const roleUpper = session.role?.toUpperCase();
+  const isAdminOrManager =
+    roleUpper === "ADMIN" ||
+    roleUpper === "ADMINISTRATOR" ||
+    roleUpper === "MANAGER" ||
+    Boolean(session.isSuperAdmin);
+
+  if (isMockDatabase()) {
+    return deleteMockLead(id, session, userId, isAdminOrManager);
+  }
 
   try {
     const lead = await prisma.lead.findUnique({
@@ -1265,7 +1648,10 @@ export async function deleteLeadAction(id: string) {
 /**
  * Bulk assign leads to a specific owner (Admin/Manager only)
  */
-export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) {
+export async function bulkAssignLeadsAction(
+  leadIds: string[],
+  ownerId: string
+): Promise<{ success: boolean; count?: number; error?: string }> {
   try {
     const session = await requireAuth();
     const roleUpper = session.role?.toUpperCase();
@@ -1296,6 +1682,10 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
       ownerId === "usr_sohel" ||
       ownerId === "platform-owner-sohel";
     const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId || "platform-owner-sohel") : ownerId);
+
+  if (isMockDatabase()) {
+    return bulkAssignMockLeads(leadIds, targetOwnerId, session);
+  }
     const assignedName = resolveOwnerNameFromStore(targetOwnerId, session);
 
     let updatedCount = 0;
@@ -1359,7 +1749,9 @@ export async function bulkAssignLeadsAction(leadIds: string[], ownerId: string) 
 /**
  * Bulk soft-delete leads
  */
-export async function bulkDeleteLeadsAction(leadIds: string[]) {
+export async function bulkDeleteLeadsAction(
+  leadIds: string[]
+): Promise<{ success: boolean; count?: number; error?: string }> {
   try {
     const session = await requirePermission("lead:delete");
     if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
@@ -1373,6 +1765,10 @@ export async function bulkDeleteLeadsAction(leadIds: string[]) {
       roleUpper === "ADMINISTRATOR" ||
       roleUpper === "MANAGER" ||
       Boolean(session.isSuperAdmin);
+
+    if (isMockDatabase()) {
+      return bulkDeleteMockLeads(leadIds, session, userId, isAdminOrManager);
+    }
 
     // If not admin/manager, sales rep can only delete leads they own or created
     const scopedFilter = isAdminOrManager

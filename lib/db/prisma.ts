@@ -45,3 +45,8 @@ export const prisma =
 // Ensure singleton reuse in both development and production serverless environments
 globalForPrisma.prisma = prisma;
 
+export function isMockDatabase(): boolean {
+  const url = process.env.DATABASE_URL || "";
+  return !url || url.includes("ep-sample-pooler") || url.includes("placeholder");
+}
+

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import {
   mockSubscriptionsStore,
   mockPlansStore,
@@ -97,11 +97,7 @@ export class SubscriptionService {
    * Determine if we are running with a mock in-memory database or real Neon PostgreSQL
    */
   private static isMockMode(): boolean {
-    return (
-      !process.env.DATABASE_URL ||
-      process.env.DATABASE_URL.includes("ep-sample-pooler") ||
-      process.env.DATABASE_URL.includes("user:password")
-    );
+    return isMockDatabase();
   }
 
   /**

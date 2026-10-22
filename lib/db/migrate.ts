@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma, isMockDatabase } from "./prisma";
 
 let isMigrationDone = false;
 let isMigrating = false;
@@ -11,8 +11,7 @@ let isMigrating = false;
 export async function ensureDatabaseSchema(): Promise<void> {
   if (isMigrationDone || isMigrating) return;
 
-  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
-  if (!dbUrl || dbUrl.includes("ep-sample-pooler") || dbUrl.includes("user:password")) {
+  if (isMockDatabase()) {
     isMigrationDone = true;
     return;
   }

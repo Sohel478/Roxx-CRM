@@ -192,5 +192,103 @@ describe("Lead Creation & Table Visibility", () => {
     expect(detailUnassigned.success).toBe(true);
     expect(detailUnassigned.data?.ownerId).toBeNull();
     expect(detailUnassigned.data?.ownerName).toBeNull();
+
+    // Reassign back to Sheetal D to restore clean state
+    await assignLeadAction(leadId, "usr_sheetal");
+  });
+
+  it("Newly created lead persists deterministically across 10 consecutive page refreshes without vanishing or flapping", async () => {
+    const payload = {
+      firstName: "Danish",
+      lastName: "Ansari",
+      companyName: "Ansari Digital Solutions",
+      email: "danish@ansaridigital.com",
+      status: "New" as const,
+      rating: "Hot" as const,
+      estimatedValue: 75000,
+      currency: "USD",
+    };
+
+    const createRes = await createLeadAction(payload);
+    expect(createRes.success).toBe(true);
+    const newId = createRes.data.id;
+
+    // Simulate 10 consecutive hard browser refreshes on the leads table
+    for (let refreshIndex = 1; refreshIndex <= 10; refreshIndex++) {
+      const listRes = await getLeadsAction({
+        page: 1,
+        limit: 10,
+        status: "ALL",
+      });
+
+      expect(listRes.success).toBe(true);
+      const leadFound = listRes.data.items.find((l) => l.id === newId);
+      expect(
+        leadFound,
+        `Lead vanished on refresh attempt #${refreshIndex}`
+      ).toBeDefined();
+      expect(leadFound?.fullName).toBe("Danish Ansari");
+      expect(leadFound?.ownerName).toBe("Sohel Jatu");
+    }
+  });
+
+  it("Newly created lead dossier persists deterministically across 10 consecutive refreshes and never returns Lead Not Found", async () => {
+    const payload = {
+      firstName: "Fatima",
+      lastName: "Zahra",
+      companyName: "Zahra Haute Couture",
+      email: "fatima@zahrahautecouture.com",
+      status: "New" as const,
+      rating: "Warm" as const,
+      estimatedValue: 35000,
+      currency: "USD",
+    };
+
+    const createRes = await createLeadAction(payload);
+    expect(createRes.success).toBe(true);
+    const newId = createRes.data.id;
+
+    // Simulate 10 consecutive hard browser refreshes on /leads/[id]
+    for (let refreshIndex = 1; refreshIndex <= 10; refreshIndex++) {
+      const detailRes = await getLeadByIdAction(newId);
+      expect(
+        detailRes.success,
+        `Dossier returned error on refresh attempt #${refreshIndex}: ${detailRes.error}`
+      ).toBe(true);
+      expect(detailRes.data).toBeDefined();
+      expect(detailRes.data?.id).toBe(newId);
+      expect(detailRes.data?.fullName).toBe("Fatima Zahra");
+      expect(detailRes.data?.ownerId).toBe("usr_sohel");
+      expect(detailRes.data?.ownerName).toBe("Sohel Jatu");
+    }
+  });
+
+  it("All scraped leads are owned by Sheetal D or Alex Sales and zero are unassigned", async () => {
+    const listRes = await getLeadsAction({
+      page: 1,
+      limit: 100,
+      status: "ALL",
+    });
+
+    expect(listRes.success).toBe(true);
+    // Query with UNASSIGNED filter to verify zero unassigned leads
+    const unassignedRes = await getLeadsAction({
+      page: 1,
+      limit: 100,
+      ownerId: "UNASSIGNED",
+    });
+
+    expect(unassignedRes.success).toBe(true);
+    expect(unassignedRes.data.items.length).toBe(0);
+    expect(unassignedRes.data.meta.total).toBe(0);
+
+    // Query with Sheetal D owner filter
+    const sheetalRes = await getLeadsAction({
+      page: 1,
+      limit: 100,
+      ownerId: "usr_sheetal",
+    });
+    expect(sheetalRes.success).toBe(true);
+    expect(sheetalRes.data.meta.total).toBeGreaterThanOrEqual(264);
   });
 });

@@ -263,7 +263,7 @@ export default function LeadsPage() {
         setSelectedLeadIds([]);
         loadLeads();
       } else {
-        alert(res.error || "Failed to bulk assign leads");
+        alert(("error" in res && res.error) ? String(res.error) : "Failed to bulk assign leads");
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to bulk assign leads");
@@ -281,7 +281,7 @@ export default function LeadsPage() {
         setSelectedLeadIds([]);
         loadLeads();
       } else {
-        alert(res.error || "Failed to bulk delete leads");
+        alert(("error" in res && res.error) ? String(res.error) : "Failed to bulk delete leads");
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to bulk delete leads");

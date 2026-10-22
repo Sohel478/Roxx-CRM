@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
@@ -60,65 +60,67 @@ export async function getActivitiesAction(params: {
   };
 
   // 1. Fetch from Prisma Activity table
-  try {
-    const where: any = {};
-    if (params.type && params.type !== "ALL") where.type = params.type;
-    if (params.leadId) {
-      where.leadId = params.leadId;
-    } else if (params.companyId) {
-      where.companyId = params.companyId;
-    } else if (params.contactId) {
-      where.contactId = params.contactId;
-    } else if (params.opportunityId) {
-      where.opportunityId = params.opportunityId;
-    } else {
-      where.organizationId = { in: [organizationId, session.organizationId].filter(Boolean) };
-    }
+  if (!isMockDatabase()) {
+    try {
+      const where: any = {};
+      if (params.type && params.type !== "ALL") where.type = params.type;
+      if (params.leadId) {
+        where.leadId = params.leadId;
+      } else if (params.companyId) {
+        where.companyId = params.companyId;
+      } else if (params.contactId) {
+        where.contactId = params.contactId;
+      } else if (params.opportunityId) {
+        where.opportunityId = params.opportunityId;
+      } else {
+        where.organizationId = { in: [organizationId, session.organizationId].filter(Boolean) };
+      }
 
-    const activities = await prisma.activity.findMany({
-      where,
-      orderBy: { activityAt: "desc" },
-      take: params.limit || 200,
-      include: {
-        user: { select: { id: true, name: true } },
-        lead: { select: { id: true, firstName: true, lastName: true } },
-        company: { select: { id: true, name: true } },
-        contact: { select: { id: true, firstName: true, lastName: true } },
-        opportunity: { select: { id: true, name: true } },
-      },
-    });
-
-    activities.forEach((a) => {
-      addActivity({
-        id: a.id,
-        organizationId: a.organizationId,
-        type: a.type as ActivityType,
-        subject: a.subject,
-        description: a.description,
-        leadId: a.leadId,
-        leadName: a.lead ? `${a.lead.firstName} ${a.lead.lastName || ""}`.trim() : null,
-        companyId: a.companyId,
-        companyName: a.company?.name || null,
-        contactId: a.contactId,
-        contactName: a.contact
-          ? `${a.contact.firstName} ${a.contact.lastName || ""}`.trim()
-          : null,
-        opportunityId: a.opportunityId,
-        opportunityName: a.opportunity?.name || null,
-        userId: a.userId,
-        userName: a.user?.name || "System",
-        activityAt: a.activityAt.toISOString(),
-        durationMinutes: a.durationMinutes,
-        outcome: a.outcome,
-        createdAt: a.createdAt.toISOString(),
+      const activities = await prisma.activity.findMany({
+        where,
+        orderBy: { activityAt: "desc" },
+        take: params.limit || 200,
+        include: {
+          user: { select: { id: true, name: true } },
+          lead: { select: { id: true, firstName: true, lastName: true } },
+          company: { select: { id: true, name: true } },
+          contact: { select: { id: true, firstName: true, lastName: true } },
+          opportunity: { select: { id: true, name: true } },
+        },
       });
-    });
-  } catch (err) {
-    console.warn("[getActivitiesAction] Prisma findMany error:", err);
+
+      activities.forEach((a) => {
+        addActivity({
+          id: a.id,
+          organizationId: a.organizationId,
+          type: a.type as ActivityType,
+          subject: a.subject,
+          description: a.description,
+          leadId: a.leadId,
+          leadName: a.lead ? `${a.lead.firstName} ${a.lead.lastName || ""}`.trim() : null,
+          companyId: a.companyId,
+          companyName: a.company?.name || null,
+          contactId: a.contactId,
+          contactName: a.contact
+            ? `${a.contact.firstName} ${a.contact.lastName || ""}`.trim()
+            : null,
+          opportunityId: a.opportunityId,
+          opportunityName: a.opportunity?.name || null,
+          userId: a.userId,
+          userName: a.user?.name || "System",
+          activityAt: a.activityAt.toISOString(),
+          durationMinutes: a.durationMinutes,
+          outcome: a.outcome,
+          createdAt: a.createdAt.toISOString(),
+        });
+      });
+    } catch (err) {
+      console.warn("[getActivitiesAction] Prisma findMany error:", err);
+    }
   }
 
   // 2. Fetch from mockActivitiesStore (restoring persistent fallback store if memory is empty)
-  if (mockActivitiesStore.length === 0) {
+  if (!isMockDatabase() && mockActivitiesStore.length === 0) {
     try {
       const setting = await prisma.systemSetting.findFirst({
         where: {
@@ -638,6 +640,37 @@ export async function logActivityAction(raw: ActivityFormData) {
     if (data.leadId) {
       const lead = mockLeadsStore.find((l) => l.id === data.leadId);
       if (lead) leadName = lead.fullName;
+    }
+
+    if (isMockDatabase()) {
+      const mockAct: any = {
+        id: actId,
+        organizationId: session.organizationId,
+        type: data.type,
+        subject: data.subject,
+        description: data.description || null,
+        leadId: data.leadId || null,
+        leadName,
+        companyId: data.companyId || null,
+        companyName: compName,
+        contactId: data.contactId || null,
+        contactName,
+        opportunityId: data.opportunityId || null,
+        opportunityName: oppName,
+        userId: session.id,
+        userName: session.name || "System",
+        activityAt: activityDate.toISOString(),
+        durationMinutes: data.durationMinutes || null,
+        outcome: data.outcome || null,
+        createdAt: now,
+      };
+      mockActivitiesStore.unshift(mockAct);
+      revalidatePath("/activities");
+      if (data.leadId) revalidatePath(`/leads/${data.leadId}`);
+      if (data.companyId) revalidatePath(`/companies/${data.companyId}`);
+      if (data.contactId) revalidatePath(`/contacts/${data.contactId}`);
+      if (data.opportunityId) revalidatePath(`/opportunities/${data.opportunityId}`);
+      return { success: true, data: mockAct };
     }
 
     try {

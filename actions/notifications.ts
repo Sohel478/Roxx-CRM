@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import { mockNotificationsStore, MockNotification } from "@/lib/db/mock-store";
@@ -21,6 +21,32 @@ export async function getNotificationsAction(params?: {
   const { organizationId } = await resolveTenantContext(session);
   const currentUserId = session.id;
   const limit = params?.limit ?? 30;
+
+  if (isMockDatabase()) {
+    const filtered = mockNotificationsStore.filter((n) => {
+      if (params?.unreadOnly && n.isRead) return false;
+      return (
+        n.userId === currentUserId ||
+        n.userId === "ALL" ||
+        (session.role === "ADMIN" && n.userId === "usr_admin")
+      );
+    });
+    const items = filtered.slice(0, limit);
+    const unreadCount = mockNotificationsStore.filter(
+      (n) => !n.isRead && (n.userId === currentUserId || n.userId === "ALL")
+    ).length;
+    return {
+      success: true,
+      data: {
+        notifications: items.map((n) => ({
+          ...n,
+          type: n.type as NotificationType,
+        })),
+        unreadCount,
+        totalCount: filtered.length,
+      },
+    };
+  }
 
   try {
     const userCondition = {
@@ -253,6 +279,24 @@ export async function createNotificationHelper(params: {
   const targetUserId = params.userId || "ALL";
   const newId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date();
+
+  if (isMockDatabase()) {
+    const mockItem: MockNotification = {
+      id: newId,
+      organizationId: params.organizationId,
+      userId: targetUserId,
+      type: params.type,
+      title: params.title,
+      message: params.message,
+      entityType: params.entityType || null,
+      entityId: params.entityId || null,
+      isRead: false,
+      readAt: null,
+      createdAt: now.toISOString(),
+    };
+    mockNotificationsStore.unshift(mockItem);
+    return;
+  }
 
   try {
     await prisma.notification.create({

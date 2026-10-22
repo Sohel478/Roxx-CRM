@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
 import {
@@ -1488,19 +1488,30 @@ export async function getLeadEmailEngagementAction(
     let leadEmailStatus: string | null = null;
     let leadCreatedAt: string | null = null;
 
-    try {
-      const dbLead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { email: true, supportEmail: true, status: true, createdAt: true },
-      });
-      if (dbLead) {
-        leadEmail = dbLead.email || null;
-        leadSupportEmail = dbLead.supportEmail || null;
-        leadStatus = dbLead.status || null;
-        leadCreatedAt = dbLead.createdAt ? dbLead.createdAt.toISOString() : null;
+    if (!isMockDatabase()) {
+      try {
+        const dbLead = await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: { email: true, supportEmail: true, status: true, createdAt: true },
+        });
+        if (dbLead) {
+          leadEmail = dbLead.email || null;
+          leadSupportEmail = dbLead.supportEmail || null;
+          leadStatus = dbLead.status || null;
+          leadCreatedAt = dbLead.createdAt ? dbLead.createdAt.toISOString() : null;
+        }
+      } catch {
+        // Prisma fallback to mockLeadsStore
+        const mockLead = mockLeadsStore.find((l) => l.id === leadId);
+        if (mockLead) {
+          leadEmail = mockLead.email || null;
+          leadSupportEmail = mockLead.supportEmail || null;
+          leadStatus = mockLead.status || null;
+          leadEmailStatus = (mockLead as any).emailStatus || null;
+          leadCreatedAt = (mockLead as any).createdAt || null;
+        }
       }
-    } catch {
-      // Prisma fallback to mockLeadsStore
+    } else {
       const mockLead = mockLeadsStore.find((l) => l.id === leadId);
       if (mockLead) {
         leadEmail = mockLead.email || null;
@@ -1575,59 +1586,61 @@ export async function getLeadEmailEngagementAction(
       }
     }
 
-    try {
-      const dbCampaigns = await prisma.marketingCampaign.findMany({
-        where: { organizationId },
-        orderBy: { createdAt: "desc" },
-      });
+    if (!isMockDatabase()) {
+      try {
+        const dbCampaigns = await prisma.marketingCampaign.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: "desc" },
+        });
 
-      for (const camp of dbCampaigns) {
-        if (processedCampaignIds.has(camp.id)) continue;
-        if (!Array.isArray(camp.recipientLogs)) continue;
+        for (const camp of dbCampaigns) {
+          if (processedCampaignIds.has(camp.id)) continue;
+          if (!Array.isArray(camp.recipientLogs)) continue;
 
-        const logs = camp.recipientLogs as Array<Record<string, unknown>>;
-        const matchingLogs = logs.filter(
-          (l) =>
-            l.leadId === leadId ||
-            (typeof l.email === "string" && emailCandidates.has(l.email.trim().toLowerCase()))
-        );
+          const logs = camp.recipientLogs as Array<Record<string, unknown>>;
+          const matchingLogs = logs.filter(
+            (l) =>
+              l.leadId === leadId ||
+              (typeof l.email === "string" && emailCandidates.has(l.email.trim().toLowerCase()))
+          );
 
-        for (const log of matchingLogs) {
-          const rawStatus = String(log.status || "SENT").toUpperCase();
-          const itemStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" =
-            rawStatus === "CLICKED"
-              ? "CLICKED"
-              : rawStatus === "OPENED"
-              ? "OPENED"
-              : rawStatus === "BOUNCED"
-              ? "BOUNCED"
-              : rawStatus === "UNSUBSCRIBED"
-              ? "UNSUBSCRIBED"
-              : "DELIVERED";
+          for (const log of matchingLogs) {
+            const rawStatus = String(log.status || "SENT").toUpperCase();
+            const itemStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" =
+              rawStatus === "CLICKED"
+                ? "CLICKED"
+                : rawStatus === "OPENED"
+                ? "OPENED"
+                : rawStatus === "BOUNCED"
+                ? "BOUNCED"
+                : rawStatus === "UNSUBSCRIBED"
+                ? "UNSUBSCRIBED"
+                : "DELIVERED";
 
-          items.push({
-            id: `batch_db_${camp.id}_${String(log.leadId || log.email)}`,
-            subject: camp.subject || "Marketing Campaign",
-            source: "BATCH_CAMPAIGN",
-            sourceName: camp.subject || "Batch Marketing Outreach",
-            senderName: camp.senderName || "Marketing Team",
-            senderEmail: camp.senderEmail || undefined,
-            recipientEmail: String(log.email || leadEmail || "lead@client.com"),
-            sentAt: String(log.sentAt || camp.sentAt || camp.createdAt.toISOString()),
-            status: itemStatus,
-            openedAt: (log.openedAt as string) || null,
-            openCount: Number(log.openCount || (log.openedAt ? 1 : 0)),
-            clickedAt: (log.clickedAt as string) || null,
-            clickCount: Number(log.clickCount || (log.clickedAt ? 1 : 0)),
-            lastClickedUrl: (log.lastClickedUrl as string) || null,
-            bouncedAt: (log.bouncedAt as string) || null,
-            bounceReason: (log.bounceReason as string) || (log.error as string) || null,
-            unsubscribedAt: (log.unsubscribedAt as string) || null,
-          });
+            items.push({
+              id: `batch_db_${camp.id}_${String(log.leadId || log.email)}`,
+              subject: camp.subject || "Marketing Campaign",
+              source: "BATCH_CAMPAIGN",
+              sourceName: camp.subject || "Batch Marketing Outreach",
+              senderName: camp.senderName || "Marketing Team",
+              senderEmail: camp.senderEmail || undefined,
+              recipientEmail: String(log.email || leadEmail || "lead@client.com"),
+              sentAt: String(log.sentAt || camp.sentAt || camp.createdAt.toISOString()),
+              status: itemStatus,
+              openedAt: (log.openedAt as string) || null,
+              openCount: Number(log.openCount || (log.openedAt ? 1 : 0)),
+              clickedAt: (log.clickedAt as string) || null,
+              clickCount: Number(log.clickCount || (log.clickedAt ? 1 : 0)),
+              lastClickedUrl: (log.lastClickedUrl as string) || null,
+              bouncedAt: (log.bouncedAt as string) || null,
+              bounceReason: (log.bounceReason as string) || (log.error as string) || null,
+              unsubscribedAt: (log.unsubscribedAt as string) || null,
+            });
+          }
         }
+      } catch {
+        // Non-blocking in mock environments
       }
-    } catch {
-      // Non-blocking in mock environments
     }
 
     // 3. Scan Direct 1-on-1 Email Dispatches

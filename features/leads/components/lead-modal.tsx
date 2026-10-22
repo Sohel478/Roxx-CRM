@@ -194,7 +194,7 @@ export function LeadModal({
           ownerId: targetOwnerId,
           ownerName: resolvedName,
         };
-        let result;
+        let result: { success: boolean; data?: LeadItem; error?: string } | undefined;
         if (leadToEdit) {
           result = await updateLeadAction(leadToEdit.id, payload);
         } else {
@@ -202,7 +202,7 @@ export function LeadModal({
         }
 
         if (result?.success) {
-          onSuccess(result.data as LeadItem | null);
+          onSuccess(result.data || null);
           onClose();
         } else {
           setError(result?.error || "Failed to save lead");
