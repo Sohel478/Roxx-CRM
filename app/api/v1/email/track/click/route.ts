@@ -7,16 +7,14 @@ export async function GET(request: NextRequest) {
   const lid = searchParams.get("lid");
   const targetUrl = searchParams.get("url");
 
-  if (!targetUrl || !isValidHttpUrl(targetUrl)) {
+  if (!cid || !lid || !targetUrl || !isValidHttpUrl(targetUrl)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (cid && lid) {
-    try {
-      await recordEmailClick(cid, lid, targetUrl);
-    } catch (err) {
-      console.warn("[/api/v1/email/track/click] Tracking click warning:", err);
-    }
+  try {
+    await recordEmailClick(cid, lid, targetUrl);
+  } catch (err) {
+    console.warn("[/api/v1/email/track/click] Tracking click warning:", err);
   }
 
   // Safe redirect to target destination

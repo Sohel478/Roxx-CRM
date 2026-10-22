@@ -32,20 +32,24 @@ import { generateTrackingUrls } from "@/lib/email/tracking-urls";
 
 interface LeadEmailEngagementCardProps {
   summary: LeadEmailEngagementSummary | null;
+  error?: string | null;
   isLoading?: boolean;
   onRefresh?: () => void;
   leadId?: string;
   leadEmail?: string | null;
   leadName?: string | null;
+  lastRefreshedAt?: string | null;
 }
 
 export function LeadEmailEngagementCard({
   summary,
+  error,
   isLoading = false,
   onRefresh,
   leadId,
   leadEmail,
   leadName,
+  lastRefreshedAt,
 }: LeadEmailEngagementCardProps) {
   const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
@@ -57,6 +61,33 @@ export function LeadEmailEngagementCard({
   const [simBanner, setSimBanner] = useState<{ type: "success" | "error"; message: string } | null>(
     null
   );
+
+  if (error && !summary) {
+    return (
+      <div className="bg-white rounded-2xl border border-red-200 p-5 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <h3 className="text-sm font-bold">Unable to Load Outreach Tracking Data</h3>
+          </div>
+          {onRefresh && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="h-8 px-2.5 text-xs text-red-700 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              <span>Retry</span>
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-red-600 mt-2">{error}</p>
+      </div>
+    );
+  }
 
   if (isLoading && !summary) {
     return (
@@ -75,8 +106,18 @@ export function LeadEmailEngagementCard({
   const isBounced = Boolean(summary?.isBounced);
   const isUnsubscribed = Boolean(summary?.isUnsubscribed);
 
-  const openRate = totalSent > 0 ? Math.round((totalOpens / totalSent) * 100) : 0;
-  const clickRate = totalOpens > 0 ? Math.round((totalClicks / totalOpens) * 100) : 0;
+  const uniqueOpens =
+    summary?.uniqueOpens ??
+    items.filter((i) => (i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED")
+      .length;
+  const uniqueClicks =
+    summary?.uniqueClicks ?? items.filter((i) => (i.clickCount || 0) > 0 || i.status === "CLICKED").length;
+
+  const openRate =
+    summary?.openRate ?? (totalSent > 0 ? Math.min(100, Math.round((uniqueOpens / totalSent) * 100)) : 0);
+  const clickRate =
+    summary?.clickRate ??
+    (uniqueOpens > 0 ? Math.min(100, Math.round((uniqueClicks / uniqueOpens) * 100)) : 0);
 
   const handleSimulate = async (
     dispatchId: string,
@@ -223,8 +264,11 @@ export function LeadEmailEngagementCard({
               <h3 className="text-sm font-bold text-slate-900">
                 Email Delivery &amp; Engagement Status
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
-                Live Tracking
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 px-2 py-0.5 rounded cursor-help"
+                title="Real-time open & click events logged via webhook and tracking pixels; refreshed on demand"
+              >
+                Event Tracking
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -253,6 +297,8 @@ export function LeadEmailEngagementCard({
             variant="ghost"
             size="sm"
             onClick={() => setIsCardExpanded((prev) => !prev)}
+            aria-expanded={isCardExpanded}
+            aria-label={isCardExpanded ? "Collapse email delivery status" : "Expand email delivery status"}
             className="h-8 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5"
             title={isCardExpanded ? "Collapse email status card" : "Expand email status card"}
           >
@@ -369,10 +415,14 @@ export function LeadEmailEngagementCard({
           </span>
           <div className="text-lg font-black text-slate-900 flex items-center justify-center gap-1">
             <ShieldCheck className="w-4 h-4 text-emerald-500 inline" />
-            <span>{isBounced ? "Failed" : totalSent > 0 ? "100%" : "Ready"}</span>
+            <span>
+              {summary?.deliverabilityStatus ||
+                (isBounced ? "Failed" : totalSent > 0 ? "100%" : "Check required")}
+            </span>
           </div>
           <span className="text-[11px] text-slate-400 font-medium">
-            {isBounced ? "Suppressed" : isUnsubscribed ? "Unsubscribed" : "Clean domain"}
+            {summary?.deliverabilityLabel ||
+              (isBounced ? "Suppressed" : isUnsubscribed ? "Unsubscribed" : "Setup SMTP")}
           </span>
         </div>
       </div>

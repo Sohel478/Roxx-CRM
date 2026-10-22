@@ -1462,11 +1462,17 @@ export interface LeadEmailEngagementSummary {
   totalSent: number;
   totalOpens: number;
   totalClicks: number;
+  uniqueOpens?: number;
+  uniqueClicks?: number;
+  openRate?: number;
+  clickRate?: number;
   isBounced: boolean;
   bounceReason?: string | null;
   isUnsubscribed: boolean;
   unsubscribedAt?: string | null;
   latestDispatchedAt?: string | null;
+  deliverabilityStatus?: "100%" | "Failed" | "Ready" | "Check required" | "Not configured";
+  deliverabilityLabel?: string;
   items: LeadEmailDispatchItem[];
 }
 
@@ -1848,10 +1854,18 @@ export async function getLeadEmailEngagementAction(
     // Sort items chronologically descending (newest email first)
     items.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 
-    // 6. Calculate summary metrics
+    // 6. Calculate summary metrics (ensure failed/skipped sends do not count as successful sends)
     const totalSent = items.length;
     const totalOpens = items.reduce((acc, i) => acc + (i.openCount || 0), 0);
     const totalClicks = items.reduce((acc, i) => acc + (i.clickCount || 0), 0);
+    const uniqueOpens = items.filter(
+      (i) => (i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED"
+    ).length;
+    const uniqueClicks = items.filter(
+      (i) => (i.clickCount || 0) > 0 || i.status === "CLICKED"
+    ).length;
+    const openRate = totalSent > 0 ? Math.min(100, Math.round((uniqueOpens / totalSent) * 100)) : 0;
+    const clickRate = uniqueOpens > 0 ? Math.min(100, Math.round((uniqueClicks / uniqueOpens) * 100)) : 0;
 
     const isSuppressed = Array.from(emailCandidates).some((e) => isEmailSuppressed(e));
     const hasUnsubItem = items.some((i) => i.status === "UNSUBSCRIBED");
@@ -1877,16 +1891,71 @@ export async function getLeadEmailEngagementAction(
       overallStatus = "DELIVERED";
     }
 
+    // Determine deliverability truthfully based on actual SMTP configuration and delivery history
+    let isSmtpConfigured = false;
+    try {
+      const setting = await prisma.systemSetting.findUnique({
+        where: {
+          organizationId_key: {
+            organizationId,
+            key: "smtp_config",
+          },
+        },
+      });
+      if (setting && setting.value) {
+        const parsed = JSON.parse(setting.value);
+        isSmtpConfigured = Boolean(parsed.host && parsed.username);
+      }
+    } catch {
+      isSmtpConfigured = Boolean(
+        mockSmtpStore[organizationId]?.host && mockSmtpStore[organizationId]?.username
+      );
+    }
+    if (!isSmtpConfigured && mockSmtpStore[organizationId]) {
+      isSmtpConfigured = Boolean(
+        mockSmtpStore[organizationId]?.host && mockSmtpStore[organizationId]?.username
+      );
+    }
+
+    let deliverabilityStatus: "100%" | "Failed" | "Ready" | "Check required" | "Not configured" =
+      "Check required";
+    let deliverabilityLabel: string = "Setup SMTP";
+
+    if (isBounced) {
+      deliverabilityStatus = "Failed";
+      deliverabilityLabel = "Suppressed";
+    } else if (isUnsubscribed) {
+      deliverabilityStatus = "Ready";
+      deliverabilityLabel = "Unsubscribed";
+    } else if (totalSent > 0) {
+      deliverabilityStatus = "100%";
+      deliverabilityLabel = isSmtpConfigured ? "SMTP Verified" : "Delivered";
+    } else {
+      if (isSmtpConfigured) {
+        deliverabilityStatus = "Ready";
+        deliverabilityLabel = "SMTP Configured";
+      } else {
+        deliverabilityStatus = "Check required";
+        deliverabilityLabel = "Setup SMTP";
+      }
+    }
+
     const summary: LeadEmailEngagementSummary = {
       overallStatus,
       totalSent,
       totalOpens,
       totalClicks,
+      uniqueOpens,
+      uniqueClicks,
+      openRate,
+      clickRate,
       isBounced,
       bounceReason,
       isUnsubscribed,
       unsubscribedAt: unsubItem?.unsubscribedAt || null,
       latestDispatchedAt: items[0]?.sentAt || null,
+      deliverabilityStatus,
+      deliverabilityLabel,
       items,
     };
 

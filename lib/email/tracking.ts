@@ -163,30 +163,39 @@ export async function recordEmailOpen(
     } catch {}
   }
 
-  // 2. Record activity in Lead Timeline
+  // 2. Record activity in Lead Timeline (idempotent: only record if no duplicate open in last 5 minutes)
   try {
-    const subjectTitle = camp?.subject ? ` (${camp.subject.slice(0, 40)})` : "";
-    mockActivitiesStore.push({
-      id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: camp?.organizationId || "org_default",
-      type: "EMAIL",
-      subject: `Email Opened${subjectTitle}`,
-      description: `Recipient opened email on ${new Date().toLocaleString()}`,
-      leadId,
-      leadName: null,
-      companyId: null,
-      companyName: null,
-      contactId: null,
-      contactName: null,
-      opportunityId: null,
-      opportunityName: null,
-      userId: camp?.senderId || "system",
-      userName: camp?.senderName || "System",
-      activityAt: now,
-      durationMinutes: null,
-      outcome: "OPENED",
-      createdAt: now,
-    });
+    const hasRecentOpen = mockActivitiesStore.some(
+      (a) =>
+        a.leadId === leadId &&
+        a.type === "EMAIL" &&
+        a.outcome === "OPENED" &&
+        Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
+    );
+    if (!hasRecentOpen) {
+      const subjectTitle = camp?.subject ? ` (${camp.subject.slice(0, 40)})` : "";
+      mockActivitiesStore.push({
+        id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId: camp?.organizationId || "org_default",
+        type: "EMAIL",
+        subject: `Email Opened${subjectTitle}`,
+        description: `Recipient opened email on ${new Date().toLocaleString()}`,
+        leadId,
+        leadName: null,
+        companyId: null,
+        companyName: null,
+        contactId: null,
+        contactName: null,
+        opportunityId: null,
+        opportunityName: null,
+        userId: camp?.senderId || "system",
+        userName: camp?.senderName || "System",
+        activityAt: now,
+        durationMinutes: null,
+        outcome: "OPENED",
+        createdAt: now,
+      });
+    }
   } catch (err) {
     console.warn("[recordEmailOpen] Activity log warning:", err);
   }
@@ -304,29 +313,39 @@ export async function recordEmailClick(
     } catch {}
   }
 
-  // 2. Record activity in Lead Timeline
+  // 2. Record activity in Lead Timeline (idempotent: prevent duplicate click activities within 5 minutes)
   try {
-    mockActivitiesStore.push({
-      id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      organizationId: camp?.organizationId || "org_default",
-      type: "EMAIL",
-      subject: `Email Link Clicked`,
-      description: `Recipient clicked link: ${targetUrl}`,
-      leadId,
-      leadName: null,
-      companyId: null,
-      companyName: null,
-      contactId: null,
-      contactName: null,
-      opportunityId: null,
-      opportunityName: null,
-      userId: camp?.senderId || "system",
-      userName: camp?.senderName || "System",
-      activityAt: now,
-      durationMinutes: null,
-      outcome: "CLICKED",
-      createdAt: now,
-    });
+    const hasRecentClick = mockActivitiesStore.some(
+      (a) =>
+        a.leadId === leadId &&
+        a.type === "EMAIL" &&
+        a.outcome === "CLICKED" &&
+        a.description?.includes(targetUrl) &&
+        Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
+    );
+    if (!hasRecentClick) {
+      mockActivitiesStore.push({
+        id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId: camp?.organizationId || "org_default",
+        type: "EMAIL",
+        subject: `Email Link Clicked`,
+        description: `Recipient clicked link: ${targetUrl}`,
+        leadId,
+        leadName: null,
+        companyId: null,
+        companyName: null,
+        contactId: null,
+        contactName: null,
+        opportunityId: null,
+        opportunityName: null,
+        userId: camp?.senderId || "system",
+        userName: camp?.senderName || "System",
+        activityAt: now,
+        durationMinutes: null,
+        outcome: "CLICKED",
+        createdAt: now,
+      });
+    }
   } catch (err) {
     console.warn("[recordEmailClick] Activity log warning:", err);
   }

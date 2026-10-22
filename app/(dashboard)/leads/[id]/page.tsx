@@ -115,6 +115,7 @@ export default function LeadDetailPage() {
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
   const [teamMembers, setTeamMembers] = useState<UserItem[]>([]);
   const [emailEngagement, setEmailEngagement] = useState<LeadEmailEngagementSummary | null>(null);
+  const [emailEngagementError, setEmailEngagementError] = useState<string | null>(null);
 
   const roleUpper = currentUser?.role?.toUpperCase();
   const isAdminOrManager =
@@ -168,6 +169,9 @@ export default function LeadDetailPage() {
     }
     if (engRes.success && engRes.data) {
       setEmailEngagement(engRes.data);
+      setEmailEngagementError(null);
+    } else if (!engRes.success) {
+      setEmailEngagementError(engRes.error || "Failed to load email tracking data");
     }
     setIsLoading(false);
   }, [id]);
@@ -776,6 +780,8 @@ export default function LeadDetailPage() {
           {/* Outbound Email Engagement & Delivery Status (Batch + 1-on-1) */}
           <LeadEmailEngagementCard
             summary={emailEngagement}
+            error={emailEngagementError}
+            isLoading={isLoading}
             onRefresh={loadLead}
             leadId={lead.id}
             leadEmail={lead.email}

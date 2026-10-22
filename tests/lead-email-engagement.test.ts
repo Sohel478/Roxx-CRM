@@ -483,4 +483,107 @@ describe("Lead Outbound Email Delivery & Engagement Status", () => {
     expect(res.data?.items[0].source).toBe("DIRECT_EMAIL");
     expect(res.data?.items[0].status).toBe("DELIVERED");
   });
+
+  it("should report deliverability based on verified SMTP config and not falsely claim 'Clean domain'", async () => {
+    // Lead Alpha with 0 emails sent when SMTP is configured
+    const resWithSmtp = await getLeadEmailEngagementAction("lead_alpha");
+    expect(resWithSmtp.success).toBe(true);
+    expect(resWithSmtp.data?.deliverabilityStatus).toBe("Ready");
+    expect(resWithSmtp.data?.deliverabilityLabel).toBe("SMTP Configured");
+
+    // Remove SMTP config and check that status becomes 'Check required'
+    delete mockSmtpStore["org_lead_test"];
+    const resWithoutSmtp = await getLeadEmailEngagementAction("lead_alpha");
+    expect(resWithoutSmtp.success).toBe(true);
+    expect(resWithoutSmtp.data?.deliverabilityStatus).toBe("Check required");
+    expect(resWithoutSmtp.data?.deliverabilityLabel).toBe("Setup SMTP");
+  });
+
+  it("should calculate bounded open rate and click rate when multiple opens or clicks occur on a single email", async () => {
+    mockMarketingCampaignsStore.push({
+      id: "camp_multi_open",
+      batchId: "batch_3",
+      organizationId: "org_lead_test",
+      senderId: "usr_lead_rep",
+      senderName: "Sarah Sales",
+      senderEmail: "outreach@roxx-crm.com",
+      subject: "Annual Summary",
+      body: "Summary info",
+      status: "SENT",
+      totalRecipients: 1,
+      sentCount: 1,
+      failedCount: 0,
+      recipientLogs: [
+        {
+          leadId: "lead_alpha",
+          leadName: "Alice Alpha",
+          email: "alice@alpha-corp.com",
+          status: "SENT",
+          sentAt: new Date().toISOString(),
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Record 5 opens on the single email
+    for (let i = 0; i < 5; i++) {
+      await recordEmailOpen("camp_multi_open", "lead_alpha");
+    }
+
+    // Record 3 clicks on the single email
+    for (let i = 0; i < 3; i++) {
+      await recordEmailClick("camp_multi_open", "lead_alpha", "https://roxx-crm.com/pricing");
+    }
+
+    const res = await getLeadEmailEngagementAction("lead_alpha");
+    expect(res.success).toBe(true);
+    expect(res.data?.totalSent).toBe(1);
+    expect(res.data?.totalOpens).toBe(5);
+    expect(res.data?.totalClicks).toBe(3);
+    expect(res.data?.uniqueOpens).toBe(1);
+    expect(res.data?.uniqueClicks).toBe(1);
+    // Open rate and click rate must be capped at 100%, never 500% or 300%
+    expect(res.data?.openRate).toBe(100);
+    expect(res.data?.clickRate).toBe(100);
+  });
+
+  it("should deduplicate timeline activity logging for rapid repeated open/click tracking events", async () => {
+    mockMarketingCampaignsStore.push({
+      id: "camp_dedup_test",
+      batchId: "batch_4",
+      organizationId: "org_lead_test",
+      senderId: "usr_lead_rep",
+      senderName: "Sarah Sales",
+      senderEmail: "outreach@roxx-crm.com",
+      subject: "Deduplication Test",
+      body: "Test link",
+      status: "SENT",
+      totalRecipients: 1,
+      sentCount: 1,
+      failedCount: 0,
+      recipientLogs: [
+        {
+          leadId: "lead_alpha",
+          leadName: "Alice Alpha",
+          email: "alice@alpha-corp.com",
+          status: "SENT",
+          sentAt: new Date().toISOString(),
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Fire 4 rapid open events
+    for (let i = 0; i < 4; i++) {
+      await recordEmailOpen("camp_dedup_test", "lead_alpha");
+    }
+
+    // Only 1 timeline activity should be logged for the open
+    const openActivities = mockActivitiesStore.filter(
+      (a) => a.leadId === "lead_alpha" && a.outcome === "OPENED"
+    );
+    expect(openActivities).toHaveLength(1);
+  });
 });
