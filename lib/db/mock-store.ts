@@ -1118,6 +1118,13 @@ export interface MockRecipientLog {
   bouncedAt?: string | null;
   bounceReason?: string | null;
   unsubscribedAt?: string | null;
+  isTest?: boolean;
+  testOpenCount?: number;
+  testClickCount?: number;
+  testOpenedAt?: string | null;
+  testClickedAt?: string | null;
+  testBouncedAt?: string | null;
+  testBounceReason?: string | null;
 }
 
 export interface MockMarketingCampaign {
@@ -1253,6 +1260,14 @@ export interface MockDirectEmailDispatch {
   bouncedAt?: string | null;
   bounceReason?: string | null;
   unsubscribedAt?: string | null;
+  isTest?: boolean;
+  provenance?: "GENUINE" | "TEST";
+  testOpenCount?: number;
+  testClickCount?: number;
+  testOpenedAt?: string | null;
+  testClickedAt?: string | null;
+  testBouncedAt?: string | null;
+  testBounceReason?: string | null;
 }
 
 export const mockDirectEmailsStore: MockDirectEmailDispatch[] = [];

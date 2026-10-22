@@ -100,11 +100,15 @@ export function injectTrackingIntoHtml(
 
 /**
  * Records an email OPEN event for a campaign and lead.
+ * Supports provenance parameter ("GENUINE" | "TEST") to strictly prevent test events
+ * from contaminating genuine production open analytics.
  */
 export async function recordEmailOpen(
   campaignId: string,
-  leadId: string
+  leadId: string,
+  options?: { provenance?: "GENUINE" | "TEST" }
 ): Promise<{ success: boolean; isFirstOpen: boolean }> {
+  const isTest = options?.provenance === "TEST";
   const now = new Date().toISOString();
   let isFirstOpen = false;
 
@@ -113,46 +117,57 @@ export async function recordEmailOpen(
   if (camp) {
     const log = camp.recipientLogs.find((l) => l.leadId === leadId);
     if (log) {
-      if (!log.openedAt) {
-        isFirstOpen = true;
-        log.openedAt = now;
-      }
-      log.openCount = (log.openCount || 0) + 1;
+      if (isTest) {
+        log.testOpenCount = ((log.testOpenCount as number) || 0) + 1;
+        log.testOpenedAt = now;
+      } else {
+        if (!log.openedAt) {
+          isFirstOpen = true;
+          log.openedAt = now;
+        }
+        log.openCount = (Number(log.openCount) || 0) + 1;
 
-      // Status promotion: If not clicked or unsubscribed, promote to OPENED
-      if (log.status === "SENT" || log.status === "DELIVERED") {
-        log.status = "OPENED";
+        // Status promotion: If not clicked, bounced, or unsubscribed, promote to OPENED
+        if (log.status === "SENT" || log.status === "DELIVERED") {
+          log.status = "OPENED";
+        }
+
+        // Recalculate campaign aggregate open count (unique genuine opens)
+        camp.openedCount = camp.recipientLogs.filter(
+          (l) => l.status !== "BOUNCED" && (l.openedAt != null || l.status === "OPENED" || l.status === "CLICKED")
+        ).length;
+        camp.updatedAt = now;
       }
     }
-
-    // Recalculate campaign aggregate open count
-    camp.openedCount = camp.recipientLogs.filter(
-      (l) => l.openedAt != null || l.status === "OPENED" || l.status === "CLICKED"
-    ).length;
-    camp.updatedAt = now;
   }
 
   // 1b. Update direct email store if applicable
   const directDispatch = mockDirectEmailsStore
     .slice()
     .reverse()
-    .find((d) => (campaignId && d.id === campaignId) || d.leadId === leadId);
+    .find((d) => (campaignId ? d.id === campaignId : d.leadId === leadId));
+
   if (directDispatch) {
-    if (!directDispatch.openedAt) {
-      isFirstOpen = true;
-      directDispatch.openedAt = now;
-    }
-    directDispatch.openCount = (directDispatch.openCount || 0) + 1;
-    if (directDispatch.status === "SENT" || directDispatch.status === "DELIVERED") {
-      directDispatch.status = "OPENED";
+    if (isTest) {
+      directDispatch.testOpenCount = (directDispatch.testOpenCount || 0) + 1;
+      directDispatch.testOpenedAt = now;
+    } else {
+      if (!directDispatch.openedAt) {
+        isFirstOpen = true;
+        directDispatch.openedAt = now;
+      }
+      directDispatch.openCount = (directDispatch.openCount || 0) + 1;
+      if (directDispatch.status === "SENT" || directDispatch.status === "DELIVERED") {
+        directDispatch.status = "OPENED";
+      }
     }
   }
 
-  // 1c. If campaignId references an activity (act_xxx), promote its outcome
-  if (campaignId && campaignId.startsWith("act_")) {
+  // 1c. If campaignId references an activity (act_xxx), promote its outcome if genuine
+  if (!isTest && campaignId && campaignId.startsWith("act_")) {
     const rawActId = campaignId.replace(/^act_/, "");
     const matchingAct = mockActivitiesStore.find((a) => a.id === rawActId || a.id === campaignId);
-    if (matchingAct) {
+    if (matchingAct && matchingAct.outcome !== "BOUNCED") {
       matchingAct.outcome = "OPENED";
     }
     try {
@@ -163,23 +178,15 @@ export async function recordEmailOpen(
     } catch {}
   }
 
-  // 2. Record activity in Lead Timeline (idempotent: only record if no duplicate open in last 5 minutes)
+  // 2. Record activity in Lead Timeline
   try {
-    const hasRecentOpen = mockActivitiesStore.some(
-      (a) =>
-        a.leadId === leadId &&
-        a.type === "EMAIL" &&
-        a.outcome === "OPENED" &&
-        Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
-    );
-    if (!hasRecentOpen) {
-      const subjectTitle = camp?.subject ? ` (${camp.subject.slice(0, 40)})` : "";
+    if (isTest) {
       mockActivitiesStore.push({
-        id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        organizationId: camp?.organizationId || "org_default",
+        id: `act_test_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId: camp?.organizationId || directDispatch?.organizationId || "org_default",
         type: "EMAIL",
-        subject: `Email Opened${subjectTitle}`,
-        description: `Recipient opened email on ${new Date().toLocaleString()}`,
+        subject: `[TEST] Email Opened (Simulated)`,
+        description: `Simulated test open event recorded at ${new Date().toLocaleString()} (excluded from genuine production analytics)`,
         leadId,
         leadName: null,
         companyId: null,
@@ -188,46 +195,80 @@ export async function recordEmailOpen(
         contactName: null,
         opportunityId: null,
         opportunityName: null,
-        userId: camp?.senderId || "system",
-        userName: camp?.senderName || "System",
+        userId: "system",
+        userName: "Test Simulation",
         activityAt: now,
         durationMinutes: null,
-        outcome: "OPENED",
+        outcome: "TEST_OPENED",
         createdAt: now,
       });
+    } else {
+      const hasRecentOpen = mockActivitiesStore.some(
+        (a) =>
+          a.leadId === leadId &&
+          a.type === "EMAIL" &&
+          a.outcome === "OPENED" &&
+          Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
+      );
+      if (!hasRecentOpen) {
+        const subjectTitle = camp?.subject ? ` (${camp.subject.slice(0, 40)})` : "";
+        mockActivitiesStore.push({
+          id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          organizationId: camp?.organizationId || directDispatch?.organizationId || "org_default",
+          type: "EMAIL",
+          subject: `Email Opened${subjectTitle}`,
+          description: `Recipient opened email on ${new Date().toLocaleString()}`,
+          leadId,
+          leadName: null,
+          companyId: null,
+          companyName: null,
+          contactId: null,
+          contactName: null,
+          opportunityId: null,
+          opportunityName: null,
+          userId: camp?.senderId || directDispatch?.senderEmail || "system",
+          userName: camp?.senderName || directDispatch?.senderName || "System",
+          activityAt: now,
+          durationMinutes: null,
+          outcome: "OPENED",
+          createdAt: now,
+        });
+      }
     }
   } catch (err) {
     console.warn("[recordEmailOpen] Activity log warning:", err);
   }
 
-  // 3. Update Prisma database if available
-  try {
-    const dbCamp = await prisma.marketingCampaign.findUnique({
-      where: { id: campaignId },
-    });
-    if (dbCamp && Array.isArray(dbCamp.recipientLogs)) {
-      const logs = [...(dbCamp.recipientLogs as Array<Record<string, unknown>>)];
-      const logIdx = logs.findIndex((l) => l.leadId === leadId);
-      if (logIdx !== -1) {
-        const item = { ...logs[logIdx] };
-        if (!item.openedAt) item.openedAt = now;
-        item.openCount = ((item.openCount as number) || 0) + 1;
-        if (item.status === "SENT" || item.status === "DELIVERED") {
-          item.status = "OPENED";
-        }
-        logs[logIdx] = item;
+  // 3. Update Prisma database if available and genuine
+  if (!isTest) {
+    try {
+      const dbCamp = await prisma.marketingCampaign.findUnique({
+        where: { id: campaignId },
+      });
+      if (dbCamp && Array.isArray(dbCamp.recipientLogs)) {
+        const logs = [...(dbCamp.recipientLogs as Array<Record<string, unknown>>)];
+        const logIdx = logs.findIndex((l) => l.leadId === leadId);
+        if (logIdx !== -1) {
+          const item = { ...logs[logIdx] };
+          if (!item.openedAt) item.openedAt = now;
+          item.openCount = ((item.openCount as number) || 0) + 1;
+          if (item.status === "SENT" || item.status === "DELIVERED") {
+            item.status = "OPENED";
+          }
+          logs[logIdx] = item;
 
-        await prisma.marketingCampaign.update({
-          where: { id: campaignId },
-          data: {
-            recipientLogs: logs as unknown as Prisma.InputJsonValue,
-            updatedAt: new Date(),
-          },
-        });
+          await prisma.marketingCampaign.update({
+            where: { id: campaignId },
+            data: {
+              recipientLogs: logs as unknown as Prisma.InputJsonValue,
+              updatedAt: new Date(),
+            },
+          });
+        }
       }
+    } catch {
+      // Non-blocking in mock/offline test environments
     }
-  } catch {
-    // Non-blocking in mock/offline test environments
   }
 
   return { success: true, isFirstOpen };
@@ -235,12 +276,16 @@ export async function recordEmailOpen(
 
 /**
  * Records an email CLICK event for a campaign, lead, and destination URL.
+ * Supports provenance parameter ("GENUINE" | "TEST") to strictly prevent test clicks
+ * from contaminating genuine CTR metrics.
  */
 export async function recordEmailClick(
   campaignId: string,
   leadId: string,
-  targetUrl: string
+  targetUrl: string,
+  options?: { provenance?: "GENUINE" | "TEST" }
 ): Promise<{ success: boolean; isFirstClick: boolean }> {
+  const isTest = options?.provenance === "TEST";
   const now = new Date().toISOString();
   let isFirstClick = false;
 
@@ -249,60 +294,71 @@ export async function recordEmailClick(
   if (camp) {
     const log = camp.recipientLogs.find((l) => l.leadId === leadId);
     if (log) {
-      if (!log.clickedAt) {
-        isFirstClick = true;
-        log.clickedAt = now;
-      }
-      log.clickCount = (log.clickCount || 0) + 1;
-      log.lastClickedUrl = targetUrl;
+      if (isTest) {
+        log.testClickCount = ((log.testClickCount as number) || 0) + 1;
+        log.testClickedAt = now;
+      } else {
+        if (!log.clickedAt) {
+          isFirstClick = true;
+          log.clickedAt = now;
+        }
+        log.clickCount = (Number(log.clickCount) || 0) + 1;
+        log.lastClickedUrl = targetUrl;
 
-      // Clicking also implies the email was opened
-      if (!log.openedAt) {
-        log.openedAt = now;
-        log.openCount = (log.openCount || 0) + 1;
-      }
+        // Clicking also implies the email was opened
+        if (!log.openedAt) {
+          log.openedAt = now;
+          log.openCount = (Number(log.openCount) || 0) + 1;
+        }
 
-      // Promote status to CLICKED (highest positive engagement tier)
-      if (log.status !== "UNSUBSCRIBED") {
-        log.status = "CLICKED";
+        // Promote status to CLICKED (highest positive engagement tier)
+        if (log.status !== "UNSUBSCRIBED" && log.status !== "BOUNCED") {
+          log.status = "CLICKED";
+        }
+
+        camp.clickedCount = camp.recipientLogs.filter(
+          (l) => l.status !== "BOUNCED" && (l.clickedAt != null || l.status === "CLICKED")
+        ).length;
+        camp.openedCount = camp.recipientLogs.filter(
+          (l) => l.status !== "BOUNCED" && (l.openedAt != null || l.status === "OPENED" || l.status === "CLICKED")
+        ).length;
+        camp.updatedAt = now;
       }
     }
-
-    camp.clickedCount = camp.recipientLogs.filter(
-      (l) => l.clickedAt != null || l.status === "CLICKED"
-    ).length;
-    camp.openedCount = camp.recipientLogs.filter(
-      (l) => l.openedAt != null || l.status === "OPENED" || l.status === "CLICKED"
-    ).length;
-    camp.updatedAt = now;
   }
 
   // 1b. Update direct email store if applicable
   const directDispatch = mockDirectEmailsStore
     .slice()
     .reverse()
-    .find((d) => (campaignId && d.id === campaignId) || d.leadId === leadId);
+    .find((d) => (campaignId ? d.id === campaignId : d.leadId === leadId));
+
   if (directDispatch) {
-    if (!directDispatch.clickedAt) {
-      isFirstClick = true;
-      directDispatch.clickedAt = now;
-    }
-    directDispatch.clickCount = (directDispatch.clickCount || 0) + 1;
-    directDispatch.lastClickedUrl = targetUrl;
-    if (!directDispatch.openedAt) {
-      directDispatch.openedAt = now;
-      directDispatch.openCount = (directDispatch.openCount || 0) + 1;
-    }
-    if (directDispatch.status !== "UNSUBSCRIBED") {
-      directDispatch.status = "CLICKED";
+    if (isTest) {
+      directDispatch.testClickCount = (directDispatch.testClickCount || 0) + 1;
+      directDispatch.testClickedAt = now;
+    } else {
+      if (!directDispatch.clickedAt) {
+        isFirstClick = true;
+        directDispatch.clickedAt = now;
+      }
+      directDispatch.clickCount = (directDispatch.clickCount || 0) + 1;
+      directDispatch.lastClickedUrl = targetUrl;
+      if (!directDispatch.openedAt) {
+        directDispatch.openedAt = now;
+        directDispatch.openCount = (directDispatch.openCount || 0) + 1;
+      }
+      if (directDispatch.status !== "UNSUBSCRIBED" && directDispatch.status !== "BOUNCED") {
+        directDispatch.status = "CLICKED";
+      }
     }
   }
 
-  // 1c. If campaignId references an activity (act_xxx), promote its outcome to CLICKED
-  if (campaignId && campaignId.startsWith("act_")) {
+  // 1c. If campaignId references an activity (act_xxx), promote its outcome to CLICKED if genuine
+  if (!isTest && campaignId && campaignId.startsWith("act_")) {
     const rawActId = campaignId.replace(/^act_/, "");
     const matchingAct = mockActivitiesStore.find((a) => a.id === rawActId || a.id === campaignId);
-    if (matchingAct) {
+    if (matchingAct && matchingAct.outcome !== "BOUNCED") {
       matchingAct.outcome = "CLICKED";
     }
     try {
@@ -313,23 +369,15 @@ export async function recordEmailClick(
     } catch {}
   }
 
-  // 2. Record activity in Lead Timeline (idempotent: prevent duplicate click activities within 5 minutes)
+  // 2. Record activity in Lead Timeline
   try {
-    const hasRecentClick = mockActivitiesStore.some(
-      (a) =>
-        a.leadId === leadId &&
-        a.type === "EMAIL" &&
-        a.outcome === "CLICKED" &&
-        a.description?.includes(targetUrl) &&
-        Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
-    );
-    if (!hasRecentClick) {
+    if (isTest) {
       mockActivitiesStore.push({
-        id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        organizationId: camp?.organizationId || "org_default",
+        id: `act_test_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId: camp?.organizationId || directDispatch?.organizationId || "org_default",
         type: "EMAIL",
-        subject: `Email Link Clicked`,
-        description: `Recipient clicked link: ${targetUrl}`,
+        subject: `[TEST] Email Link Clicked (Simulated)`,
+        description: `Simulated test click for destination: ${targetUrl} (excluded from genuine production analytics)`,
         leadId,
         leadName: null,
         companyId: null,
@@ -338,46 +386,80 @@ export async function recordEmailClick(
         contactName: null,
         opportunityId: null,
         opportunityName: null,
-        userId: camp?.senderId || "system",
-        userName: camp?.senderName || "System",
+        userId: "system",
+        userName: "Test Simulation",
         activityAt: now,
         durationMinutes: null,
-        outcome: "CLICKED",
+        outcome: "TEST_CLICKED",
         createdAt: now,
       });
+    } else {
+      const hasRecentClick = mockActivitiesStore.some(
+        (a) =>
+          a.leadId === leadId &&
+          a.type === "EMAIL" &&
+          a.outcome === "CLICKED" &&
+          a.description?.includes(targetUrl) &&
+          Date.now() - new Date(a.activityAt).getTime() < 5 * 60 * 1000
+      );
+      if (!hasRecentClick) {
+        mockActivitiesStore.push({
+          id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          organizationId: camp?.organizationId || directDispatch?.organizationId || "org_default",
+          type: "EMAIL",
+          subject: `Email Link Clicked`,
+          description: `Recipient clicked link: ${targetUrl}`,
+          leadId,
+          leadName: null,
+          companyId: null,
+          companyName: null,
+          contactId: null,
+          contactName: null,
+          opportunityId: null,
+          opportunityName: null,
+          userId: camp?.senderId || directDispatch?.senderEmail || "system",
+          userName: camp?.senderName || directDispatch?.senderName || "System",
+          activityAt: now,
+          durationMinutes: null,
+          outcome: "CLICKED",
+          createdAt: now,
+        });
+      }
     }
   } catch (err) {
     console.warn("[recordEmailClick] Activity log warning:", err);
   }
 
-  // 3. Update Prisma database
-  try {
-    const dbCamp = await prisma.marketingCampaign.findUnique({
-      where: { id: campaignId },
-    });
-    if (dbCamp && Array.isArray(dbCamp.recipientLogs)) {
-      const logs = [...(dbCamp.recipientLogs as Array<Record<string, unknown>>)];
-      const logIdx = logs.findIndex((l) => l.leadId === leadId);
-      if (logIdx !== -1) {
-        const item = { ...logs[logIdx] };
-        if (!item.clickedAt) item.clickedAt = now;
-        item.clickCount = ((item.clickCount as number) || 0) + 1;
-        item.lastClickedUrl = targetUrl;
-        if (!item.openedAt) item.openedAt = now;
-        if (item.status !== "UNSUBSCRIBED") item.status = "CLICKED";
-        logs[logIdx] = item;
+  // 3. Update Prisma database if genuine
+  if (!isTest) {
+    try {
+      const dbCamp = await prisma.marketingCampaign.findUnique({
+        where: { id: campaignId },
+      });
+      if (dbCamp && Array.isArray(dbCamp.recipientLogs)) {
+        const logs = [...(dbCamp.recipientLogs as Array<Record<string, unknown>>)];
+        const logIdx = logs.findIndex((l) => l.leadId === leadId);
+        if (logIdx !== -1) {
+          const item = { ...logs[logIdx] };
+          if (!item.clickedAt) item.clickedAt = now;
+          item.clickCount = ((item.clickCount as number) || 0) + 1;
+          item.lastClickedUrl = targetUrl;
+          if (!item.openedAt) item.openedAt = now;
+          if (item.status !== "UNSUBSCRIBED" && item.status !== "BOUNCED") item.status = "CLICKED";
+          logs[logIdx] = item;
 
-        await prisma.marketingCampaign.update({
-          where: { id: campaignId },
-          data: {
-            recipientLogs: logs as unknown as Prisma.InputJsonValue,
-            updatedAt: new Date(),
-          },
-        });
+          await prisma.marketingCampaign.update({
+            where: { id: campaignId },
+            data: {
+              recipientLogs: logs as unknown as Prisma.InputJsonValue,
+              updatedAt: new Date(),
+            },
+          });
+        }
       }
+    } catch {
+      // Non-blocking
     }
-  } catch {
-    // Non-blocking
   }
 
   return { success: true, isFirstClick };
@@ -385,16 +467,64 @@ export async function recordEmailClick(
 
 /**
  * Records an email BOUNCE (Failed Delivery) event and suppresses the recipient email address.
+ * Supports options.isSimulated so test simulation does NOT suppress genuine contacts.
  */
 export async function recordEmailBounce(
   campaignId: string,
   leadId: string,
   email: string,
-  reason: string
+  reason: string,
+  options?: { isSimulated?: boolean }
 ): Promise<{ success: boolean }> {
+  const isSimulated = Boolean(options?.isSimulated);
   const now = new Date().toISOString();
 
-  // 1. Suppress email address
+  if (isSimulated) {
+    const matchingDirect = mockDirectEmailsStore
+      .slice()
+      .reverse()
+      .find((d) => (campaignId ? d.id === campaignId : d.leadId === leadId));
+    if (matchingDirect) {
+      matchingDirect.testBouncedAt = now;
+      matchingDirect.testBounceReason = reason;
+    }
+    const camp = mockMarketingCampaignsStore.find((c) => c.id === campaignId);
+    if (camp) {
+      const log = camp.recipientLogs.find(
+        (l) => l.leadId === leadId || (email && l.email?.toLowerCase() === email.toLowerCase())
+      );
+      if (log) {
+        log.testBouncedAt = now;
+        log.testBounceReason = reason;
+      }
+    }
+    try {
+      mockActivitiesStore.push({
+        id: `act_test_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        organizationId: camp?.organizationId || matchingDirect?.organizationId || "org_default",
+        type: "EMAIL",
+        subject: `[TEST] Delivery Bounced (Simulated)`,
+        description: `Simulated bounce recorded: ${reason} (recipient not suppressed in production)`,
+        leadId,
+        leadName: null,
+        companyId: null,
+        companyName: null,
+        contactId: null,
+        contactName: null,
+        opportunityId: null,
+        opportunityName: null,
+        userId: "system",
+        userName: "Test Simulation",
+        activityAt: now,
+        durationMinutes: null,
+        outcome: "TEST_BOUNCED",
+        createdAt: now,
+      });
+    } catch {}
+    return { success: true };
+  }
+
+  // 1. Suppress email address (only for genuine bounces)
   if (email) {
     suppressEmail(email);
   }
@@ -403,7 +533,7 @@ export async function recordEmailBounce(
   const camp = mockMarketingCampaignsStore.find((c) => c.id === campaignId);
   if (camp) {
     const log = camp.recipientLogs.find(
-      (l) => l.leadId === leadId || (email && l.email.toLowerCase() === email.toLowerCase())
+      (l) => l.leadId === leadId || (email && l.email?.toLowerCase() === email.toLowerCase())
     );
     if (log) {
       log.status = "BOUNCED";
@@ -415,12 +545,12 @@ export async function recordEmailBounce(
     camp.updatedAt = now;
   }
 
-  // 2b. Update direct email store if applicable
+  // 2b. Update direct email store if applicable: match specific dispatch
   const matchingDirectForBounce = mockDirectEmailsStore.filter(
     (d) =>
-      (campaignId && d.id === campaignId) ||
-      d.leadId === leadId ||
-      (email && d.recipientEmail.toLowerCase() === email.toLowerCase())
+      campaignId
+        ? d.id === campaignId
+        : d.leadId === leadId || (email && d.recipientEmail?.toLowerCase() === email.toLowerCase())
   );
   for (const d of matchingDirectForBounce) {
     d.status = "BOUNCED";
@@ -604,8 +734,8 @@ export function calculateCampaignKpis(recipientLogs: {
     clickedCount,
     bouncedCount,
     unsubscribedCount,
-    openRate: Math.round((openedCount / validDenominator) * 1000) / 10,
-    clickThroughRate: Math.round((clickedCount / validDenominator) * 1000) / 10,
+    openRate: Math.min(100, Math.round((openedCount / validDenominator) * 1000) / 10),
+    clickThroughRate: Math.min(100, Math.round((clickedCount / validDenominator) * 1000) / 10),
     bounceRate: Math.round((bouncedCount / validDenominator) * 1000) / 10,
     unsubscribeRate: Math.round((unsubscribedCount / validDenominator) * 1000) / 10,
   };

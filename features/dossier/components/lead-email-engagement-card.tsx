@@ -106,18 +106,24 @@ export function LeadEmailEngagementCard({
   const isBounced = Boolean(summary?.isBounced);
   const isUnsubscribed = Boolean(summary?.isUnsubscribed);
 
+  const deliveredCount =
+    summary?.deliveredCount ??
+    Math.max(0, totalSent - (summary?.bouncedCount || (isBounced ? 1 : 0)));
   const uniqueOpens =
     summary?.uniqueOpens ??
-    items.filter((i) => (i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED")
-      .length;
+    items.filter(
+      (i) => i.status !== "BOUNCED" && ((i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED")
+    ).length;
   const uniqueClicks =
-    summary?.uniqueClicks ?? items.filter((i) => (i.clickCount || 0) > 0 || i.status === "CLICKED").length;
+    summary?.uniqueClicks ??
+    items.filter((i) => i.status !== "BOUNCED" && ((i.clickCount || 0) > 0 || i.status === "CLICKED")).length;
 
   const openRate =
-    summary?.openRate ?? (totalSent > 0 ? Math.min(100, Math.round((uniqueOpens / totalSent) * 100)) : 0);
+    summary?.openRate ??
+    (deliveredCount > 0 ? Math.min(100, Math.round((uniqueOpens / deliveredCount) * 100)) : 0);
   const clickRate =
     summary?.clickRate ??
-    (uniqueOpens > 0 ? Math.min(100, Math.round((uniqueClicks / uniqueOpens) * 100)) : 0);
+    (deliveredCount > 0 ? Math.min(100, Math.round((uniqueClicks / deliveredCount) * 100)) : 0);
 
   const handleSimulate = async (
     dispatchId: string,
@@ -370,6 +376,18 @@ export function LeadEmailEngagementCard({
         </div>
       )}
 
+      {/* Simulated Test Activity Info Banner */}
+      {summary?.hasSimulatedEvents && (
+        <div className="bg-purple-50/90 border-b border-purple-200 px-5 py-2.5 flex items-center justify-between text-xs text-purple-900">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+            <span>
+              <strong>Simulated Test Activity Recorded:</strong> {summary.simulatedTestOpenCount || 0} test opens and {summary.simulatedTestClickCount || 0} test clicks simulated. Test actions are kept isolated from production analytics and do not inflate genuine open rates or deliverability.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* KPI Metric Summary Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-100 border-b border-slate-100 bg-white">
         <div className="p-4 text-center">
@@ -380,7 +398,9 @@ export function LeadEmailEngagementCard({
             <Send className="w-4 h-4 text-slate-400 inline" />
             <span>{totalSent}</span>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">Batch + 1-on-1</span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            {deliveredCount} delivered{summary?.bouncedCount ? ` • ${summary.bouncedCount} bounced` : ""}
+          </span>
         </div>
 
         <div className="p-4 text-center">
@@ -391,8 +411,11 @@ export function LeadEmailEngagementCard({
             <Eye className="w-4 h-4 text-emerald-500 inline" />
             <span>{totalOpens}</span>
           </div>
-          <span className="text-[11px] text-emerald-700 font-medium">
-            {totalSent > 0 ? `${openRate}% open rate` : "No reads yet"}
+          <span
+            className="text-[11px] text-emerald-700 font-medium cursor-help"
+            title={`${uniqueOpens} unique opened out of ${deliveredCount} delivered`}
+          >
+            {deliveredCount > 0 ? `${openRate}% open rate (${uniqueOpens}/${deliveredCount})` : "No reads yet"}
           </span>
         </div>
 
@@ -404,8 +427,11 @@ export function LeadEmailEngagementCard({
             <MousePointerClick className="w-4 h-4 text-blue-500 inline" />
             <span>{totalClicks}</span>
           </div>
-          <span className="text-[11px] text-blue-700 font-medium">
-            {totalOpens > 0 ? `${clickRate}% CTR` : "0% CTR"}
+          <span
+            className="text-[11px] text-blue-700 font-medium cursor-help"
+            title={`${uniqueClicks} unique clickers out of ${deliveredCount} delivered`}
+          >
+            {deliveredCount > 0 ? `${clickRate}% CTR (${uniqueClicks}/${deliveredCount})` : "0% CTR"}
           </span>
         </div>
 
@@ -540,6 +566,26 @@ export function LeadEmailEngagementCard({
                     </span>
                   )}
 
+                  {Boolean(item.testOpenCount && item.testOpenCount > 0) && (
+                    <span
+                      className="inline-flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-medium"
+                      title="Simulated test open (does not inflate production open rate)"
+                    >
+                      <Sparkles className="w-3 h-3 text-purple-600" />
+                      🧪 {item.testOpenCount} test {item.testOpenCount === 1 ? "open" : "opens"} (simulated)
+                    </span>
+                  )}
+
+                  {Boolean(item.testClickCount && item.testClickCount > 0) && (
+                    <span
+                      className="inline-flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-medium"
+                      title="Simulated test click (does not inflate production CTR)"
+                    >
+                      <Sparkles className="w-3 h-3 text-purple-600" />
+                      🧪 {item.testClickCount} test {item.testClickCount === 1 ? "click" : "clicks"} (simulated)
+                    </span>
+                  )}
+
                   {item.lastClickedUrl && (
                     <a
                       href={item.lastClickedUrl}
@@ -557,6 +603,16 @@ export function LeadEmailEngagementCard({
                     <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-100">
                       <AlertTriangle className="w-3 h-3 text-red-600" />
                       Reason: {item.bounceReason}
+                    </span>
+                  )}
+
+                  {Boolean(item.testBouncedAt && item.testBounceReason) && (
+                    <span
+                      className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium"
+                      title="Simulated bounce (real recipient is not suppressed in production)"
+                    >
+                      <AlertTriangle className="w-3 h-3 text-amber-600" />
+                      🧪 Simulated Bounce: {item.testBounceReason}
                     </span>
                   )}
 
@@ -582,7 +638,7 @@ export function LeadEmailEngagementCard({
                 <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/60 -mx-3.5 -mb-3.5 p-2.5 rounded-b-xl">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
-                      Live Test Actions:
+                      Simulate Engagement:
                     </span>
 
                     <Button
@@ -592,7 +648,7 @@ export function LeadEmailEngagementCard({
                       onClick={() => handleSimulate(item.id, "OPEN")}
                       disabled={Boolean(activeSimId)}
                       className="h-6 px-2 text-[11px] font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 bg-white"
-                      title="Simulate recipient opening this email"
+                      title="Simulate recipient opening this email (isolated from production KPIs)"
                     >
                       <Eye className="w-3 h-3 text-emerald-600 mr-1" />
                       {activeSimId === `${item.id}_OPEN` ? "Recording..." : "Test Open"}
@@ -605,7 +661,7 @@ export function LeadEmailEngagementCard({
                       onClick={() => handleSimulate(item.id, "CLICK")}
                       disabled={Boolean(activeSimId)}
                       className="h-6 px-2 text-[11px] font-semibold text-blue-700 border-blue-200 hover:bg-blue-50 bg-white"
-                      title="Simulate recipient clicking a link"
+                      title="Simulate recipient clicking a link (isolated from production KPIs)"
                     >
                       <MousePointerClick className="w-3 h-3 text-blue-600 mr-1" />
                       {activeSimId === `${item.id}_CLICK` ? "Recording..." : "Test Click"}
@@ -618,7 +674,7 @@ export function LeadEmailEngagementCard({
                       onClick={() => handleSimulate(item.id, "BOUNCED")}
                       disabled={Boolean(activeSimId)}
                       className="h-6 px-2 text-[11px] font-semibold text-red-700 border-red-200 hover:bg-red-50 bg-white"
-                      title="Simulate a remote delivery bounce"
+                      title="Simulate a delivery bounce (does not suppress recipient in production)"
                     >
                       <AlertTriangle className="w-3 h-3 text-red-600 mr-1" />
                       {activeSimId === `${item.id}_BOUNCED` ? "Recording..." : "Test Bounce"}
@@ -654,10 +710,10 @@ export function LeadEmailEngagementCard({
                       onClick={() => handleSimulate(item.id, "RESET")}
                       disabled={Boolean(activeSimId)}
                       className="h-6 px-2 text-[11px] text-slate-400 hover:text-slate-600"
-                      title="Reset tracking stats back to Delivered"
+                      title="Clear simulated test events for this email (preserves genuine provider history)"
                     >
                       <RotateCcw className="w-3 h-3 text-slate-400 mr-1" />
-                      Reset
+                      Reset Test State
                     </Button>
                   </div>
                 </div>

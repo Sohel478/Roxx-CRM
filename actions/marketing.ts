@@ -1455,17 +1455,28 @@ export interface LeadEmailDispatchItem {
   bouncedAt?: string | null;
   bounceReason?: string | null;
   unsubscribedAt?: string | null;
+  // Test Event Provenance Separation:
+  isTest?: boolean;
+  testOpenCount?: number;
+  testClickCount?: number;
+  testOpenedAt?: string | null;
+  testClickedAt?: string | null;
+  testBouncedAt?: string | null;
+  testBounceReason?: string | null;
 }
 
 export interface LeadEmailEngagementSummary {
   overallStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" | "NONE";
   totalSent: number;
+  deliveredCount?: number;
+  bouncedCount?: number;
   totalOpens: number;
   totalClicks: number;
-  uniqueOpens?: number;
-  uniqueClicks?: number;
-  openRate?: number;
-  clickRate?: number;
+  uniqueOpens: number;
+  uniqueClicks: number;
+  openRate: number;
+  clickRate: number;
+  ctor?: number;
   isBounced: boolean;
   bounceReason?: string | null;
   isUnsubscribed: boolean;
@@ -1473,6 +1484,9 @@ export interface LeadEmailEngagementSummary {
   latestDispatchedAt?: string | null;
   deliverabilityStatus?: "100%" | "Failed" | "Ready" | "Check required" | "Not configured";
   deliverabilityLabel?: string;
+  hasSimulatedEvents?: boolean;
+  simulatedTestOpenCount?: number;
+  simulatedTestClickCount?: number;
   items: LeadEmailDispatchItem[];
 }
 
@@ -1588,6 +1602,13 @@ export async function getLeadEmailEngagementAction(
           bouncedAt: log.bouncedAt || null,
           bounceReason: log.bounceReason || log.error || null,
           unsubscribedAt: log.unsubscribedAt || null,
+          isTest: Boolean(log.isTest),
+          testOpenCount: Number(log.testOpenCount || 0),
+          testClickCount: Number(log.testClickCount || 0),
+          testOpenedAt: (log.testOpenedAt as string) || null,
+          testClickedAt: (log.testClickedAt as string) || null,
+          testBouncedAt: (log.testBouncedAt as string) || null,
+          testBounceReason: (log.testBounceReason as string) || null,
         });
       }
     }
@@ -1641,6 +1662,13 @@ export async function getLeadEmailEngagementAction(
               bouncedAt: (log.bouncedAt as string) || null,
               bounceReason: (log.bounceReason as string) || (log.error as string) || null,
               unsubscribedAt: (log.unsubscribedAt as string) || null,
+              isTest: Boolean(log.isTest),
+              testOpenCount: Number(log.testOpenCount || 0),
+              testClickCount: Number(log.testClickCount || 0),
+              testOpenedAt: (log.testOpenedAt as string) || null,
+              testClickedAt: (log.testClickedAt as string) || null,
+              testBouncedAt: (log.testBouncedAt as string) || null,
+              testBounceReason: (log.testBounceReason as string) || null,
             });
           }
         }
@@ -1649,11 +1677,12 @@ export async function getLeadEmailEngagementAction(
       }
     }
 
-    // 3. Scan Direct 1-on-1 Email Dispatches
+    // 3. Scan Direct 1-on-1 Email Dispatches (strictly scoped by organizationId)
     const matchingDirect = mockDirectEmailsStore.filter(
       (d) =>
-        d.leadId === leadId ||
-        (d.recipientEmail && emailCandidates.has(d.recipientEmail.trim().toLowerCase()))
+        (!d.organizationId || d.organizationId === organizationId) &&
+        (d.leadId === leadId ||
+        (d.recipientEmail && emailCandidates.has(d.recipientEmail.trim().toLowerCase())))
     );
 
     for (const d of matchingDirect) {
@@ -1686,6 +1715,13 @@ export async function getLeadEmailEngagementAction(
         bouncedAt: d.bouncedAt || null,
         bounceReason: d.bounceReason || null,
         unsubscribedAt: d.unsubscribedAt || null,
+        isTest: Boolean(d.isTest || d.id.startsWith("test_")),
+        testOpenCount: Number(d.testOpenCount || 0),
+        testClickCount: Number(d.testClickCount || 0),
+        testOpenedAt: d.testOpenedAt || null,
+        testClickedAt: d.testClickedAt || null,
+        testBouncedAt: d.testBouncedAt || null,
+        testBounceReason: d.testBounceReason || null,
       });
     }
 
@@ -1776,6 +1812,16 @@ export async function getLeadEmailEngagementAction(
           ? act.activityAt
           : new Date().toISOString();
 
+      // Explicitly skip simulated test activities from affecting genuine metrics
+      if (
+        act.outcome === "TEST_OPENED" ||
+        act.outcome === "TEST_CLICKED" ||
+        act.outcome === "TEST_BOUNCED" ||
+        act.subject.startsWith("[TEST]")
+      ) {
+        continue;
+      }
+
       // Check if this activity is an outcome tracking event (OPENED, CLICKED, BOUNCED, UNSUBSCRIBED)
       if (act.outcome === "OPENED" && items.length > 0) {
         // Ensure at least one item reflects this open if not already
@@ -1793,11 +1839,17 @@ export async function getLeadEmailEngagementAction(
           itemToPromote.clickCount = Math.max(itemToPromote.clickCount, 1);
         }
       } else if (act.outcome === "BOUNCED" && items.length > 0) {
-        const itemToBounce = items[0];
-        if (itemToBounce && itemToBounce.status !== "BOUNCED") {
-          itemToBounce.status = "BOUNCED";
-          itemToBounce.bouncedAt = itemToBounce.bouncedAt || actTime;
-          itemToBounce.bounceReason = itemToBounce.bounceReason || act.description || "Delivery bounced";
+        // Only mark bounced if activity specifically references this dispatch or recipient
+        const targetBounceItem = items.find(
+          (i) =>
+            i.id === `act_${act.id}` ||
+            (act.description && act.description.includes(i.recipientEmail)) ||
+            (items.length === 1 && i.status === "DELIVERED")
+        );
+        if (targetBounceItem && targetBounceItem.status !== "BOUNCED") {
+          targetBounceItem.status = "BOUNCED";
+          targetBounceItem.bouncedAt = targetBounceItem.bouncedAt || actTime;
+          targetBounceItem.bounceReason = targetBounceItem.bounceReason || act.description || "Delivery bounced";
         }
       } else if (act.outcome === "UNSUBSCRIBED" && items.length > 0) {
         const itemToUnsub = items[0];
@@ -1854,27 +1906,53 @@ export async function getLeadEmailEngagementAction(
     // Sort items chronologically descending (newest email first)
     items.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 
-    // 6. Calculate summary metrics (ensure failed/skipped sends do not count as successful sends)
+    // 6. Calculate summary metrics adhering strictly to documented metric definitions
     const totalSent = items.length;
+    const bouncedItems = items.filter((i) => i.status === "BOUNCED");
+    const bouncedCount = bouncedItems.length;
+    const isBounced = bouncedCount > 0;
+    const bounceReason = bouncedItems[0]?.bounceReason || null;
+
+    // Delivered messages: confirmed outbound messages minus bounced messages
+    const deliveredCount = Math.max(0, totalSent - bouncedCount);
+
+    // Genuine Total Opens: sum of genuine provider open events, strictly excluding test events
     const totalOpens = items.reduce((acc, i) => acc + (i.openCount || 0), 0);
+
+    // Genuine Total Clicks: sum of genuine provider click events, strictly excluding test events
     const totalClicks = items.reduce((acc, i) => acc + (i.clickCount || 0), 0);
+
+    // Genuine Unique Opens: distinct delivered messages with at least one qualifying genuine open
     const uniqueOpens = items.filter(
-      (i) => (i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED"
+      (i) => i.status !== "BOUNCED" && ((i.openCount || 0) > 0 || i.status === "OPENED" || i.status === "CLICKED")
     ).length;
+
+    // Genuine Unique Clicks: distinct delivered messages with at least one qualifying genuine click
     const uniqueClicks = items.filter(
-      (i) => (i.clickCount || 0) > 0 || i.status === "CLICKED"
+      (i) => i.status !== "BOUNCED" && ((i.clickCount || 0) > 0 || i.status === "CLICKED")
     ).length;
-    const openRate = totalSent > 0 ? Math.min(100, Math.round((uniqueOpens / totalSent) * 100)) : 0;
-    const clickRate = uniqueOpens > 0 ? Math.min(100, Math.round((uniqueClicks / uniqueOpens) * 100)) : 0;
+
+    // Open Rate: unique opens / delivered messages * 100, strictly bounded to 100%
+    const openRate = deliveredCount > 0 ? Math.min(100, Math.round((uniqueOpens / deliveredCount) * 100)) : 0;
+
+    // CTR: unique clicks / delivered messages * 100, strictly bounded to 100%
+    const clickRate = deliveredCount > 0 ? Math.min(100, Math.round((uniqueClicks / deliveredCount) * 100)) : 0;
+
+    // CTOR (Click to Open Rate): unique clicks / unique opens * 100
+    const ctor = uniqueOpens > 0 ? Math.min(100, Math.round((uniqueClicks / uniqueOpens) * 100)) : 0;
+
+    // Simulated test metrics (isolated from genuine production KPIs)
+    const simulatedTestOpenCount = items.reduce((acc, i) => acc + (i.testOpenCount || 0), 0);
+    const simulatedTestClickCount = items.reduce((acc, i) => acc + (i.testClickCount || 0), 0);
+    const hasSimulatedEvents =
+      simulatedTestOpenCount > 0 ||
+      simulatedTestClickCount > 0 ||
+      items.some((i) => Boolean(i.testBouncedAt));
 
     const isSuppressed = Array.from(emailCandidates).some((e) => isEmailSuppressed(e));
     const hasUnsubItem = items.some((i) => i.status === "UNSUBSCRIBED");
     const isUnsubscribed = isSuppressed || hasUnsubItem || leadStatus === "Unsubscribed";
     const unsubItem = items.find((i) => i.unsubscribedAt != null);
-
-    const bouncedItem = items.find((i) => i.status === "BOUNCED");
-    const isBounced = Boolean(bouncedItem);
-    const bounceReason = bouncedItem?.bounceReason || null;
 
     let overallStatus: "DELIVERED" | "OPENED" | "CLICKED" | "BOUNCED" | "UNSUBSCRIBED" | "NONE" =
       "NONE";
@@ -1943,12 +2021,15 @@ export async function getLeadEmailEngagementAction(
     const summary: LeadEmailEngagementSummary = {
       overallStatus,
       totalSent,
+      deliveredCount,
+      bouncedCount,
       totalOpens,
       totalClicks,
       uniqueOpens,
       uniqueClicks,
       openRate,
       clickRate,
+      ctor,
       isBounced,
       bounceReason,
       isUnsubscribed,
@@ -1956,6 +2037,9 @@ export async function getLeadEmailEngagementAction(
       latestDispatchedAt: items[0]?.sentAt || null,
       deliverabilityStatus,
       deliverabilityLabel,
+      hasSimulatedEvents,
+      simulatedTestOpenCount,
+      simulatedTestClickCount,
       items,
     };
 
@@ -1972,8 +2056,9 @@ export async function getLeadEmailEngagementAction(
 }
 
 /**
- * Simulates or records a real-time email engagement event (OPEN, CLICK, BOUNCE, UNSUBSCRIBE, RESET)
- * for testing, verification, or manual webhook triggers.
+ * Simulates an email engagement event (OPEN, CLICK, BOUNCED, RESET) for testing and verification.
+ * Strictly maintains event provenance: test events update isolated test metrics and log
+ * TEST activities, never contaminating genuine production recipient logs, open rates, or deliverability.
  */
 export async function simulateLeadEmailEngagementAction(input: {
   leadId: string;
@@ -2000,85 +2085,94 @@ export async function simulateLeadEmailEngagementAction(input: {
     }
 
     if (event === "OPEN") {
-      await recordEmailOpen(dispatchId, leadId);
+      // Record simulated test open event with explicit TEST provenance
+      await recordEmailOpen(dispatchId, leadId, { provenance: "TEST" });
       revalidatePath(`/leads/${leadId}`);
       revalidatePath("/leads");
-      return { success: true, message: "Open event recorded! Read status and open count updated." };
+      return {
+        success: true,
+        message: "Test open event recorded! (Simulated events do not affect genuine production metrics)",
+      };
     }
 
     if (event === "CLICK") {
       const clickUrl = targetUrl || "https://roxx-crm.com/demo";
-      await recordEmailClick(dispatchId, leadId, clickUrl);
+      await recordEmailClick(dispatchId, leadId, clickUrl, { provenance: "TEST" });
       revalidatePath(`/leads/${leadId}`);
       revalidatePath("/leads");
-      return { success: true, message: `Link click recorded for ${clickUrl}! CTR updated.` };
+      return {
+        success: true,
+        message: `Test click recorded for ${clickUrl}! (Simulated events do not affect genuine production metrics)`,
+      };
     }
 
     if (event === "BOUNCED") {
       const reason = bounceReason || "550 5.1.1 User unknown / mailbox unavailable";
-      await recordEmailBounce(dispatchId, leadId, recipientEmail, reason);
+      await recordEmailBounce(dispatchId, leadId, recipientEmail, reason, { isSimulated: true });
       revalidatePath(`/leads/${leadId}`);
       revalidatePath("/leads");
-      return { success: true, message: "Bounce recorded! Email address suppressed from future campaigns." };
+      return {
+        success: true,
+        message: "Test bounce recorded! (Simulated bounce recorded without suppressing real contact in production)",
+      };
     }
 
     if (event === "UNSUBSCRIBE") {
       await recordEmailUnsubscribe(dispatchId, leadId, recipientEmail);
       revalidatePath(`/leads/${leadId}`);
       revalidatePath("/leads");
-      return { success: true, message: "Recipient marked as unsubscribed and added to suppression list." };
+      return {
+        success: true,
+        message: "Recipient marked as unsubscribed and added to suppression list.",
+      };
     }
 
     if (event === "RESET") {
-      // Reset dispatch status in direct emails store
+      // Clear test simulation fields for direct emails
       const matchingDirect = mockDirectEmailsStore.filter(
-        (d) => d.id === dispatchId || d.leadId === leadId
+        (d) => (dispatchId ? d.id === dispatchId : d.leadId === leadId)
       );
       for (const d of matchingDirect) {
-        d.status = "DELIVERED";
-        d.openCount = 0;
-        d.openedAt = null;
-        d.clickCount = 0;
-        d.clickedAt = null;
-        d.lastClickedUrl = null;
-        d.bouncedAt = null;
-        d.bounceReason = null;
-        d.unsubscribedAt = null;
+        d.testOpenCount = 0;
+        d.testOpenedAt = null;
+        d.testClickCount = 0;
+        d.testClickedAt = null;
+        d.testBouncedAt = null;
+        d.testBounceReason = null;
       }
 
-      // If matching campaign logs
+      // Clear test simulation fields for campaign logs
       for (const camp of mockMarketingCampaignsStore) {
         for (const log of camp.recipientLogs) {
           if (log.leadId === leadId) {
-            log.status = "SENT";
-            log.openCount = 0;
-            log.openedAt = null;
-            log.clickCount = 0;
-            log.clickedAt = null;
-            log.lastClickedUrl = null;
-            log.bouncedAt = null;
-            log.bounceReason = null;
-            log.unsubscribedAt = null;
+            log.testOpenCount = 0;
+            log.testOpenedAt = null;
+            log.testClickCount = 0;
+            log.testClickedAt = null;
+            log.testBouncedAt = null;
+            log.testBounceReason = null;
           }
         }
       }
 
-      // If matching activities
-      for (const act of mockActivitiesStore) {
-        if (act.leadId === leadId && act.type === "EMAIL") {
-          if (act.outcome === "OPENED" || act.outcome === "CLICKED" || act.outcome === "BOUNCED") {
-            act.outcome = "DELIVERED";
-          }
+      // Remove test activities only (outcome starting with TEST_)
+      for (let i = mockActivitiesStore.length - 1; i >= 0; i--) {
+        const act = mockActivitiesStore[i];
+        if (
+          act.leadId === leadId &&
+          act.type === "EMAIL" &&
+          (act.outcome === "TEST_OPENED" || act.outcome === "TEST_CLICKED" || act.outcome === "TEST_BOUNCED")
+        ) {
+          mockActivitiesStore.splice(i, 1);
         }
-      }
-
-      if (recipientEmail) {
-        mockSuppressedEmailsStore.delete(recipientEmail.trim().toLowerCase());
       }
 
       revalidatePath(`/leads/${leadId}`);
       revalidatePath("/leads");
-      return { success: true, message: "Tracking status reset back to Delivered." };
+      return {
+        success: true,
+        message: "Simulated test events cleared. Genuine email engagement history preserved.",
+      };
     }
 
     return { success: false, message: "Invalid event type" };
