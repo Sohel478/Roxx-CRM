@@ -272,32 +272,39 @@ export async function getLeadsAction(params: {
       },
     });
 
-    let mappedItems = allMatching.map((l) => ({
-      id: l.id,
-      leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
-      firstName: l.firstName,
-      lastName: l.lastName,
-      fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
-      email: l.email,
-      supportEmail: l.supportEmail || null,
-      phone: l.phone,
-      companyName: l.companyName,
-      jobTitle: l.jobTitle,
-      website: (l as any).website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
-      companyLinkedin: l.companyLinkedin || null,
-      customerLinkedin: l.customerLinkedin || null,
-      source: l.source,
-      status: l.status,
-      rating: l.rating || "Warm",
-      estimatedValue: Number(l.estimatedValue || 0),
-      currency: l.currency,
-      description: l.description,
-      emailStatus: resolveLeadEmailStatus(l),
-      ownerId: l.ownerId || null,
-      createdById: l.createdById || null,
-      ownerName: l.owner?.name || null,
-      createdAt: l.createdAt.toISOString(),
-    }));
+    let mappedItems = allMatching.map((l) => {
+      const finalOwnerName =
+        l.owner?.name || (l.ownerId ? resolveOwnerNameFromStore(l.ownerId, session, null) : null);
+      return {
+        id: l.id,
+        leadNumber: l.leadNumber || `LEAD-${l.id.slice(-4).toUpperCase()}`,
+        firstName: l.firstName,
+        lastName: l.lastName,
+        fullName: `${l.firstName} ${l.lastName || ""}`.trim(),
+        email: l.email,
+        supportEmail: l.supportEmail || null,
+        phone: l.phone,
+        companyName: l.companyName,
+        jobTitle: l.jobTitle,
+        website: (l as any).website || l.description?.match(/Website:\s*([^\s\n\r]+)/i)?.[1] || null,
+        companyLinkedin: l.companyLinkedin || null,
+        customerLinkedin: l.customerLinkedin || null,
+        source: l.source,
+        status: l.status,
+        rating: l.rating || "Warm",
+        estimatedValue: Number(l.estimatedValue || 0),
+        currency: l.currency,
+        description: l.description,
+        emailStatus: resolveLeadEmailStatus(l),
+        ownerId: l.ownerId || null,
+        createdById: l.createdById || null,
+        ownerName: finalOwnerName,
+        owner: l.owner
+          ? { id: l.owner.id, name: l.owner.name }
+          : (l.ownerId && finalOwnerName ? { id: l.ownerId, name: finalOwnerName } : null),
+        createdAt: l.createdAt.toISOString(),
+      };
+    });
 
     if (params.emailStatus && params.emailStatus !== "ALL") {
       mappedItems = mappedItems.filter((i) => i.emailStatus === params.emailStatus);
@@ -520,7 +527,7 @@ export async function getLeadByIdAction(id: string) {
   try {
     const lead = await prisma.lead.findFirst({
       where: {
-        id,
+        OR: [{ id }, { leadNumber: id }],
         organizationId,
         deletedAt: null,
       },
@@ -593,6 +600,9 @@ export async function getLeadByIdAction(id: string) {
       };
     }
 
+    const finalOwnerName =
+      lead.owner?.name || (lead.ownerId ? resolveOwnerNameFromStore(lead.ownerId, session, null) : null);
+
     return {
       success: true,
       data: {
@@ -602,11 +612,16 @@ export async function getLeadByIdAction(id: string) {
         convertedInfo,
         estimatedValue: Number(lead.estimatedValue || 0),
         fullName: `${lead.firstName} ${lead.lastName || ""}`.trim(),
+        ownerName: finalOwnerName,
+        owner: lead.owner
+          ? { id: lead.owner.id, name: lead.owner.name }
+          : (lead.ownerId && finalOwnerName ? { id: lead.ownerId, name: finalOwnerName } : null),
       },
     };
-  } catch (err: any) {
-    if (err?.message?.includes("Unauthorized")) {
-      return { success: false, error: err.message };
+  } catch (err) {
+    const errorObj = err as { message?: string } | null;
+    if (errorObj?.message?.includes("Unauthorized")) {
+      return { success: false, error: errorObj.message };
     }
     console.error("[getLeadByIdAction] Database error:", err);
     return getMockLeadById(id, session, userId, isAdminOrManager);
@@ -1013,11 +1028,62 @@ export async function createLeadAction(
   } = parsed.data;
 
   const isExplicitlyUnassigned = ownerId === "UNASSIGNED" || ownerId === "unassigned";
-  const finalOwnerId = isExplicitlyUnassigned
+  const rawOwnerId = isExplicitlyUnassigned
     ? null
     : (ownerId && typeof ownerId === "string" && ownerId.trim() !== ""
         ? ownerId.trim()
         : (userId || session.id || "platform-owner-sohel"));
+
+  // Validate ownerId in DB to prevent foreign key constraint failures
+  let validatedOwnerId: string | null = null;
+  if (rawOwnerId) {
+    try {
+      const ownerRecord = await prisma.user.findFirst({
+        where: { id: rawOwnerId, organizationId },
+        select: { id: true, name: true },
+      });
+      if (ownerRecord) {
+        validatedOwnerId = ownerRecord.id;
+      } else {
+        const fallbackUser = (userId || session.id) ? await prisma.user.findFirst({
+          where: {
+            OR: [
+              ...(userId ? [{ id: userId }] : []),
+              ...(session.id ? [{ id: session.id }] : []),
+              ...(session.email ? [{ email: session.email }] : []),
+            ],
+            organizationId,
+          },
+          select: { id: true },
+        }) : null;
+        validatedOwnerId = fallbackUser ? fallbackUser.id : null;
+      }
+    } catch {
+      validatedOwnerId = null;
+    }
+  }
+
+  // Validate createdById in DB to prevent foreign key constraint failures
+  let validatedCreatedById: string | null = null;
+  if (userId) {
+    try {
+      const userRecord = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: userId },
+            ...(session.id ? [{ id: session.id }] : []),
+            ...(session.email ? [{ email: session.email }] : []),
+          ],
+          organizationId,
+        },
+        select: { id: true },
+      });
+      validatedCreatedById = userRecord ? userRecord.id : null;
+    } catch {
+      validatedCreatedById = null;
+    }
+  }
+
   const leadNumber = `LEAD-${Math.floor(1000 + Math.random() * 9000)}`;
   const cleanWebsite = website?.trim()
     ? (website.trim().startsWith("http") ? website.trim() : `https://${website.trim()}`)
@@ -1045,8 +1111,11 @@ export async function createLeadAction(
         estimatedValue,
         currency,
         description: description || undefined,
-        ownerId: finalOwnerId,
-        createdById: userId,
+        ownerId: validatedOwnerId,
+        createdById: validatedCreatedById,
+      },
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -1054,7 +1123,7 @@ export async function createLeadAction(
       await prisma.auditLog.create({
         data: {
           organizationId,
-          userId,
+          userId: validatedCreatedById || undefined,
           action: "LEAD_CREATED",
           entityType: "Lead",
           entityId: created.id,
@@ -1065,7 +1134,7 @@ export async function createLeadAction(
 
     await createNotificationHelper({
       organizationId,
-      userId,
+      userId: validatedCreatedById || userId,
       type: "LEAD_CREATED",
       title: "New Lead Created",
       message: `${firstName} ${lastName || ""}`.trim() + ` (${currency} ${Number(estimatedValue).toLocaleString()}) was created.`,
@@ -1073,11 +1142,10 @@ export async function createLeadAction(
       entityId: created.id,
     });
 
-    const finalOwnerName = resolveOwnerNameFromStore(
-      finalOwnerId,
-      session,
-      (data as any).ownerName
-    );
+    const finalOwnerName =
+      created.owner?.name ||
+      resolveOwnerNameFromStore(validatedOwnerId, session, (data as any).ownerName);
+
     const createdItem: LeadItem = {
       id: created.id,
       leadNumber: created.leadNumber || leadNumber,
@@ -1099,67 +1167,27 @@ export async function createLeadAction(
       currency: created.currency || "USD",
       description: created.description,
       emailStatus: emailStatus || "NA",
-      ownerId: finalOwnerId,
+      ownerId: validatedOwnerId,
       ownerName: finalOwnerName,
-      createdById: userId,
+      owner: created.owner
+        ? { id: created.owner.id, name: created.owner.name }
+        : (validatedOwnerId && finalOwnerName ? { id: validatedOwnerId, name: finalOwnerName } : null),
+      createdById: validatedCreatedById,
       createdAt: created.createdAt.toISOString(),
     };
 
     revalidatePath("/leads");
+    revalidatePath(`/leads/${created.id}`);
     revalidatePath("/dashboard");
     return { success: true, data: createdItem };
   } catch (err) {
-    console.error("[createLeadAction] Database error:", err);
-    syncMockLeadsFromDisk(true);
-    const fullName = `${firstName} ${lastName || ""}`.trim();
-    const finalOwnerName = resolveOwnerNameFromStore(
-      finalOwnerId,
-      session,
-      (data as any).ownerName
-    );
-    const newLead: LeadItem & { organizationId: string; description?: string } = {
-      id: `lead_${Date.now()}`,
-      organizationId,
-      leadNumber,
-      firstName,
-      lastName: lastName || null,
-      fullName,
-      email: email || null,
-      supportEmail: supportEmail || null,
-      phone: phone || null,
-      companyName: companyName || null,
-      jobTitle: jobTitle || null,
-      website: cleanWebsite,
-      companyLinkedin: companyLinkedin || null,
-      customerLinkedin: customerLinkedin || null,
-      source,
-      status,
-      rating,
-      estimatedValue,
-      currency,
-      ownerId: finalOwnerId,
-      createdById: userId,
-      ownerName: finalOwnerName,
-      createdAt: new Date().toISOString(),
-      description,
-      emailStatus: emailStatus || "NA",
+    console.error("[createLeadAction] Live database persistence error:", err);
+    // Never silently swallow DB persistence errors or return fake success!
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      error: msg || "Failed to persist lead to live database",
     };
-    mockLeadsStore.unshift(newLead);
-    persistMockLeads();
-
-    createNotificationHelper({
-      organizationId,
-      userId,
-      type: "LEAD_CREATED",
-      title: "New Lead Created",
-      message: `${fullName} (${currency} ${Number(estimatedValue).toLocaleString()}) was created.`,
-      entityType: "lead",
-      entityId: newLead.id,
-    });
-
-    revalidatePath("/leads");
-    revalidatePath("/dashboard");
-    return { success: true, data: newLead };
   }
 }
 
@@ -1172,7 +1200,7 @@ export async function updateLeadAction(
 ): Promise<{ success: boolean; data?: LeadItem; error?: string }> {
   try {
     const session = await requirePermission("lead:update");
-    const { userId } = await resolveTenantContext(session);
+    const { organizationId, userId } = await resolveTenantContext(session);
     const roleUpper = session.role?.toUpperCase();
     const isAdminOrManager =
       roleUpper === "ADMIN" ||
@@ -1182,6 +1210,29 @@ export async function updateLeadAction(
 
     if (isMockDatabase()) {
       return updateMockLead(id, data, session, userId, isAdminOrManager);
+    }
+
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id }, { leadNumber: id }],
+        organizationId,
+        deletedAt: null,
+      },
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Lead not found" };
+    }
+
+    if (!isAdminOrManager) {
+      const isOwner = existing.ownerId === session.id || existing.ownerId === userId;
+      const isCreator = existing.createdById === session.id || existing.createdById === userId;
+      if (!isOwner && !isCreator) {
+        return { success: false, error: "Unauthorized: You do not have access to this lead" };
+      }
     }
 
     const updatePayload: Record<string, any> = {};
@@ -1208,120 +1259,90 @@ export async function updateLeadAction(
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
     if (data.emailStatus !== undefined) updatePayload.emailStatus = data.emailStatus;
     if (data.ownerId !== undefined && isAdminOrManager) {
-      const isUnassign = !data.ownerId || data.ownerId === "UNASSIGNED";
-      updatePayload.ownerId = isUnassign ? null : data.ownerId;
-      updatePayload.assignedAt = new Date();
+      const isUnassign = !data.ownerId || data.ownerId === "UNASSIGNED" || data.ownerId === "unassigned";
+      if (isUnassign || typeof data.ownerId !== "string") {
+        updatePayload.ownerId = null;
+        updatePayload.assignedAt = new Date();
+      } else {
+        const targetId = data.ownerId.trim();
+        const ownerExists = await prisma.user.findFirst({
+          where: { id: targetId, organizationId },
+          select: { id: true },
+        });
+        updatePayload.ownerId = ownerExists ? ownerExists.id : null;
+        updatePayload.assignedAt = new Date();
+      }
     }
+
+    const updated = await prisma.lead.update({
+      where: {
+        id: existing.id,
+      },
+      data: updatePayload,
+      include: {
+        owner: { select: { id: true, name: true, email: true } },
+      },
+    });
 
     try {
-      const updated = await prisma.lead.update({
-        where: {
-          id,
-          organizationId: session.organizationId,
-        },
-        data: updatePayload,
-        include: {
-          owner: { select: { id: true, name: true } },
+      await prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: userId || session.id,
+          action: "LEAD_UPDATED",
+          entityType: "Lead",
+          entityId: existing.id,
+          newValues: updatePayload,
         },
       });
+    } catch {}
 
-      try {
-        await prisma.auditLog.create({
-          data: {
-            organizationId: session.organizationId,
-            userId: session.id,
-            action: "LEAD_UPDATED",
-            entityType: "Lead",
-            entityId: id,
-            newValues: updatePayload,
-          },
-        });
-      } catch {}
+    const finalOwnerName =
+      updated.owner?.name ||
+      (updated.ownerId ? resolveOwnerNameFromStore(updated.ownerId, session, (data as any).ownerName) : null);
 
-      const updatedItem: LeadItem = {
-        id: updated.id,
-        leadNumber: updated.leadNumber || `LEAD-${updated.id.slice(-4).toUpperCase()}`,
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        fullName: `${updated.firstName} ${updated.lastName || ""}`.trim(),
-        email: updated.email,
-        supportEmail: updated.supportEmail,
-        phone: updated.phone,
-        companyName: updated.companyName,
-        jobTitle: updated.jobTitle,
-        website: updated.website,
-        companyLinkedin: updated.companyLinkedin,
-        customerLinkedin: updated.customerLinkedin,
-        source: updated.source,
-        status: updated.status,
-        rating: updated.rating || "Warm",
-        estimatedValue: Number(updated.estimatedValue || 0),
-        currency: updated.currency || "USD",
-        description: updated.description,
-        emailStatus: resolveLeadEmailStatus(updated),
-        ownerId: updated.ownerId,
-        ownerName: updated.owner?.name || null,
-        owner: updated.owner ? { id: updated.owner.id, name: updated.owner.name } : null,
-        createdById: updated.createdById,
-        createdAt: updated.createdAt.toISOString(),
-      };
+    const updatedItem: LeadItem = {
+      id: updated.id,
+      leadNumber: updated.leadNumber || `LEAD-${updated.id.slice(-4).toUpperCase()}`,
+      firstName: updated.firstName,
+      lastName: updated.lastName,
+      fullName: `${updated.firstName} ${updated.lastName || ""}`.trim(),
+      email: updated.email,
+      supportEmail: updated.supportEmail,
+      phone: updated.phone,
+      companyName: updated.companyName,
+      jobTitle: updated.jobTitle,
+      website: updated.website,
+      companyLinkedin: updated.companyLinkedin,
+      customerLinkedin: updated.customerLinkedin,
+      source: updated.source,
+      status: updated.status,
+      rating: updated.rating || "Warm",
+      estimatedValue: Number(updated.estimatedValue || 0),
+      currency: updated.currency || "USD",
+      description: updated.description,
+      emailStatus: resolveLeadEmailStatus(updated),
+      ownerId: updated.ownerId,
+      ownerName: finalOwnerName,
+      owner: updated.owner
+        ? { id: updated.owner.id, name: updated.owner.name }
+        : (updated.ownerId && finalOwnerName ? { id: updated.ownerId, name: finalOwnerName } : null),
+      createdById: updated.createdById,
+      createdAt: updated.createdAt.toISOString(),
+    };
 
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${updated.id}`);
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: updatedItem };
-    } catch (dbErr) {
-      console.warn("[updateLeadAction] Live database update error:", dbErr);
-    }
-
-    syncMockLeadsFromDisk(true);
-    let idx = mockLeadsStore.findIndex((l) => l.id === id || l.leadNumber === id);
-    if (idx !== -1) {
-      const updated: any = {
-        ...mockLeadsStore[idx],
-        ...updatePayload,
-      };
-      if (updatePayload.firstName || updatePayload.lastName !== undefined) {
-        updated.fullName = `${updatePayload.firstName || updated.firstName} ${updatePayload.lastName !== undefined ? updatePayload.lastName : updated.lastName || ""}`.trim();
-      }
-      if (updatePayload.ownerId !== undefined) {
-        const isExplicitlyUnassigned =
-          updatePayload.ownerId === "UNASSIGNED" || updatePayload.ownerId === "unassigned";
-        const targetOwnerId = isExplicitlyUnassigned
-          ? null
-          : (updatePayload.ownerId && typeof updatePayload.ownerId === "string" && updatePayload.ownerId.trim() !== ""
-              ? updatePayload.ownerId.trim()
-              : null);
-        updated.ownerId = targetOwnerId;
-        updated.ownerName = resolveOwnerNameFromStore(
-          targetOwnerId,
-          session,
-          (data as any).ownerName || updated.ownerName
-        );
-      }
-      const resolvedOwnerName = updated.ownerId
-        ? resolveOwnerNameFromStore(updated.ownerId, session, updated.ownerName)
-        : null;
-      updated.owner = updated.ownerId && resolvedOwnerName
-        ? { id: updated.ownerId, name: resolvedOwnerName }
-        : null;
-      updated.emailStatus = resolveLeadEmailStatus(updated);
-
-      mockLeadsStore[idx] = updated;
-      persistMockLeads();
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${updated.id}`);
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: updated };
-    }
-    return { success: false, error: "Lead not found" };
-  } catch (err: any) {
-    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${updated.id}`);
+    revalidatePath(`/leads/${id}`);
+    revalidatePath("/dashboard");
+    return { success: true, data: updatedItem };
+  } catch (err: unknown) {
+    const errorObj = err as { digest?: string; message?: string } | null;
+    if (errorObj?.digest?.includes?.("NEXT_REDIRECT") || errorObj?.message === "NEXT_REDIRECT") {
       throw err;
     }
-    return { success: false, error: err?.message || "Failed to update lead" };
+    console.error("[updateLeadAction] Live database update error:", err);
+    return { success: false, error: errorObj?.message || "Failed to update lead" };
   }
 }
 
@@ -1338,33 +1359,39 @@ export async function updateLeadEmailStatusAction(
     return { success: false, error: "Invalid email status" };
   }
 
+  const { organizationId } = await resolveTenantContext(session);
+
   if (isMockDatabase()) {
     return updateMockLeadEmailStatus(leadId, emailStatus);
   }
 
   try {
-    try {
-      await prisma.lead.update({
-        where: { id: leadId, organizationId: session.organizationId },
-        data: { updatedAt: new Date() },
-      });
-    } catch {}
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id: leadId }, { leadNumber: leadId }],
+        organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
 
-    let idx = mockLeadsStore.findIndex((l) => l.id === leadId);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === leadId);
+    if (!existing) {
+      return { success: false, error: "Lead not found" };
     }
-    if (idx !== -1) {
-      mockLeadsStore[idx].emailStatus = emailStatus;
-      persistMockLeads();
-    }
+
+    await prisma.lead.update({
+      where: { id: existing.id },
+      data: { updatedAt: new Date() },
+    });
 
     revalidatePath("/leads");
+    revalidatePath(`/leads/${existing.id}`);
     revalidatePath(`/leads/${leadId}`);
-    return { success: true, data: { id: leadId, emailStatus } };
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Failed to update email status" };
+    return { success: true, data: { id: existing.id, emailStatus } };
+  } catch (err) {
+    const errorObj = err as { message?: string } | null;
+    console.error("[updateLeadEmailStatusAction] Error:", err);
+    return { success: false, error: errorObj?.message || "Failed to update email status" };
   }
 }
 
@@ -1374,62 +1401,59 @@ export async function updateLeadEmailStatusAction(
 export async function updateLeadStatusAction(id: string, newStatus: string) {
   try {
     const session = await requirePermission("lead:update");
+    const { organizationId, userId } = await resolveTenantContext(session);
 
     if (isMockDatabase()) {
       return updateMockLeadStatus(id, newStatus);
     }
 
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id }, { leadNumber: id }],
+        organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Lead not found" };
+    }
+
+    const updated = await prisma.lead.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        status: newStatus,
+      },
+    });
+
     try {
-      const updated = await prisma.lead.update({
-        where: {
-          id,
-          organizationId: session.organizationId,
-        },
+      await prisma.auditLog.create({
         data: {
-          status: newStatus,
+          organizationId,
+          userId: userId || session.id,
+          action: "LEAD_STATUS_CHANGED",
+          entityType: "Lead",
+          entityId: existing.id,
+          newValues: { newStatus },
         },
       });
+    } catch {}
 
-      try {
-        await prisma.auditLog.create({
-          data: {
-            organizationId: session.organizationId,
-            userId: session.id,
-            action: "LEAD_STATUS_CHANGED",
-            entityType: "Lead",
-            entityId: id,
-            newValues: { newStatus },
-          },
-        });
-      } catch {}
-
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: updated };
-    } catch (dbErr) {
-      console.warn("[updateLeadStatusAction] Live database update error:", dbErr);
-    }
-
-    let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx === -1) {
-      syncMockLeadsFromDisk();
-      idx = mockLeadsStore.findIndex((l) => l.id === id);
-    }
-    if (idx !== -1) {
-      mockLeadsStore[idx].status = newStatus;
-      persistMockLeads();
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: mockLeadsStore[idx] };
-    }
-    return { success: false, error: "Lead not found" };
-  } catch (err: any) {
-    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${existing.id}`);
+    revalidatePath(`/leads/${id}`);
+    revalidatePath("/dashboard");
+    return { success: true, data: updated };
+  } catch (err: unknown) {
+    const errorObj = err as { digest?: string; message?: string } | null;
+    if (errorObj?.digest?.includes?.("NEXT_REDIRECT") || errorObj?.message === "NEXT_REDIRECT") {
       throw err;
     }
-    return { success: false, error: err?.message || "Failed to update lead status" };
+    console.error("[updateLeadStatusAction] Live database update error:", err);
+    return { success: false, error: errorObj?.message || "Failed to update lead status" };
   }
 }
 
@@ -1449,7 +1473,7 @@ export async function assignLeadAction(id: string, ownerId: string) {
     return { success: false, error: "Unauthorized: Only Admins and Managers can reassign leads" };
   }
 
-  const { userId } = await resolveTenantContext(session);
+  const { organizationId, userId } = await resolveTenantContext(session);
   const isUnassign = !ownerId || ownerId === "UNASSIGNED" || ownerId === "unassigned";
   const isMe =
     ownerId === "ME" ||
@@ -1464,52 +1488,62 @@ export async function assignLeadAction(id: string, ownerId: string) {
   }
 
   try {
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id }, { leadNumber: id }],
+        organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Lead not found" };
+    }
+
+    let validatedTargetOwnerId: string | null = null;
+    if (targetOwnerId) {
+      const ownerRec = await prisma.user.findFirst({
+        where: { id: targetOwnerId, organizationId },
+        select: { id: true },
+      });
+      validatedTargetOwnerId = ownerRec ? ownerRec.id : null;
+    }
+
     const updated = await prisma.lead.update({
       where: {
-        id,
-        organizationId: session.organizationId,
+        id: existing.id,
       },
       data: {
-        ownerId: targetOwnerId,
+        ownerId: validatedTargetOwnerId,
         assignedAt: new Date(),
       },
       include: {
-        owner: { select: { name: true } },
+        owner: { select: { id: true, name: true } },
       },
     });
 
     try {
       await prisma.auditLog.create({
         data: {
-          organizationId: session.organizationId,
-          userId: session.id,
+          organizationId,
+          userId: userId || session.id,
           action: "LEAD_ASSIGNED",
           entityType: "Lead",
-          entityId: id,
-          newValues: { ownerId: targetOwnerId },
+          entityId: existing.id,
+          newValues: { ownerId: validatedTargetOwnerId },
         },
       });
     } catch {}
 
     revalidatePath("/leads");
+    revalidatePath(`/leads/${existing.id}`);
     revalidatePath(`/leads/${id}`);
     return { success: true, data: updated };
-  } catch {
-    syncMockLeadsFromDisk(true);
-    let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx !== -1) {
-      mockLeadsStore[idx].ownerId = targetOwnerId;
-      mockLeadsStore[idx].ownerName = resolveOwnerNameFromStore(
-        targetOwnerId,
-        session,
-        mockLeadsStore[idx].ownerName
-      );
-      persistMockLeads();
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${id}`);
-      return { success: true, data: mockLeadsStore[idx] };
-    }
-    return { success: false, error: "Lead not found" };
+  } catch (err) {
+    const errorObj = err as { message?: string } | null;
+    console.error("[assignLeadAction] Live database assign error:", err);
+    return { success: false, error: errorObj?.message || "Failed to assign lead in database" };
   }
 }
 
@@ -1525,76 +1559,82 @@ export async function pickLeadAction(id: string) {
       return pickMockLead(id, session, userId);
     }
 
-    try {
-      const updated = await prisma.lead.update({
-        where: {
-          id,
-          organizationId,
-        },
-        data: {
-          status: "New",
-          ownerId: userId,
-          assignedAt: new Date(),
-        },
-        include: {
-          owner: { select: { name: true } },
-        },
-      });
-
-      try {
-        await prisma.auditLog.create({
-          data: {
-            organizationId,
-            userId,
-            action: "LEAD_CLAIMED",
-            entityType: "Lead",
-            entityId: id,
-            newValues: {
-              previousStatus: "Scraped",
-              newStatus: "New",
-              ownerId: userId,
-              ownerName: session.name || "Sales Rep",
-            },
-          },
-        });
-      } catch {}
-
-      await createNotificationHelper({
+    const existing = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id }, { leadNumber: id }],
         organizationId,
-        userId,
-        type: "LEAD_ASSIGNED",
-        title: "Lead Claimed & Activated",
-        message: `You picked ${updated.firstName} ${updated.lastName || ""}`.trim() + " from Scraped and activated it to New.",
-        entityType: "lead",
-        entityId: id,
+        deletedAt: null,
+      },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Lead not found" };
+    }
+
+    let validatedUserId: string | null = null;
+    if (userId) {
+      const u = await prisma.user.findFirst({
+        where: { id: userId, organizationId },
+        select: { id: true },
       });
-
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: updated };
-    } catch (dbErr) {
-      console.warn("[pickLeadAction] Database error, falling back to mock store:", dbErr);
+      validatedUserId = u ? u.id : null;
     }
 
-    syncMockLeadsFromDisk(true);
-    let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx !== -1) {
-      mockLeadsStore[idx].status = "New";
-      mockLeadsStore[idx].ownerId = session.id || userId;
-      mockLeadsStore[idx].ownerName = session.name || "Current User";
-      persistMockLeads();
-      revalidatePath("/leads");
-      revalidatePath(`/leads/${id}`);
-      revalidatePath("/dashboard");
-      return { success: true, data: mockLeadsStore[idx] };
-    }
-    return { success: false, error: "Lead not found" };
-  } catch (err: any) {
-    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+    const updated = await prisma.lead.update({
+      where: {
+        id: existing.id,
+      },
+      data: {
+        status: "New",
+        ownerId: validatedUserId,
+        assignedAt: new Date(),
+      },
+      include: {
+        owner: { select: { name: true } },
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: validatedUserId || undefined,
+          action: "LEAD_CLAIMED",
+          entityType: "Lead",
+          entityId: existing.id,
+          newValues: {
+            previousStatus: "Scraped",
+            newStatus: "New",
+            ownerId: validatedUserId,
+            ownerName: session.name || "Sales Rep",
+          },
+        },
+      });
+    } catch {}
+
+    await createNotificationHelper({
+      organizationId,
+      userId: validatedUserId || userId,
+      type: "LEAD_ASSIGNED",
+      title: "Lead Claimed & Activated",
+      message: `You picked ${updated.firstName} ${updated.lastName || ""}`.trim() + " from Scraped and activated it to New.",
+      entityType: "lead",
+      entityId: existing.id,
+    });
+
+    revalidatePath("/leads");
+    revalidatePath(`/leads/${existing.id}`);
+    revalidatePath(`/leads/${id}`);
+    revalidatePath("/dashboard");
+    return { success: true, data: updated };
+  } catch (err: unknown) {
+    const errorObj = err as { digest?: string; message?: string } | null;
+    if (errorObj?.digest?.includes?.("NEXT_REDIRECT") || errorObj?.message === "NEXT_REDIRECT") {
       throw err;
     }
-    return { success: false, error: err?.message || "Failed to pick lead" };
+    console.error("[pickLeadAction] Live database pick error:", err);
+    return { success: false, error: errorObj?.message || "Failed to pick lead" };
   }
 }
 
@@ -1603,7 +1643,7 @@ export async function pickLeadAction(id: string) {
  */
 export async function deleteLeadAction(id: string) {
   const session = await requirePermission("lead:delete");
-  const { userId } = await resolveTenantContext(session);
+  const { organizationId, userId } = await resolveTenantContext(session);
   const roleUpper = session.role?.toUpperCase();
   const isAdminOrManager =
     roleUpper === "ADMIN" ||
@@ -1616,53 +1656,55 @@ export async function deleteLeadAction(id: string) {
   }
 
   try {
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: { id: true, organizationId: true },
+    const lead = await prisma.lead.findFirst({
+      where: {
+        OR: [{ id }, { leadNumber: id }],
+        organizationId,
+        deletedAt: null,
+      },
+      select: { id: true, ownerId: true, createdById: true },
     });
 
-    if (lead) {
-      await prisma.lead.update({
-        where: { id },
-        data: {
-          deletedAt: new Date(),
-        },
-      });
+    if (!lead) {
+      return { success: false, error: "Lead not found" };
+    }
 
-      try {
-        await prisma.auditLog.create({
-          data: {
-            organizationId: lead.organizationId,
-            userId,
-            action: "LEAD_DELETED",
-            entityType: "Lead",
-            entityId: id,
-          },
-        });
-      } catch {}
-    } else {
-      syncMockLeadsFromDisk(true);
-      let idx = mockLeadsStore.findIndex((l) => l.id === id);
-      if (idx !== -1) {
-        mockLeadsStore.splice(idx, 1);
-        persistMockLeads();
+    if (!isAdminOrManager) {
+      const isOwner = lead.ownerId === session.id || lead.ownerId === userId;
+      const isCreator = lead.createdById === session.id || lead.createdById === userId;
+      if (!isOwner && !isCreator) {
+        return { success: false, error: "Unauthorized: You do not have permission to delete this lead" };
       }
     }
 
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: userId || session.id,
+          action: "LEAD_DELETED",
+          entityType: "Lead",
+          entityId: lead.id,
+        },
+      });
+    } catch {}
+
     revalidatePath("/leads");
+    revalidatePath(`/leads/${lead.id}`);
+    revalidatePath(`/leads/${id}`);
     revalidatePath("/dashboard");
     return { success: true };
   } catch (err) {
-    console.error("[deleteLeadAction] Error deleting lead:", err);
-    syncMockLeadsFromDisk(true);
-    let idx = mockLeadsStore.findIndex((l) => l.id === id);
-    if (idx !== -1) {
-      mockLeadsStore.splice(idx, 1);
-      persistMockLeads();
-    }
-    revalidatePath("/leads");
-    revalidatePath("/dashboard");
-    return { success: true };
+    const errorObj = err as { message?: string } | null;
+    console.error("[deleteLeadAction] Live database delete error:", err);
+    return { success: false, error: errorObj?.message || "Failed to delete lead in database" };
   }
 }
 
@@ -1704,12 +1746,19 @@ export async function bulkAssignLeadsAction(
       ownerId === "platform-owner-sohel";
     const targetOwnerId = isUnassign ? null : (isMe ? (session.id || userId || "platform-owner-sohel") : ownerId);
 
-  if (isMockDatabase()) {
-    return bulkAssignMockLeads(leadIds, targetOwnerId, session);
-  }
-    const assignedName = resolveOwnerNameFromStore(targetOwnerId, session);
+    if (isMockDatabase()) {
+      return bulkAssignMockLeads(leadIds, targetOwnerId, session);
+    }
 
-    let updatedCount = 0;
+    let validatedTargetOwnerId: string | null = null;
+    if (targetOwnerId) {
+      const ownerRec = await prisma.user.findFirst({
+        where: { id: targetOwnerId, organizationId },
+        select: { id: true },
+      });
+      validatedTargetOwnerId = ownerRec ? ownerRec.id : null;
+    }
+
     try {
       const result = await prisma.lead.updateMany({
         where: {
@@ -1718,11 +1767,10 @@ export async function bulkAssignLeadsAction(
           deletedAt: null,
         },
         data: {
-          ownerId: targetOwnerId,
+          ownerId: validatedTargetOwnerId,
           assignedAt: new Date(),
         },
       });
-      updatedCount = result.count;
 
       try {
         await prisma.auditLog.create({
@@ -1732,38 +1780,25 @@ export async function bulkAssignLeadsAction(
             action: "LEADS_BULK_ASSIGNED",
             entityType: "Lead",
             entityId: leadIds[0] || "bulk",
-            newValues: { leadIds, ownerId: targetOwnerId, count: updatedCount },
+            newValues: { leadIds, ownerId: validatedTargetOwnerId, count: result.count },
           },
         });
       } catch {}
+
+      revalidatePath("/leads");
+      revalidatePath("/dashboard");
+      return { success: true, count: result.count };
     } catch (dbErr) {
-      console.warn("[bulkAssignLeadsAction] Database updateMany error, falling back to mock store:", dbErr);
+      const errorObj = dbErr as { message?: string } | null;
+      console.error("[bulkAssignLeadsAction] Database updateMany error:", dbErr);
+      return { success: false, error: errorObj?.message || "Failed to bulk assign leads in database" };
     }
-
-    // Update mockLeadsStore as well
-    syncMockLeadsFromDisk(true);
-    let mockUpdatedCount = 0;
-    for (const lead of mockLeadsStore) {
-      if (leadIds.includes(lead.id)) {
-        lead.ownerId = targetOwnerId;
-        lead.ownerName = assignedName;
-        mockUpdatedCount++;
-      }
-    }
-    if (mockUpdatedCount > 0) {
-      persistMockLeads();
-    }
-
-    const finalCount = updatedCount || mockUpdatedCount;
-
-    revalidatePath("/leads");
-    revalidatePath("/dashboard");
-    return { success: true, count: finalCount };
-  } catch (err: any) {
-    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+  } catch (err: unknown) {
+    const errorObj = err as { digest?: string; message?: string } | null;
+    if (errorObj?.digest?.includes?.("NEXT_REDIRECT") || errorObj?.message === "NEXT_REDIRECT") {
       throw err;
     }
-    return { success: false, error: err?.message || "Failed to bulk assign leads" };
+    return { success: false, error: errorObj?.message || "Failed to bulk assign leads" };
   }
 }
 
@@ -1801,7 +1836,6 @@ export async function bulkDeleteLeadsAction(
           OR: [{ ownerId: userId }, { createdById: userId }],
         };
 
-    let deletedCount = 0;
     try {
       const result = await prisma.lead.updateMany({
         where: scopedFilter,
@@ -1809,7 +1843,6 @@ export async function bulkDeleteLeadsAction(
           deletedAt: new Date(),
         },
       });
-      deletedCount = result.count;
 
       try {
         await prisma.auditLog.create({
@@ -1819,40 +1852,25 @@ export async function bulkDeleteLeadsAction(
             action: "LEADS_BULK_DELETED",
             entityType: "Lead",
             entityId: leadIds[0] || "bulk",
-            newValues: { leadIds, count: deletedCount },
+            newValues: { leadIds, count: result.count },
           },
         });
       } catch {}
+
+      revalidatePath("/leads");
+      revalidatePath("/dashboard");
+      return { success: true, count: result.count };
     } catch (dbErr) {
-      console.warn("[bulkDeleteLeadsAction] Database error, falling back to mock store:", dbErr);
+      const errorObj = dbErr as { message?: string } | null;
+      console.error("[bulkDeleteLeadsAction] Database error:", dbErr);
+      return { success: false, error: errorObj?.message || "Failed to bulk delete leads in database" };
     }
-
-    // Mock store deletion
-    syncMockLeadsFromDisk(true);
-    let mockDeletedCount = 0;
-    for (let i = mockLeadsStore.length - 1; i >= 0; i--) {
-      const l = mockLeadsStore[i];
-      if (leadIds.includes(l.id)) {
-        if (isAdminOrManager || l.ownerId === userId || l.createdById === userId) {
-          mockLeadsStore.splice(i, 1);
-          mockDeletedCount++;
-        }
-      }
-    }
-    if (mockDeletedCount > 0) {
-      persistMockLeads();
-    }
-
-    const finalCount = deletedCount || mockDeletedCount;
-
-    revalidatePath("/leads");
-    revalidatePath("/dashboard");
-    return { success: true, count: finalCount };
-  } catch (err: any) {
-    if (err?.digest?.includes?.("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+  } catch (err: unknown) {
+    const errorObj = err as { digest?: string; message?: string } | null;
+    if (errorObj?.digest?.includes?.("NEXT_REDIRECT") || errorObj?.message === "NEXT_REDIRECT") {
       throw err;
     }
-    return { success: false, error: err?.message || "Failed to bulk delete leads" };
+    return { success: false, error: errorObj?.message || "Failed to bulk delete leads" };
   }
 }
 

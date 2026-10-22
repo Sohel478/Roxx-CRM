@@ -373,4 +373,104 @@ describe("Lead Creation & Table Visibility", () => {
       expect(refetch.data?.estimatedValue).toBe(28500);
     }
   });
+
+  it("partial updates preserve fields that were not modified", async () => {
+    const createRes = await createLeadAction({
+      firstName: "Fatima",
+      lastName: "Zahra",
+      companyName: "Zahra Logistics",
+      website: "https://zahralogistics.com",
+      source: "Referral",
+      status: "New" as const,
+      rating: "Warm" as const,
+      estimatedValue: 75000,
+      currency: "USD",
+      description: "Original description untouched",
+    });
+    expect(createRes.success).toBe(true);
+    const leadId = createRes.data.id;
+
+    // Update only rating and status
+    const updateRes = await updateLeadAction(leadId, {
+      status: "Qualified" as const,
+      rating: "Hot" as const,
+    });
+    expect(updateRes.success).toBe(true);
+    expect(updateRes.data?.status).toBe("Qualified");
+    expect(updateRes.data?.rating).toBe("Hot");
+    // Verify untouched fields are preserved
+    expect(updateRes.data?.companyName).toBe("Zahra Logistics");
+    expect(updateRes.data?.website).toBe("https://zahralogistics.com");
+    expect(updateRes.data?.estimatedValue).toBe(75000);
+    expect(updateRes.data?.source).toBe("Referral");
+    expect(updateRes.data?.description).toBe("Original description untouched");
+  });
+
+  it("returns error and does not report success when lead to update does not exist", async () => {
+    const updateRes = await updateLeadAction("non-existent-lead-cuid-9999", {
+      companyName: "Ghost Company",
+    });
+    expect(updateRes.success).toBe(false);
+    expect(updateRes.error).toBe("Lead not found");
+  });
+
+  it("live database write failure propagates error and never returns fake success", async () => {
+    const prismaModule = await import("@/lib/db/prisma");
+    const subModule = await import("@/lib/subscription/subscription-service");
+    const subSpy = vi.spyOn(subModule.SubscriptionService, "checkLimit").mockResolvedValue({ allowed: true });
+    const isMockSpy = vi.spyOn(prismaModule, "isMockDatabase").mockReturnValue(false);
+    const prismaLeadCreateSpy = vi.spyOn(prismaModule.prisma.lead, "create").mockRejectedValue(
+      new Error("FATAL: database connection lost on pooler")
+    );
+    const prismaUserFindSpy = vi.spyOn(prismaModule.prisma.user, "findFirst").mockResolvedValue(null);
+
+    const createRes = await createLeadAction({
+      firstName: "Test",
+      lastName: "Fail",
+      source: "Website",
+      status: "New" as const,
+      rating: "Cold" as const,
+      estimatedValue: 1000,
+      currency: "USD",
+    });
+
+    expect(createRes.success).toBe(false);
+    expect(createRes.error).toContain("database connection lost");
+    expect(createRes.data).toBeUndefined();
+
+    subSpy.mockRestore();
+    isMockSpy.mockRestore();
+    prismaLeadCreateSpy.mockRestore();
+    prismaUserFindSpy.mockRestore();
+  });
+
+  it("live database update failure propagates error and never returns fake success", async () => {
+    const prismaModule = await import("@/lib/db/prisma");
+    const isMockSpy = vi.spyOn(prismaModule, "isMockDatabase").mockReturnValue(false);
+    const prismaLeadFindSpy = vi.spyOn(prismaModule.prisma.lead, "findFirst").mockResolvedValue({
+      id: "live_lead_123",
+      leadNumber: "LEAD-7777",
+      organizationId: "demo-org-123",
+      firstName: "Existing",
+      lastName: "Lead",
+      ownerId: "usr_sohel",
+      createdById: "usr_sohel",
+      deletedAt: null,
+    } as any);
+    const prismaLeadUpdateSpy = vi.spyOn(prismaModule.prisma.lead, "update").mockRejectedValue(
+      new Error("Foreign key constraint violation on update")
+    );
+
+    const updateRes = await updateLeadAction("live_lead_123", {
+      companyName: "Attempted Fail Corp",
+    });
+
+    expect(updateRes.success).toBe(false);
+    expect(updateRes.error).toContain("Foreign key constraint violation");
+    expect(updateRes.data).toBeUndefined();
+
+    isMockSpy.mockRestore();
+    prismaLeadFindSpy.mockRestore();
+    prismaLeadUpdateSpy.mockRestore();
+  });
 });

@@ -22,6 +22,8 @@ const PRISMA_DIR = !isClient && typeof process !== "undefined" && typeof process
 const INITIAL_LEADS_PATH = !isClient && typeof process !== "undefined" && typeof process.cwd === "function"
   ? path.join(process.cwd(), "lib", "db", "initial-leads.json")
   : "";
+const TMP_DIR = "/tmp/roxx-crm";
+
 const LEADS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-leads.json") : "";
 const COMPANIES_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-companies.json") : "";
 const CONTACTS_FILE_PATH = PRISMA_DIR ? path.join(PRISMA_DIR, "dev-contacts.json") : "";
@@ -47,16 +49,51 @@ const globalForMockStorage = globalThis as unknown as {
   _mockUsersSize?: number;
 };
 
+function getFallbackPath(filePath: string): string {
+  if (!filePath) return "";
+  return path.join(TMP_DIR, path.basename(filePath));
+}
+
+function getCandidatePaths(...paths: (string | undefined)[]): string[] {
+  const result: string[] = [];
+  for (const p of paths) {
+    if (!p) continue;
+    const tmpP = getFallbackPath(p);
+    if (tmpP && !result.includes(tmpP)) result.push(tmpP);
+    if (!result.includes(p)) result.push(p);
+  }
+  return result;
+}
+
 function safeWriteJson(filePath: string, data: unknown): void {
   if (isClient || !filePath || !fs || !fs.existsSync) return;
+  let writeSucceeded = false;
   try {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    writeSucceeded = true;
   } catch (err) {
-    console.warn(`[safeWriteJson] Disk write error for ${filePath}:`, err);
+    // Read-only filesystem (e.g. Vercel serverless / AWS Lambda)
+    const errObj = err as { code?: string; message?: string } | null;
+    console.warn(`[safeWriteJson] Primary disk write error for ${filePath}:`, errObj?.code || errObj?.message || err);
+  }
+
+  // Also write to /tmp for serverless persistence across warm executions
+  try {
+    if (!fs.existsSync(TMP_DIR)) {
+      fs.mkdirSync(TMP_DIR, { recursive: true });
+    }
+    const tmpPath = getFallbackPath(filePath);
+    if (tmpPath) {
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    }
+  } catch (tmpErr) {
+    if (!writeSucceeded) {
+      console.warn(`[safeWriteJson] Fallback /tmp write error for ${filePath}:`, tmpErr);
+    }
   }
 }
 
@@ -69,7 +106,7 @@ export function loadInitialLeads(fallback: MockLead[]): MockLead[] {
     return [...fallback];
   }
   try {
-    const candidates = [LEADS_FILE_PATH, INITIAL_LEADS_PATH].filter(Boolean);
+    const candidates = getCandidatePaths(LEADS_FILE_PATH, INITIAL_LEADS_PATH);
     for (const filePath of candidates) {
       if (fs.existsSync(filePath)) {
         const raw = fs.readFileSync(filePath, "utf-8");
@@ -101,8 +138,9 @@ export function storagePersistLeads(leads: MockLead[]): void {
   if (LEADS_FILE_PATH) safeWriteJson(LEADS_FILE_PATH, leads);
   if (INITIAL_LEADS_PATH) safeWriteJson(INITIAL_LEADS_PATH, leads);
   try {
-    const checkPath = (LEADS_FILE_PATH && fs.existsSync(LEADS_FILE_PATH)) ? LEADS_FILE_PATH : INITIAL_LEADS_PATH;
-    if (checkPath && fs.existsSync(checkPath)) {
+    const candidates = getCandidatePaths(LEADS_FILE_PATH, INITIAL_LEADS_PATH);
+    const checkPath = candidates.find((c) => fs.existsSync(c));
+    if (checkPath) {
       const stat = fs.statSync(checkPath);
       globalForMockStorage._mockLeadsMtime = stat.mtimeMs;
       globalForMockStorage._mockLeadsSize = stat.size;
@@ -113,9 +151,8 @@ export function storagePersistLeads(leads: MockLead[]): void {
 export function storageSyncLeads(targetStore: MockLead[], force = false): void {
   if (isClient || isTestEnv || !fs || !fs.existsSync) return;
   try {
-    const filePath = (LEADS_FILE_PATH && fs.existsSync(LEADS_FILE_PATH))
-      ? LEADS_FILE_PATH
-      : (INITIAL_LEADS_PATH && fs.existsSync(INITIAL_LEADS_PATH) ? INITIAL_LEADS_PATH : "");
+    const candidates = getCandidatePaths(LEADS_FILE_PATH, INITIAL_LEADS_PATH);
+    const filePath = candidates.find((c) => fs.existsSync(c));
     if (filePath) {
       const stat = fs.statSync(filePath);
       const needsSync =
