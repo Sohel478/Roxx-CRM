@@ -513,4 +513,69 @@ describe("Lead Creation & Table Visibility", () => {
     migrateSpy.mockRestore();
     prismaLeadFindSpy.mockRestore();
   });
+
+  it("updateLeadAction in live database mode excludes virtual emailStatus from prisma.lead.update data payload", async () => {
+    const prismaModule = await import("@/lib/db/prisma");
+    const isMockSpy = vi.spyOn(prismaModule, "isMockDatabase").mockReturnValue(false);
+
+    const prismaLeadFindSpy = vi.spyOn(prismaModule.prisma.lead, "findFirst").mockResolvedValue({
+      id: "cmvgcpxa80003lb08z3pv69sx",
+      leadNumber: "LEAD-1001",
+      organizationId: "demo-org-123",
+      firstName: "mohsin",
+      lastName: "S",
+      email: "mohsin@techflux.in",
+      companyName: "Bellawoman",
+      ownerId: "usr_sohel",
+      createdById: "usr_sohel",
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+
+    let capturedUpdateData: any = null;
+    const prismaLeadUpdateSpy = vi.spyOn(prismaModule.prisma.lead, "update").mockImplementation(async (args: any) => {
+      capturedUpdateData = args.data;
+      // In real Prisma Client, passing `emailStatus` throws `Unknown argument emailStatus`
+      if ("emailStatus" in args.data) {
+        throw new Error("Invalid `prisma.lead.update()` invocation: Unknown argument `emailStatus`.");
+      }
+      return {
+        id: args.where.id,
+        leadNumber: "LEAD-1001",
+        organizationId: "demo-org-123",
+        firstName: args.data.firstName || "mohsin",
+        lastName: args.data.lastName || "S",
+        email: args.data.email || "mohsin@techflux.in",
+        companyName: args.data.companyName || "Bellawoman",
+        jobTitle: args.data.jobTitle || "CEO",
+        website: args.data.website || null,
+        ownerId: "usr_sohel",
+        createdById: "usr_sohel",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      } as any;
+    });
+
+    const updateRes = await updateLeadAction("cmvgcpxa80003lb08z3pv69sx", {
+      firstName: "mohsin",
+      lastName: "S",
+      email: "mohsin@techflux.in",
+      companyName: "Bellawoman",
+      jobTitle: "CEO",
+      emailStatus: "NA",
+    });
+
+    expect(updateRes.success).toBe(true);
+    expect(capturedUpdateData).toBeDefined();
+    expect(capturedUpdateData.emailStatus).toBeUndefined();
+    expect(capturedUpdateData.companyName).toBe("Bellawoman");
+    expect(capturedUpdateData.jobTitle).toBe("CEO");
+    expect(updateRes.data?.emailStatus).toBe("NA");
+
+    isMockSpy.mockRestore();
+    prismaLeadFindSpy.mockRestore();
+    prismaLeadUpdateSpy.mockRestore();
+  });
 });

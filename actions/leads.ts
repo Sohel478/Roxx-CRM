@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma, isMockDatabase } from "@/lib/db/prisma";
 import { requireAuth, requirePermission } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/auth/tenant";
@@ -1348,7 +1349,7 @@ export async function updateLeadAction(
       }
     }
 
-    const updatePayload: Record<string, any> = {};
+    const updatePayload: Prisma.LeadUncheckedUpdateInput = {};
     if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
     if (data.lastName !== undefined) updatePayload.lastName = data.lastName?.trim() || null;
     if (data.email !== undefined) updatePayload.email = data.email?.trim() || null;
@@ -1370,7 +1371,7 @@ export async function updateLeadAction(
     if (data.estimatedValue !== undefined) updatePayload.estimatedValue = Number(data.estimatedValue) || 0;
     if (data.currency !== undefined) updatePayload.currency = data.currency || "USD";
     if (data.description !== undefined) updatePayload.description = data.description?.trim() || null;
-    if (data.emailStatus !== undefined) updatePayload.emailStatus = data.emailStatus;
+    // Note: emailStatus is not a database column on leads (dynamically computed / mock-tracked), do not pass to Prisma
     if (data.ownerId !== undefined && isAdminOrManager) {
       const isUnassign = !data.ownerId || data.ownerId === "UNASSIGNED" || data.ownerId === "unassigned";
       if (isUnassign || typeof data.ownerId !== "string") {
@@ -1424,7 +1425,7 @@ export async function updateLeadAction(
           action: "LEAD_UPDATED",
           entityType: "Lead",
           entityId: existing.id,
-          newValues: updatePayload,
+          newValues: updatePayload as any,
         },
       });
     } catch {}
@@ -1453,7 +1454,7 @@ export async function updateLeadAction(
       estimatedValue: Number(updated.estimatedValue || 0),
       currency: updated.currency || "USD",
       description: updated.description,
-      emailStatus: resolveLeadEmailStatus(updated),
+      emailStatus: (data.emailStatus as any) || resolveLeadEmailStatus(updated),
       ownerId: updated.ownerId,
       ownerName: finalOwnerName,
       owner: updated.owner
