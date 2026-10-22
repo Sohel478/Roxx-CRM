@@ -123,7 +123,10 @@ export function LeadModal({
         currency: leadToEdit.currency || "USD",
         description: leadToEdit.description || "",
         emailStatus: leadToEdit.emailStatus || "NA",
-        ownerId: leadToEdit.ownerId || (leadToEdit.ownerId === null ? "UNASSIGNED" : undefined),
+        ownerId:
+          leadToEdit.ownerId === null || leadToEdit.ownerId === "UNASSIGNED"
+            ? "UNASSIGNED"
+            : (leadToEdit.ownerId || undefined),
       });
     } else {
       setFormData({
@@ -178,7 +181,10 @@ export function LeadModal({
 
     startTransition(async () => {
       try {
-        const isExplicitlyUnassigned = formData.ownerId === "UNASSIGNED" || formData.ownerId === null;
+        const isExplicitlyUnassigned =
+          formData.ownerId === "UNASSIGNED" ||
+          formData.ownerId === null ||
+          (!formData.ownerId && Boolean(leadToEdit));
         const targetOwnerId = isExplicitlyUnassigned
           ? null
           : (formData.ownerId || currentUser?.id || undefined);
@@ -444,7 +450,9 @@ export function LeadModal({
               </label>
               <select
                 value={
-                  formData.ownerId === null || formData.ownerId === "UNASSIGNED"
+                  formData.ownerId === null ||
+                  formData.ownerId === "UNASSIGNED" ||
+                  (!formData.ownerId && Boolean(leadToEdit))
                     ? "UNASSIGNED"
                     : (formData.ownerId || currentUser?.id || "")
                 }

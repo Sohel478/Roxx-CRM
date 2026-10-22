@@ -445,7 +445,7 @@ function getMockLeadById(
   isAdminOrManager: boolean
 ) {
   syncMockLeadsFromDisk(true);
-  let mock = mockLeadsStore.find((l) => l.id === id);
+  let mock = mockLeadsStore.find((l) => l.id === id || l.leadNumber === id);
   if (mock) {
     if (!isAdminOrManager) {
       const isOwner =
@@ -717,7 +717,7 @@ function updateMockLead(
   isAdminOrManager: boolean
 ) {
   syncMockLeadsFromDisk(true);
-  const idx = mockLeadsStore.findIndex((l) => l.id === id);
+  const idx = mockLeadsStore.findIndex((l) => l.id === id || l.leadNumber === id);
   if (idx === -1) {
     return { success: false, error: "Lead not found" };
   }
@@ -771,10 +771,20 @@ function updateMockLead(
     );
   }
 
+  // Ensure owner object and email status are populated for complete LeadItem / LeadDetailData compatibility
+  const resolvedOwnerName = updated.ownerId
+    ? resolveOwnerNameFromStore(updated.ownerId, session, updated.ownerName)
+    : null;
+  updated.owner = updated.ownerId && resolvedOwnerName
+    ? { id: updated.ownerId, name: resolvedOwnerName }
+    : null;
+  updated.emailStatus = resolveLeadEmailStatus(updated);
+
   mockLeadsStore[idx] = updated;
   persistMockLeads();
 
   revalidatePath("/leads");
+  revalidatePath(`/leads/${updated.id}`);
   revalidatePath(`/leads/${id}`);
   revalidatePath("/dashboard");
 
@@ -1251,11 +1261,13 @@ export async function updateLeadAction(
         emailStatus: resolveLeadEmailStatus(updated),
         ownerId: updated.ownerId,
         ownerName: updated.owner?.name || null,
+        owner: updated.owner ? { id: updated.owner.id, name: updated.owner.name } : null,
         createdById: updated.createdById,
         createdAt: updated.createdAt.toISOString(),
       };
 
       revalidatePath("/leads");
+      revalidatePath(`/leads/${updated.id}`);
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
       return { success: true, data: updatedItem };
@@ -1264,9 +1276,9 @@ export async function updateLeadAction(
     }
 
     syncMockLeadsFromDisk(true);
-    let idx = mockLeadsStore.findIndex((l) => l.id === id);
+    let idx = mockLeadsStore.findIndex((l) => l.id === id || l.leadNumber === id);
     if (idx !== -1) {
-      const updated = {
+      const updated: any = {
         ...mockLeadsStore[idx],
         ...updatePayload,
       };
@@ -1288,9 +1300,18 @@ export async function updateLeadAction(
           (data as any).ownerName || updated.ownerName
         );
       }
+      const resolvedOwnerName = updated.ownerId
+        ? resolveOwnerNameFromStore(updated.ownerId, session, updated.ownerName)
+        : null;
+      updated.owner = updated.ownerId && resolvedOwnerName
+        ? { id: updated.ownerId, name: resolvedOwnerName }
+        : null;
+      updated.emailStatus = resolveLeadEmailStatus(updated);
+
       mockLeadsStore[idx] = updated;
       persistMockLeads();
       revalidatePath("/leads");
+      revalidatePath(`/leads/${updated.id}`);
       revalidatePath(`/leads/${id}`);
       revalidatePath("/dashboard");
       return { success: true, data: updated };

@@ -875,7 +875,35 @@ export default function LeadDetailPage() {
       <LeadModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        onSuccess={async () => {
+        onSuccess={async (updatedLead) => {
+          if (updatedLead) {
+            const resolvedOwner = updatedLead.ownerId
+              ? (updatedLead.owner || {
+                  id: updatedLead.ownerId,
+                  name: updatedLead.ownerName || "Assigned Rep",
+                })
+              : null;
+
+            setLead((prev) => {
+              if (!prev) return (updatedLead as unknown as LeadDetailData);
+              return {
+                ...prev,
+                ...updatedLead,
+                fullName:
+                  updatedLead.fullName ||
+                  `${updatedLead.firstName} ${updatedLead.lastName || ""}`.trim(),
+                website:
+                  updatedLead.website ||
+                  (updatedLead as { description?: string | null }).description?.match(
+                    /Website:\s*([^\s\n\r]+)/i
+                  )?.[1] ||
+                  null,
+                owner: resolvedOwner,
+                ownerId: updatedLead.ownerId ?? null,
+                ownerName: resolvedOwner?.name || null,
+              };
+            });
+          }
           await loadLead();
         }}
         leadToEdit={
@@ -889,6 +917,7 @@ export default function LeadDetailPage() {
                 phone: lead.phone || "",
                 companyName: lead.companyName || "",
                 jobTitle: lead.jobTitle || "",
+                website: lead.website || websiteUrl || "",
                 companyLinkedin: lead.companyLinkedin || companyLinkedinUrl || "",
                 customerLinkedin: lead.customerLinkedin || customerLinkedinUrl || "",
                 source: lead.source,
@@ -898,7 +927,7 @@ export default function LeadDetailPage() {
                 currency: lead.currency || "USD",
                 description: lead.description || "",
                 emailStatus: (lead.emailStatus as "Sent" | "Follow up" | "NA") || "NA",
-                ownerId: lead.owner?.id || lead.ownerId || undefined,
+                ownerId: lead.owner?.id || lead.ownerId || null,
                 ownerName: lead.owner?.name || lead.ownerName || null,
               }
             : null

@@ -5,7 +5,7 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-import { createLeadAction, getLeadsAction, getLeadByIdAction, assignLeadAction } from "@/actions/leads";
+import { createLeadAction, updateLeadAction, getLeadsAction, getLeadByIdAction, assignLeadAction } from "@/actions/leads";
 import * as sessionModule from "@/lib/auth/session";
 import { mockLeadsStore } from "@/lib/db/mock-store";
 
@@ -290,5 +290,87 @@ describe("Lead Creation & Table Visibility", () => {
     });
     expect(sheetalRes.success).toBe(true);
     expect(sheetalRes.data.meta.total).toBeGreaterThanOrEqual(264);
+  });
+
+  it("updateLeadAction updates lead fields immediately and persists to getLeadByIdAction and getLeadsAction", async () => {
+    // 1. Create a test lead
+    const createRes = await createLeadAction({
+      firstName: "Mohsin",
+      lastName: "Bella",
+      companyName: "Bella Woman Boutique",
+      website: "https://www.bellawoman.com/",
+      source: "Website",
+      status: "New" as const,
+      rating: "Warm" as const,
+      estimatedValue: 12000,
+      currency: "USD",
+      description: "Initial discovery notes",
+    });
+    expect(createRes.success).toBe(true);
+    const leadId = createRes.data.id;
+
+    // 2. Edit/Update lead data
+    const updateRes = await updateLeadAction(leadId, {
+      firstName: "Mohsin",
+      lastName: "Al-Bella",
+      companyName: "Bella Woman Luxe Group",
+      website: "https://bellawoman.com/shop",
+      status: "Qualified" as const,
+      rating: "Hot" as const,
+      estimatedValue: 28500,
+      description: "Updated VIP discovery notes & pricing inquiry",
+    });
+
+    expect(updateRes.success).toBe(true);
+    expect(updateRes.data).toBeDefined();
+    expect(updateRes.data?.fullName).toBe("Mohsin Al-Bella");
+    expect(updateRes.data?.companyName).toBe("Bella Woman Luxe Group");
+    expect(updateRes.data?.website).toBe("https://bellawoman.com/shop");
+    expect(updateRes.data?.status).toBe("Qualified");
+    expect(updateRes.data?.rating).toBe("Hot");
+    expect(updateRes.data?.estimatedValue).toBe(28500);
+
+    // 3. Immediately fetch through getLeadByIdAction (Lead Dossier view)
+    const detailRes = await getLeadByIdAction(leadId);
+    expect(detailRes.success).toBe(true);
+    expect(detailRes.data?.fullName).toBe("Mohsin Al-Bella");
+    expect(detailRes.data?.companyName).toBe("Bella Woman Luxe Group");
+    expect(detailRes.data?.website).toBe("https://bellawoman.com/shop");
+    expect(detailRes.data?.status).toBe("Qualified");
+    expect(detailRes.data?.rating).toBe("Hot");
+    expect(detailRes.data?.estimatedValue).toBe(28500);
+    expect(detailRes.data?.description).toBe("Updated VIP discovery notes & pricing inquiry");
+
+    // 4. Also fetch by leadNumber to ensure lookup by lead number reflects updated data
+    const leadNumber = detailRes.data?.leadNumber;
+    if (leadNumber) {
+      const byNumberRes = await getLeadByIdAction(leadNumber);
+      expect(byNumberRes.success).toBe(true);
+      expect(byNumberRes.data?.companyName).toBe("Bella Woman Luxe Group");
+    }
+
+    // 5. Verify getLeadsAction reflects the updated data
+    const listRes = await getLeadsAction({
+      page: 1,
+      limit: 10,
+      search: "Bella Woman Luxe",
+    });
+    expect(listRes.success).toBe(true);
+    expect(listRes.data.items.length).toBeGreaterThan(0);
+    const found = listRes.data.items.find((l) => l.id === leadId);
+    expect(found).toBeDefined();
+    expect(found?.fullName).toBe("Mohsin Al-Bella");
+    expect(found?.companyName).toBe("Bella Woman Luxe Group");
+    expect(found?.website).toBe("https://bellawoman.com/shop");
+    expect(found?.rating).toBe("Hot");
+
+    // 6. Verify 5 consecutive re-fetches maintain the edited values
+    for (let i = 1; i <= 5; i++) {
+      const refetch = await getLeadByIdAction(leadId);
+      expect(refetch.success).toBe(true);
+      expect(refetch.data?.companyName).toBe("Bella Woman Luxe Group");
+      expect(refetch.data?.website).toBe("https://bellawoman.com/shop");
+      expect(refetch.data?.estimatedValue).toBe(28500);
+    }
   });
 });

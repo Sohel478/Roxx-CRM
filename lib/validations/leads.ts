@@ -56,6 +56,7 @@ export interface LeadItem {
   website?: string | null;
   ownerId?: string | null;
   ownerName: string | null;
+  owner?: { id: string; name: string } | null;
   createdById?: string | null;
   createdAt: string;
   convertedAt?: string | null;

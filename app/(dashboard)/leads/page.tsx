@@ -163,31 +163,13 @@ export default function LeadsPage() {
   const handleLeadSaved = useCallback(
     (savedLead?: LeadItem | null) => {
       if (savedLead && savedLead.id) {
-        // Reset search so newly saved lead is never hidden by previous search query
-        setSearch("");
+        let isExisting = false;
 
-        // Auto-align status tab if current filter excludes the lead
-        if (status !== "ALL" && status !== savedLead.status) {
-          setStatus("ALL");
-        }
-
-        // Auto-align owner filter
-        if (ownerFilter !== "ALL") {
-          setOwnerFilter("ALL");
-        }
-
-        // Auto-align rating & email filters
-        if (rating !== "ALL" && rating !== savedLead.rating) {
-          setRating("ALL");
-        }
-        if (emailStatusFilter !== "ALL" && emailStatusFilter !== savedLead.emailStatus) {
-          setEmailStatusFilter("ALL");
-        }
-
-        // Optimistic instant update: place new lead at index 0 or update existing lead
+        // Optimistic instant update: update existing lead or place new lead at index 0
         setLeads((prev) => {
           const idx = prev.findIndex((l) => l.id === savedLead.id);
           if (idx !== -1) {
+            isExisting = true;
             const next = [...prev];
             next[idx] = { ...next[idx], ...savedLead };
             return next;
@@ -195,24 +177,52 @@ export default function LeadsPage() {
           return [savedLead, ...prev];
         });
 
-        setMeta((prev) => ({
-          ...prev,
-          page: 1,
-          total: prev.total + 1,
-          totalPages: Math.max(1, Math.ceil((prev.total + 1) / prev.limit)),
-        }));
+        if (!isExisting) {
+          // Reset search so newly saved lead is never hidden by previous search query
+          setSearch("");
+
+          // Auto-align status tab if current filter excludes the lead
+          if (status !== "ALL" && status !== savedLead.status) {
+            setStatus("ALL");
+          }
+
+          // Auto-align owner filter
+          if (ownerFilter !== "ALL") {
+            setOwnerFilter("ALL");
+          }
+
+          // Auto-align rating & email filters
+          if (rating !== "ALL" && rating !== savedLead.rating) {
+            setRating("ALL");
+          }
+          if (emailStatusFilter !== "ALL" && emailStatusFilter !== savedLead.emailStatus) {
+            setEmailStatusFilter("ALL");
+          }
+
+          setMeta((prev) => ({
+            ...prev,
+            page: 1,
+            total: prev.total + 1,
+            totalPages: Math.max(1, Math.ceil((prev.total + 1) / prev.limit)),
+          }));
+        }
 
         setHighlightedLeadId(savedLead.id);
         const displayName = savedLead.fullName || `${savedLead.firstName} ${savedLead.lastName || ""}`.trim();
         setSuccessBanner({ name: displayName, id: savedLead.id });
         setTimeout(() => setHighlightedLeadId(null), 5000);
         setTimeout(() => setSuccessBanner(null), 6000);
-      }
 
-      // Reload leads from server with all filters cleared to guarantee synchronized data
-      loadLeads(1, "", "ALL", "ALL", "ALL", "ALL");
+        if (!isExisting) {
+          // Reload leads from server with all filters cleared to guarantee synchronized data
+          loadLeads(1, "", "ALL", "ALL", "ALL", "ALL");
+        } else {
+          // Refresh current page view to synchronize
+          loadLeads(meta.page, search, status, rating, ownerFilter, emailStatusFilter);
+        }
+      }
     },
-    [status, ownerFilter, rating, emailStatusFilter, loadLeads]
+    [status, ownerFilter, rating, emailStatusFilter, loadLeads, meta.page, search]
   );
 
   useEffect(() => {
@@ -316,12 +326,13 @@ export default function LeadsPage() {
       companyLinkedin: lead.companyLinkedin || "",
       customerLinkedin: lead.customerLinkedin || "",
       source: lead.source,
-      status: (lead.status as "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
+      status:
+        (lead.status as "Scraped" | "New" | "Contacted" | "Qualified" | "Unqualified" | "Nurture" | "Converted" | "Lost") || "New",
       rating: (lead.rating as "Hot" | "Warm" | "Cold") || "Warm",
       estimatedValue: lead.estimatedValue,
       currency: lead.currency || "USD",
       description: lead.description || "",
-      ownerId: lead.ownerId || undefined,
+      ownerId: lead.ownerId ?? null,
       ownerName: lead.ownerName || null,
       website: lead.website || null,
     });
