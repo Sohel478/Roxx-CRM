@@ -90,7 +90,10 @@ export async function ensureDatabaseSchema(): Promise<void> {
     // 3b. Ensure column exists on contacts table
     await prisma.$executeRawUnsafe(`
       ALTER TABLE "contacts" 
-        ADD COLUMN IF NOT EXISTS "instagram_url" TEXT;
+        ADD COLUMN IF NOT EXISTS "instagram_url" TEXT,
+        ADD COLUMN IF NOT EXISTS "linkedin_url" TEXT,
+        ADD COLUMN IF NOT EXISTS "department" TEXT,
+        ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMP(3);
     `).catch((err) => {
       console.warn("[ensureDatabaseSchema] contacts alter warning:", err);
     });
@@ -98,9 +101,16 @@ export async function ensureDatabaseSchema(): Promise<void> {
     // 3c. Ensure columns exist on leads table
     await prisma.$executeRawUnsafe(`
       ALTER TABLE "leads" 
+        ADD COLUMN IF NOT EXISTS "website" TEXT,
         ADD COLUMN IF NOT EXISTS "support_email" TEXT,
         ADD COLUMN IF NOT EXISTS "company_linkedin" TEXT,
-        ADD COLUMN IF NOT EXISTS "customer_linkedin" TEXT;
+        ADD COLUMN IF NOT EXISTS "customer_linkedin" TEXT,
+        ADD COLUMN IF NOT EXISTS "expected_close_date" TIMESTAMP(3),
+        ADD COLUMN IF NOT EXISTS "source_detail" TEXT,
+        ADD COLUMN IF NOT EXISTS "converted_company_id" TEXT,
+        ADD COLUMN IF NOT EXISTS "converted_contact_id" TEXT,
+        ADD COLUMN IF NOT EXISTS "converted_opportunity_id" TEXT,
+        ADD COLUMN IF NOT EXISTS "deleted_at" TIMESTAMP(3);
     `).catch((err) => {
       console.warn("[ensureDatabaseSchema] leads alter warning:", err);
     });

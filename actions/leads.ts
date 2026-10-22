@@ -25,6 +25,7 @@ import {
 import { resolveOwnerNameFromStore } from "@/lib/leads/owner-resolution";
 import { SubscriptionService } from "@/lib/subscription/subscription-service";
 import { createNotificationHelper } from "@/actions/notifications";
+import { ensureDatabaseSchema } from "@/lib/db/migrate";
 
 /**
  * Helper to determine or resolve a lead's email status: "Sent" | "Follow up" | "NA"
@@ -199,6 +200,8 @@ export async function getLeadsAction(params: {
     return getMockLeads(params, session, userId, isAdminOrManager, isTechfluxOrg, page, limit, skip);
   }
 
+  await ensureDatabaseSchema();
+
   try {
     const where: any = {
       organizationId,
@@ -264,13 +267,30 @@ export async function getLeadsAction(params: {
       ];
     }
 
-    const allMatching = await prisma.lead.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        owner: { select: { id: true, name: true } },
-      },
-    });
+    let allMatching: any[] = [];
+    try {
+      allMatching = await prisma.lead.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: {
+          owner: { select: { id: true, name: true } },
+        },
+      });
+    } catch (queryErr: unknown) {
+      const msg = queryErr instanceof Error ? queryErr.message : String(queryErr);
+      if (msg.includes("website") || msg.includes("column")) {
+        await ensureDatabaseSchema();
+        allMatching = await prisma.lead.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          include: {
+            owner: { select: { id: true, name: true } },
+          },
+        });
+      } else {
+        throw queryErr;
+      }
+    }
 
     let mappedItems = allMatching.map((l) => {
       const finalOwnerName =
@@ -524,28 +544,61 @@ export async function getLeadByIdAction(id: string) {
     return getMockLeadById(id, session, userId, isAdminOrManager);
   }
 
+  await ensureDatabaseSchema();
+
   try {
-    const lead = await prisma.lead.findFirst({
-      where: {
-        OR: [{ id }, { leadNumber: id }],
-        organizationId,
-        deletedAt: null,
-      },
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true } },
-        activities: {
-          orderBy: { activityAt: "desc" },
-          take: 10,
+    let lead: any = null;
+    try {
+      lead = await prisma.lead.findFirst({
+        where: {
+          OR: [{ id }, { leadNumber: id }],
+          organizationId,
+          deletedAt: null,
         },
-        tasks: {
-          orderBy: { dueAt: "asc" },
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true } },
+          activities: {
+            orderBy: { activityAt: "desc" },
+            take: 10,
+          },
+          tasks: {
+            orderBy: { dueAt: "asc" },
+          },
+          notes: {
+            orderBy: { createdAt: "desc" },
+          },
         },
-        notes: {
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    });
+      });
+    } catch (queryErr: unknown) {
+      const msg = queryErr instanceof Error ? queryErr.message : String(queryErr);
+      if (msg.includes("website") || msg.includes("column")) {
+        await ensureDatabaseSchema();
+        lead = await prisma.lead.findFirst({
+          where: {
+            OR: [{ id }, { leadNumber: id }],
+            organizationId,
+            deletedAt: null,
+          },
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+            createdBy: { select: { id: true, name: true } },
+            activities: {
+              orderBy: { activityAt: "desc" },
+              take: 10,
+            },
+            tasks: {
+              orderBy: { dueAt: "asc" },
+            },
+            notes: {
+              orderBy: { createdAt: "desc" },
+            },
+          },
+        });
+      } else {
+        throw queryErr;
+      }
+    }
 
     if (!lead) {
       return getMockLeadById(id, session, userId, isAdminOrManager);
@@ -1090,34 +1143,72 @@ export async function createLeadAction(
     : null;
 
   try {
-    const created = await prisma.lead.create({
-      data: {
-        organizationId,
-        leadNumber,
-        firstName,
-        lastName: lastName || null,
-        email: email || null,
-        supportEmail: supportEmail || null,
-        phone: phone || null,
-        companyName: companyName || null,
-        jobTitle: jobTitle || null,
-        website: cleanWebsite,
-        companyLinkedin: companyLinkedin || null,
-        customerLinkedin: customerLinkedin || null,
-        source,
-        sourceDetail: sourceDetail || null,
-        status,
-        rating,
-        estimatedValue,
-        currency,
-        description: description || undefined,
-        ownerId: validatedOwnerId,
-        createdById: validatedCreatedById,
-      },
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-      },
-    });
+    let created: any;
+    try {
+      created = await prisma.lead.create({
+        data: {
+          organizationId,
+          leadNumber,
+          firstName,
+          lastName: lastName || null,
+          email: email || null,
+          supportEmail: supportEmail || null,
+          phone: phone || null,
+          companyName: companyName || null,
+          jobTitle: jobTitle || null,
+          website: cleanWebsite,
+          companyLinkedin: companyLinkedin || null,
+          customerLinkedin: customerLinkedin || null,
+          source,
+          sourceDetail: sourceDetail || null,
+          status,
+          rating,
+          estimatedValue,
+          currency,
+          description: description || undefined,
+          ownerId: validatedOwnerId,
+          createdById: validatedCreatedById,
+        },
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      });
+    } catch (insertErr: unknown) {
+      const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+      if (msg.includes("website") || msg.includes("column")) {
+        await ensureDatabaseSchema();
+        created = await prisma.lead.create({
+          data: {
+            organizationId,
+            leadNumber,
+            firstName,
+            lastName: lastName || null,
+            email: email || null,
+            supportEmail: supportEmail || null,
+            phone: phone || null,
+            companyName: companyName || null,
+            jobTitle: jobTitle || null,
+            website: cleanWebsite,
+            companyLinkedin: companyLinkedin || null,
+            customerLinkedin: customerLinkedin || null,
+            source,
+            sourceDetail: sourceDetail || null,
+            status,
+            rating,
+            estimatedValue,
+            currency,
+            description: description || undefined,
+            ownerId: validatedOwnerId,
+            createdById: validatedCreatedById,
+          },
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+          },
+        });
+      } else {
+        throw insertErr;
+      }
+    }
 
     try {
       await prisma.auditLog.create({
@@ -1212,16 +1303,38 @@ export async function updateLeadAction(
       return updateMockLead(id, data, session, userId, isAdminOrManager);
     }
 
-    const existing = await prisma.lead.findFirst({
-      where: {
-        OR: [{ id }, { leadNumber: id }],
-        organizationId,
-        deletedAt: null,
-      },
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-      },
-    });
+    await ensureDatabaseSchema();
+
+    let existing: any = null;
+    try {
+      existing = await prisma.lead.findFirst({
+        where: {
+          OR: [{ id }, { leadNumber: id }],
+          organizationId,
+          deletedAt: null,
+        },
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      });
+    } catch (findErr: unknown) {
+      const msg = findErr instanceof Error ? findErr.message : String(findErr);
+      if (msg.includes("website") || msg.includes("column")) {
+        await ensureDatabaseSchema();
+        existing = await prisma.lead.findFirst({
+          where: {
+            OR: [{ id }, { leadNumber: id }],
+            organizationId,
+            deletedAt: null,
+          },
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+          },
+        });
+      } else {
+        throw findErr;
+      }
+    }
 
     if (!existing) {
       return { success: false, error: "Lead not found" };
@@ -1274,15 +1387,34 @@ export async function updateLeadAction(
       }
     }
 
-    const updated = await prisma.lead.update({
-      where: {
-        id: existing.id,
-      },
-      data: updatePayload,
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-      },
-    });
+    let updated: any;
+    try {
+      updated = await prisma.lead.update({
+        where: {
+          id: existing.id,
+        },
+        data: updatePayload,
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      });
+    } catch (updErr: unknown) {
+      const msg = updErr instanceof Error ? updErr.message : String(updErr);
+      if (msg.includes("website") || msg.includes("column")) {
+        await ensureDatabaseSchema();
+        updated = await prisma.lead.update({
+          where: {
+            id: existing.id,
+          },
+          data: updatePayload,
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+          },
+        });
+      } else {
+        throw updErr;
+      }
+    }
 
     try {
       await prisma.auditLog.create({

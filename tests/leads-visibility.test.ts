@@ -473,4 +473,44 @@ describe("Lead Creation & Table Visibility", () => {
     prismaLeadFindSpy.mockRestore();
     prismaLeadUpdateSpy.mockRestore();
   });
+
+  it("self-heals and retries query when leads.website column missing error occurs", async () => {
+    const prismaModule = await import("@/lib/db/prisma");
+    const migrateModule = await import("@/lib/db/migrate");
+    const isMockSpy = vi.spyOn(prismaModule, "isMockDatabase").mockReturnValue(false);
+    const migrateSpy = vi.spyOn(migrateModule, "ensureDatabaseSchema").mockResolvedValue(undefined);
+
+    let findCalls = 0;
+    const prismaLeadFindSpy = vi.spyOn(prismaModule.prisma.lead, "findFirst").mockImplementation(async () => {
+      findCalls++;
+      if (findCalls === 1) {
+        throw new Error("Invalid prisma.lead.findFirst() invocation: The column leads.website does not exist in the current database.");
+      }
+      return {
+        id: "lead_healed_1",
+        leadNumber: "LEAD-8888",
+        organizationId: "demo-org-123",
+        firstName: "Self",
+        lastName: "Healed",
+        companyName: "Healed Corp",
+        website: "https://healed.example.com",
+        ownerId: "usr_sohel",
+        createdById: "usr_sohel",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      } as any;
+    });
+
+    const res = await getLeadByIdAction("lead_healed_1");
+
+    expect(migrateSpy).toHaveBeenCalled();
+    expect(findCalls).toBe(2);
+    expect(res.success).toBe(true);
+    expect(res.data?.website).toBe("https://healed.example.com");
+
+    isMockSpy.mockRestore();
+    migrateSpy.mockRestore();
+    prismaLeadFindSpy.mockRestore();
+  });
 });

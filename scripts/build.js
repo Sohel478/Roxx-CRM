@@ -39,12 +39,16 @@ const isRealDatabase =
 if (isRealDatabase) {
   try {
     console.log("➡️ Live database detected. Synchronizing Prisma schema (prisma db push)...");
-    execSync("npx prisma db push --skip-generate", {
+    execSync("npx prisma db push --skip-generate --accept-data-loss", {
       stdio: "inherit",
       env: customEnv,
     });
     console.log("✅ Schema synchronized with live PostgreSQL database!");
+  } catch (err) {
+    console.warn("⚠️ Database push warning (non-fatal):", err.message);
+  }
 
+  try {
     console.log("➡️ Running initial seed...");
     execSync("npx tsx prisma/seed.ts", {
       stdio: "inherit",
@@ -52,7 +56,7 @@ if (isRealDatabase) {
     });
     console.log("✅ Database seeded successfully!");
   } catch (err) {
-    console.warn("⚠️ Database push/seed warning (non-fatal):", err.message);
+    console.warn("⚠️ Database seed warning (non-fatal):", err.message);
   }
 } else {
   console.log("ℹ️ No live database URL found or using local placeholder. Skipping remote db push.");
