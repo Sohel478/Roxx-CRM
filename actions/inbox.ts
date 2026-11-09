@@ -90,6 +90,46 @@ async function resolveOrganizationMailConfig(organizationId: string): Promise<{
     imapConfig = mockImapStore[organizationId];
   }
 
+  // Auto-correct regional Zoho IMAP mismatch if SMTP was configured for regional Zoho (.in, .eu, etc.)
+  if (imapConfig && smtpConfig?.host?.includes("zoho")) {
+    let correctedHost = imapConfig.host;
+    if (smtpConfig.host.includes(".zoho.in") && (imapConfig.host === "imappro.zoho.com" || imapConfig.host === "imap.zoho.com")) {
+      correctedHost = "imappro.zoho.in";
+    } else if (smtpConfig.host.includes(".zoho.eu") && (imapConfig.host === "imappro.zoho.com" || imapConfig.host === "imap.zoho.com")) {
+      correctedHost = "imappro.zoho.eu";
+    } else if (smtpConfig.host.includes(".zoho.com.au") && imapConfig.host.includes(".zoho.com")) {
+      correctedHost = "imappro.zoho.com.au";
+    } else if (smtpConfig.host.includes(".zoho.jp") && imapConfig.host.includes(".zoho.com")) {
+      correctedHost = "imappro.zoho.jp";
+    }
+
+    if (correctedHost !== imapConfig.host) {
+      imapConfig.host = correctedHost;
+      mockImapStore[organizationId] = imapConfig;
+      try {
+        await prisma.systemSetting.update({
+          where: {
+            organizationId_key: {
+              organizationId,
+              key: "imap_config",
+            },
+          },
+          data: {
+            value: JSON.stringify(imapConfig),
+          },
+        });
+      } catch {
+        // Fallback to in-memory store
+      }
+    }
+
+    // Inherit encrypted password if IMAP was saved without password
+    if (!imapConfig.encryptedPassword && smtpConfig.encryptedPassword) {
+      imapConfig.encryptedPassword = smtpConfig.encryptedPassword;
+      mockImapStore[organizationId] = imapConfig;
+    }
+  }
+
   // If no separate IMAP exists, automatically derive it from the connected SMTP email
   if (!imapConfig && smtpConfig && smtpConfig.host && smtpConfig.username) {
     let derivedImapHost = "imap.gmail.com";

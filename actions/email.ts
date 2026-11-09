@@ -718,16 +718,87 @@ export async function getImapConfigAction(): Promise<{
       config = mockImapStore[organizationId];
     }
 
+    if (config) {
+      // Auto-correct regional Zoho IMAP host if SMTP is regional .in/.eu
+      try {
+        const smtpSetting = await prisma.systemSetting.findUnique({
+          where: {
+            organizationId_key: {
+              organizationId,
+              key: "smtp_config",
+            },
+          },
+        });
+        const smtp = smtpSetting?.value ? JSON.parse(smtpSetting.value) : mockSmtpStore[organizationId];
+        if (smtp?.host) {
+          let correctedHost = config.host;
+          if (smtp.host.includes(".zoho.in") && (config.host === "imappro.zoho.com" || config.host === "imap.zoho.com")) {
+            correctedHost = "imappro.zoho.in";
+          } else if (smtp.host.includes(".zoho.eu") && (config.host === "imappro.zoho.com" || config.host === "imap.zoho.com")) {
+            correctedHost = "imappro.zoho.eu";
+          }
+
+          if (correctedHost !== config.host) {
+            config.host = correctedHost;
+            mockImapStore[organizationId] = config;
+            try {
+              await prisma.systemSetting.update({
+                where: {
+                  organizationId_key: {
+                    organizationId,
+                    key: "imap_config",
+                  },
+                },
+                data: {
+                  value: JSON.stringify(config),
+                },
+              });
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
     if (!config) {
+      let suggestedHost = "";
+      let suggestedUsername = "";
+      let hasSmtpPassword = false;
+      try {
+        const smtpSetting = await prisma.systemSetting.findUnique({
+          where: {
+            organizationId_key: {
+              organizationId,
+              key: "smtp_config",
+            },
+          },
+        });
+        const smtp = smtpSetting?.value ? JSON.parse(smtpSetting.value) : mockSmtpStore[organizationId];
+        if (smtp) {
+          suggestedUsername = smtp.username || "";
+          hasSmtpPassword = Boolean(smtp.encryptedPassword);
+          if (smtp.host?.includes(".zoho.in")) suggestedHost = "imappro.zoho.in";
+          else if (smtp.host?.includes(".zoho.eu")) suggestedHost = "imappro.zoho.eu";
+          else if (smtp.host?.includes("zoho")) suggestedHost = "imappro.zoho.com";
+          else if (smtp.host?.includes("gmail")) suggestedHost = "imap.gmail.com";
+          else if (smtp.host?.includes("office365") || smtp.host?.includes("outlook")) suggestedHost = "outlook.office365.com";
+        }
+      } catch {
+        // Ignore
+      }
+
       return {
         success: true,
         data: {
-          host: "",
+          host: suggestedHost,
           port: 993,
           secure: true,
-          username: "",
-          hasPassword: false,
-          maskedPassword: "",
+          username: suggestedUsername,
+          hasPassword: hasSmtpPassword,
+          maskedPassword: hasSmtpPassword ? "••••••••••••" : "",
           isConfigured: false,
         },
       };

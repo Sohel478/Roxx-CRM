@@ -339,5 +339,50 @@ describe("BYO-SMTP Email Integration & Workspace Relay", () => {
       expect(syncRes.error).toContain("AUTHENTICATIONFAILED");
       expect(syncRes.error).toContain("Ensure 'IMAP Access' is checked in Zoho Settings");
     });
+
+    it("auto-corrects previously saved imappro.zoho.com to imappro.zoho.in when SMTP is on Zoho India", async () => {
+      const zohoOrgId = "org_zoho_correct_999";
+      const zohoSession = {
+        id: "usr_admin",
+        organizationId: zohoOrgId,
+        organizationName: "Techflux Auto-correct Org",
+        email: "jessica@techflux.space",
+        name: "Jessica",
+        role: "ADMIN",
+        permissions: ["settings:update"],
+        expiresAt: Date.now() + 3600000,
+      };
+      vi.spyOn(sessionModule, "getSession").mockResolvedValue(zohoSession);
+
+      // SMTP is on Zoho India
+      mockSmtpStore[zohoOrgId] = {
+        organizationId: zohoOrgId,
+        host: "smtppro.zoho.in",
+        port: 465,
+        secure: true,
+        username: "jessica@techflux.space",
+        encryptedPassword: encryptSecret("zoho-app-pass"),
+        fromName: "Jessica Techflux",
+        fromEmail: "jessica@techflux.space",
+        updatedAt: new Date().toISOString(),
+      };
+
+      // But IMAP was previously saved with the wrong .com domain
+      mockImapStore[zohoOrgId] = {
+        organizationId: zohoOrgId,
+        host: "imappro.zoho.com",
+        port: 993,
+        secure: true,
+        username: "jessica@techflux.space",
+        encryptedPassword: encryptSecret("zoho-app-pass"),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Running status or inbox sync should auto-correct to imappro.zoho.in
+      const statusRes = await getInboxAccountStatusAction();
+      expect(statusRes.success).toBe(true);
+      expect(statusRes.data.imapHost).toBe("imappro.zoho.in");
+      expect(mockImapStore[zohoOrgId].host).toBe("imappro.zoho.in");
+    });
   });
 });
