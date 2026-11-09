@@ -84,7 +84,7 @@ const PRESETS: Record<string, PresetConfig> = {
     imapHost: "imappro.zoho.com",
     imapPort: 993,
     imapSecure: true,
-    notes: "Use Zoho dedicated Application Specific Password with Port 465/993 SSL.",
+    notes: "Requires a dedicated Zoho App Password. Datacenter: smtppro.zoho.in (India) / smtppro.zoho.com (US).",
   },
   custom: {
     name: "Custom Mail Server",
@@ -118,6 +118,7 @@ export function EmailSettingsTab() {
   const [fromEmail, setFromEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [selectedGuideProvider, setSelectedGuideProvider] = useState<"zoho" | "gmail" | "m365">("zoho");
 
   // Inbound IMAP Form State
   const [imapHost, setImapHost] = useState("");
@@ -205,6 +206,13 @@ export function EmailSettingsTab() {
       setImapSecure(preset.imapSecure);
     }
     if (key === "gmail") {
+      setSelectedGuideProvider("gmail");
+      setShowGuide(true);
+    } else if (key === "zoho") {
+      setSelectedGuideProvider("zoho");
+      setShowGuide(true);
+    } else if (key === "m365") {
+      setSelectedGuideProvider("m365");
       setShowGuide(true);
     }
   };
@@ -561,13 +569,13 @@ export function EmailSettingsTab() {
             </div>
           </div>
 
-          {/* Google Workspace App Password Step-by-Step Guide */}
+          {/* Provider Setup & App Password Step-by-Step Guide */}
           <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowGuide(!showGuide)}>
               <div className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-blue-600 shrink-0" />
                 <span className="text-xs font-bold text-blue-950">
-                  Connecting Google Workspace or Gmail? (How to generate an App Password)
+                  Provider Setup Guides (Zoho Mail, Google Workspace, Microsoft 365)
                 </span>
               </div>
               <button type="button" className="text-xs font-bold text-blue-700 hover:text-blue-800">
@@ -576,27 +584,123 @@ export function EmailSettingsTab() {
             </div>
 
             {showGuide && (
-              <div className="text-xs text-blue-900 space-y-2.5 pt-2 border-t border-blue-200/60 animate-in fade-in">
-                <p className="leading-relaxed">
-                  Google Workspace and Gmail accounts require an <strong>App Password</strong> rather than your standard Google password when sending emails via external SMTP clients.
-                </p>
-                <ol className="list-decimal list-inside space-y-1.5 pl-1 font-medium leading-relaxed">
-                  <li>
-                    Open your{" "}
-                    <a
-                      href="https://myaccount.google.com/security"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline font-bold text-blue-700 inline-flex items-center gap-0.5"
-                    >
-                      Google Account Security Settings <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </li>
-                  <li>Ensure <strong>2-Step Verification</strong> is switched ON.</li>
-                  <li>In the search bar at top of Google Account, type <strong>&quot;App passwords&quot;</strong>.</li>
-                  <li>Create a new app name (e.g. <code className="bg-blue-100 px-1.5 py-0.5 rounded text-[11px] font-mono">Roxx CRM</code>) and click <strong>Create</strong>.</li>
-                  <li>Copy the generated 16-character code (e.g. <code className="bg-blue-100 px-1.5 py-0.5 rounded text-[11px] font-mono">abcd efgh ijkl mnop</code>) and paste it into the password field below (without spaces).</li>
-                </ol>
+              <div className="text-xs text-blue-900 space-y-3 pt-2 border-t border-blue-200/60 animate-in fade-in">
+                {/* Provider Tab Pills */}
+                <div className="flex items-center gap-1.5 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGuideProvider("zoho")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedGuideProvider === "zoho"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "bg-white/80 text-blue-800 hover:bg-white border border-blue-200"
+                    }`}
+                  >
+                    Zoho Mail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGuideProvider("gmail")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedGuideProvider === "gmail"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "bg-white/80 text-blue-800 hover:bg-white border border-blue-200"
+                    }`}
+                  >
+                    Google Workspace / Gmail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGuideProvider("m365")}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedGuideProvider === "m365"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "bg-white/80 text-blue-800 hover:bg-white border border-blue-200"
+                    }`}
+                  >
+                    Microsoft 365
+                  </button>
+                </div>
+
+                {/* Zoho Mail Guide */}
+                {selectedGuideProvider === "zoho" && (
+                  <div className="space-y-2 bg-white/90 p-4 rounded-xl border border-blue-200">
+                    <p className="font-bold text-slate-900">
+                      Zoho Mail Setup &amp; Fixing 535 5.7.8 Authentication Errors:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-2 pl-1 font-medium leading-relaxed text-slate-700">
+                      <li>
+                        <strong>Use an App Password (Not your main login password):</strong> Zoho blocks external SMTP logins with your primary account password if 2FA is active. Go to{" "}
+                        <a
+                          href="https://accounts.zoho.com/home#security/app_password"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-bold text-blue-700 inline-flex items-center gap-0.5"
+                        >
+                          Zoho Accounts Security <ExternalLink className="w-3 h-3" />
+                        </a>{" "}
+                        (or <a href="https://accounts.zoho.in/home#security/app_password" target="_blank" rel="noreferrer" className="underline font-bold text-blue-700">accounts.zoho.in</a> for India accounts) &gt; <strong>App Passwords</strong> &gt; click <strong>Generate New Password</strong>. Name it <code className="bg-blue-100 px-1.5 py-0.5 rounded text-[11px] font-mono">Roxx CRM</code> and paste it into the <strong>App Password</strong> field below.
+                      </li>
+                      <li>
+                        <strong>Match your Regional Datacenter Host:</strong>
+                        <ul className="list-disc list-inside pl-4 mt-1 space-y-0.5 text-slate-600">
+                          <li>India (.in accounts): <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">smtppro.zoho.in</code></li>
+                          <li>US / Global (.com accounts): <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">smtppro.zoho.com</code></li>
+                          <li>Europe (.eu accounts): <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">smtppro.zoho.eu</code></li>
+                        </ul>
+                      </li>
+                      <li>
+                        <strong>Port &amp; Encryption:</strong> Port <code className="font-mono font-bold text-slate-800">465</code> with <strong>SSL/TLS checked</strong> (or Port <code className="font-mono font-bold text-slate-800">587</code> with SSL/TLS unchecked).
+                      </li>
+                      <li>
+                        <strong>Enable Outgoing SMTP Access:</strong> In Zoho Mail webmail &gt; Settings &gt; <strong>Mail Accounts</strong> &gt; select your account &gt; ensure <strong>Outgoing server (SMTP)</strong> is toggled <strong>ON</strong>.
+                      </li>
+                    </ol>
+                  </div>
+                )}
+
+                {/* Google Workspace Guide */}
+                {selectedGuideProvider === "gmail" && (
+                  <div className="space-y-2 bg-white/90 p-4 rounded-xl border border-blue-200">
+                    <p className="font-bold text-slate-900">
+                      Google Workspace &amp; Gmail Setup:
+                    </p>
+                    <p className="leading-relaxed text-slate-700">
+                      Google requires an <strong>App Password</strong> rather than your standard Google password when sending emails via external SMTP clients.
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1.5 pl-1 font-medium leading-relaxed text-slate-700">
+                      <li>
+                        Open your{" "}
+                        <a
+                          href="https://myaccount.google.com/security"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-bold text-blue-700 inline-flex items-center gap-0.5"
+                        >
+                          Google Account Security Settings <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </li>
+                      <li>Ensure <strong>2-Step Verification</strong> is switched ON.</li>
+                      <li>In the search bar at top of Google Account, type <strong>&quot;App passwords&quot;</strong>.</li>
+                      <li>Create a new app name (e.g. <code className="bg-blue-100 px-1.5 py-0.5 rounded text-[11px] font-mono">Roxx CRM</code>) and click <strong>Create</strong>.</li>
+                      <li>Copy the generated 16-character code (e.g. <code className="bg-blue-100 px-1.5 py-0.5 rounded text-[11px] font-mono">abcd efgh ijkl mnop</code>) and paste it into the password field below (without spaces).</li>
+                    </ol>
+                  </div>
+                )}
+
+                {/* Microsoft 365 Guide */}
+                {selectedGuideProvider === "m365" && (
+                  <div className="space-y-2 bg-white/90 p-4 rounded-xl border border-blue-200">
+                    <p className="font-bold text-slate-900">
+                      Microsoft 365 / Outlook Setup:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1.5 pl-1 font-medium leading-relaxed text-slate-700">
+                      <li>Host: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">smtp.office365.com</code>, Port: <code className="font-mono font-bold text-slate-800">587</code>, Encryption: <strong>STARTTLS</strong> (SSL unchecked).</li>
+                      <li>In Microsoft 365 Admin Center &gt; Active Users &gt; select your mailbox &gt; Mail tab &gt; <strong>Manage email apps</strong> &gt; verify <strong>Authenticated SMTP</strong> is checked.</li>
+                      <li>If your organization enforces Multi-Factor Authentication (MFA), generate an App Password in your Microsoft Account security center.</li>
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -626,6 +730,44 @@ export function EmailSettingsTab() {
                     className="pl-9 text-xs font-medium"
                   />
                 </div>
+                {host.toLowerCase().includes("zoho") && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate-400 font-semibold">Datacenter:</span>
+                    <button
+                      type="button"
+                      onClick={() => setHost("smtppro.zoho.com")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        host === "smtppro.zoho.com"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .com (US/Global)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHost("smtppro.zoho.in")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        host === "smtppro.zoho.in"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .in (India)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHost("smtppro.zoho.eu")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        host === "smtppro.zoho.eu"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .eu (Europe)
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1342,9 +1484,11 @@ export function EmailSettingsTab() {
             )}
 
             {testErrorMessage && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span className="font-semibold leading-relaxed">{testErrorMessage}</span>
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 min-w-0">
+                  <span className="font-semibold leading-relaxed block whitespace-pre-line text-xs">{testErrorMessage}</span>
+                </div>
               </div>
             )}
 

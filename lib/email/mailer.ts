@@ -100,8 +100,36 @@ export async function verifySmtp(
     return { success: true };
   } catch (error: unknown) {
     const err = error as { response?: string; message?: string };
-    const errorMessage =
+    let errorMessage =
       err?.response || err?.message || "Failed to establish SMTP connection.";
+
+    // Add actionable troubleshooting hints for standard authentication failure codes (e.g. 535 5.7.8)
+    const isAuthFailure =
+      errorMessage.includes("535") ||
+      errorMessage.toLowerCase().includes("authentication failed") ||
+      errorMessage.toLowerCase().includes("invalid credentials");
+
+    if (isAuthFailure) {
+      const hostLower = options.host.toLowerCase();
+      if (hostLower.includes("zoho")) {
+        errorMessage +=
+          "\n\nZoho Mail Troubleshooting:\n" +
+          "1. Use a Zoho 'App Password' instead of your regular login password. Generate one at Zoho Accounts (accounts.zoho.com or accounts.zoho.in) > Security > App Passwords.\n" +
+          "2. Check your regional datacenter host: if your account was registered in India, use smtppro.zoho.in; if in Europe, use smtppro.zoho.eu; if US/Global, use smtppro.zoho.com.\n" +
+          "3. Verify that 'Outgoing server (SMTP)' is toggled ON in your Zoho Mail account settings.";
+      } else if (hostLower.includes("google") || hostLower.includes("gmail")) {
+        errorMessage +=
+          "\n\nGoogle Workspace Troubleshooting:\n" +
+          "1. Generate a 16-character App Password at myaccount.google.com/apppasswords (standard login passwords are not allowed for external SMTP).\n" +
+          "2. Ensure 2-Step Verification is enabled on your Google Account.";
+      } else if (hostLower.includes("office365") || hostLower.includes("outlook")) {
+        errorMessage +=
+          "\n\nMicrosoft 365 Troubleshooting:\n" +
+          "1. Verify that 'Authenticated SMTP' is enabled for this mailbox in the Microsoft 365 Admin Center.\n" +
+          "2. If Multi-Factor Authentication is active, use an App Password.";
+      }
+    }
+
     return { success: false, error: errorMessage };
   }
 }
