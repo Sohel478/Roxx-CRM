@@ -10,9 +10,11 @@ import {
   saveSmtpConfigAction,
   sendLeadEmailAction,
 } from "@/actions/email";
-import { mockSmtpStore } from "@/lib/db/mock-store";
+import { mockSmtpStore, mockImapStore, mockInboxStore } from "@/lib/db/mock-store";
 import * as sessionModule from "@/lib/auth/session";
 import * as mailerModule from "@/lib/email/mailer";
+import * as imapClient from "@/lib/email/imap-client";
+import { syncInboxAction, getInboxAccountStatusAction } from "@/actions/inbox";
 
 describe("BYO-SMTP Email Integration & Workspace Relay", () => {
   describe("Cryptographic Security (AES-256-GCM)", () => {
@@ -260,6 +262,82 @@ describe("BYO-SMTP Email Integration & Workspace Relay", () => {
           subject: "Platform Follow-up",
         })
       );
+    });
+
+    it("correctly derives regional Zoho IMAP host (imappro.zoho.in) from smtppro.zoho.in", async () => {
+      const zohoOrgId = "org_zoho_test_456";
+      const zohoSession = {
+        id: "usr_admin",
+        organizationId: zohoOrgId,
+        organizationName: "Techflux Zoho Org",
+        email: "jessica@techflux.space",
+        name: "Jessica",
+        role: "ADMIN",
+        permissions: ["settings:update"],
+        expiresAt: Date.now() + 3600000,
+      };
+      vi.spyOn(sessionModule, "getSession").mockResolvedValue(zohoSession);
+
+      // Save Zoho India SMTP configuration
+      mockSmtpStore[zohoOrgId] = {
+        organizationId: zohoOrgId,
+        host: "smtppro.zoho.in",
+        port: 465,
+        secure: true,
+        username: "jessica@techflux.space",
+        encryptedPassword: encryptSecret("zoho-app-pass"),
+        fromName: "Jessica Techflux",
+        fromEmail: "jessica@techflux.space",
+        updatedAt: new Date().toISOString(),
+      };
+      // Ensure no explicit imap store exists initially
+      delete mockImapStore[zohoOrgId];
+
+      const statusRes = await getInboxAccountStatusAction();
+      expect(statusRes.success).toBe(true);
+      expect(statusRes.data.isConfigured).toBe(true);
+      expect(statusRes.data.isSmtpConfigured).toBe(true);
+      expect(statusRes.data.connectedEmail).toBe("jessica@techflux.space");
+      // Must derive imappro.zoho.in (NOT imappro.zoho.com!)
+      expect(statusRes.data.imapHost).toBe("imappro.zoho.in");
+    });
+
+    it("surfaces actionable error message with Zoho troubleshooting when IMAP sync fails", async () => {
+      const zohoOrgId = "org_zoho_fail_789";
+      const zohoSession = {
+        id: "usr_admin",
+        organizationId: zohoOrgId,
+        organizationName: "Techflux Fail Org",
+        email: "jessica@techflux.space",
+        name: "Jessica",
+        role: "ADMIN",
+        permissions: ["settings:update"],
+        expiresAt: Date.now() + 3600000,
+      };
+      vi.spyOn(sessionModule, "getSession").mockResolvedValue(zohoSession);
+
+      mockImapStore[zohoOrgId] = {
+        organizationId: zohoOrgId,
+        host: "imappro.zoho.in",
+        port: 993,
+        secure: true,
+        username: "jessica@techflux.space",
+        encryptedPassword: encryptSecret("invalid-pass"),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Mock IMAP rejection
+      vi.spyOn(imapClient, "fetchImapInbox").mockResolvedValue({
+        success: false,
+        messages: [],
+        error: "A001 NO [AUTHENTICATIONFAILED] Authentication failed",
+      });
+
+      const syncRes = await syncInboxAction();
+      expect(syncRes.success).toBe(false);
+      expect(syncRes.error).toContain("IMAP Sync Failed (imappro.zoho.in)");
+      expect(syncRes.error).toContain("AUTHENTICATIONFAILED");
+      expect(syncRes.error).toContain("Ensure 'IMAP Access' is checked in Zoho Settings");
     });
   });
 });

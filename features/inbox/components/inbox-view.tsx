@@ -204,15 +204,16 @@ export function InboxView() {
           text: res.message || "Inbox synchronized successfully.",
         });
         await loadData(filter, search, selectedRep);
+        setTimeout(() => setSyncFeedback(null), 6000);
       } else {
         setSyncFeedback({
           type: "error",
           text: res.error || "Failed to synchronize inbox.",
         });
+        setTimeout(() => setSyncFeedback(null), 15000);
       }
     } finally {
       setIsSyncing(false);
-      setTimeout(() => setSyncFeedback(null), 6000);
     }
   };
 
@@ -354,16 +355,33 @@ export function InboxView() {
             {/* Connected Mailbox Pill */}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {accountStatus?.isConfigured ? (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                  <span className="text-slate-600 font-medium">Connected Mailbox:</span>
-                  <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300 text-[11px]">
-                    {activeConnectedEmail}
-                  </span>
-                  <span className="text-emerald-700 font-semibold text-[11px] hidden sm:inline">
-                    • Synced to Outbound Relay
-                  </span>
-                </div>
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span className="text-slate-600 font-medium">Connected Mailbox:</span>
+                    <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-emerald-300 text-[11px]">
+                      {activeConnectedEmail}
+                    </span>
+                    {accountStatus?.isImapConfigured ? (
+                      <span className="text-emerald-700 font-semibold text-[11px] hidden sm:inline">
+                        • Inbound IMAP &amp; Outbound Active
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 font-semibold text-[11px] hidden sm:inline">
+                        • Outbound Relay Only
+                      </span>
+                    )}
+                  </div>
+                  {!accountStatus?.isImapConfigured && (
+                    <Link
+                      href="/settings"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition-colors"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Inbound IMAP unconfigured — Click to set up &rarr;</span>
+                    </Link>
+                  )}
+                </>
               ) : (
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -564,17 +582,36 @@ export function InboxView() {
                     ? `Connected to ${activeConnectedEmail}. You have team-wide visibility across all client conversations.`
                     : `Connected to ${activeConnectedEmail}. Incoming replies from leads and contacts assigned to you will automatically appear here.`}
                 </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="text-xs font-semibold gap-1.5 h-8"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSyncing ? "animate-spin" : ""}`} />
-                  <span>Sync Now</span>
-                </Button>
+                {accountStatus?.isConfigured && !accountStatus?.isImapConfigured ? (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-left max-w-sm mx-auto space-y-2.5 mt-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-900">
+                        <p className="font-bold">Inbound IMAP Required to Receive Replies</p>
+                        <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                          Your outbound SMTP relay is connected, but incoming client replies require configuring Inbound IMAP in Settings.
+                        </p>
+                      </div>
+                    </div>
+                    <Link href="/settings" className="block">
+                      <Button size="sm" className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold h-8">
+                        Configure Inbound IMAP in Settings &rarr;
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="text-xs font-semibold gap-1.5 h-8"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSyncing ? "animate-spin" : ""}`} />
+                    <span>Sync Now</span>
+                  </Button>
+                )}
               </div>
             ) : (
               emails.map((email) => {

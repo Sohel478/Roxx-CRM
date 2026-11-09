@@ -34,9 +34,12 @@ export interface GetInboxParams {
 
 export interface InboxAccountStatus {
   isConfigured: boolean;
+  isSmtpConfigured?: boolean;
+  isImapConfigured?: boolean;
   connectedEmail: string;
   provider: string;
   host: string;
+  imapHost?: string;
   lastSyncedAt?: string;
   userRole?: string;
   isAdminOrManager?: boolean;
@@ -95,7 +98,17 @@ async function resolveOrganizationMailConfig(organizationId: string): Promise<{
     } else if (smtpConfig.host.includes("office365") || smtpConfig.host.includes("outlook")) {
       derivedImapHost = "outlook.office365.com";
     } else if (smtpConfig.host.includes("zoho")) {
-      derivedImapHost = "imappro.zoho.com";
+      if (smtpConfig.host.includes(".zoho.in")) {
+        derivedImapHost = "imappro.zoho.in";
+      } else if (smtpConfig.host.includes(".zoho.eu")) {
+        derivedImapHost = "imappro.zoho.eu";
+      } else if (smtpConfig.host.includes(".zoho.com.au")) {
+        derivedImapHost = "imappro.zoho.com.au";
+      } else if (smtpConfig.host.includes(".zoho.jp")) {
+        derivedImapHost = "imappro.zoho.jp";
+      } else {
+        derivedImapHost = "imappro.zoho.com";
+      }
     } else if (smtpConfig.host.startsWith("smtp.")) {
       derivedImapHost = smtpConfig.host.replace(/^smtp\./, "imap.");
     } else {
@@ -113,6 +126,30 @@ async function resolveOrganizationMailConfig(organizationId: string): Promise<{
       updatedAt: new Date().toISOString(),
     };
     mockImapStore[organizationId] = imapConfig;
+
+    // Persist derived IMAP config so it stays active across serverless lambdas
+    if (smtpConfig.encryptedPassword) {
+      try {
+        await prisma.systemSetting.upsert({
+          where: {
+            organizationId_key: {
+              organizationId,
+              key: "imap_config",
+            },
+          },
+          create: {
+            organizationId,
+            key: "imap_config",
+            value: JSON.stringify(imapConfig),
+          },
+          update: {
+            value: JSON.stringify(imapConfig),
+          },
+        });
+      } catch {
+        // Fallback to in-memory store
+      }
+    }
   }
 
   const connectedEmail =
@@ -468,10 +505,13 @@ export async function getInboxAccountStatusAction(): Promise<{
     const { connectedEmail, smtpConfig, imapConfig } =
       await resolveOrganizationMailConfig(organizationId);
 
-    const isConfigured = Boolean(
-      (smtpConfig && smtpConfig.host && smtpConfig.username) ||
-      (imapConfig && imapConfig.host && imapConfig.username)
+    const isSmtpConfigured = Boolean(
+      smtpConfig && smtpConfig.host && smtpConfig.username && smtpConfig.encryptedPassword
     );
+    const isImapConfigured = Boolean(
+      imapConfig && imapConfig.host && imapConfig.username && imapConfig.encryptedPassword
+    );
+    const isConfigured = isSmtpConfigured || isImapConfigured;
 
     const host = imapConfig?.host || smtpConfig?.host || "";
     let provider = "Custom Email Server";
@@ -494,9 +534,12 @@ export async function getInboxAccountStatusAction(): Promise<{
       success: true,
       data: {
         isConfigured,
+        isSmtpConfigured,
+        isImapConfigured,
         connectedEmail: connectedEmail || session.email || "infotflux@gmail.com",
         provider,
         host,
+        imapHost: imapConfig?.host || "",
         lastSyncedAt: imapConfig?.lastSyncedAt || smtpConfig?.updatedAt,
         userRole: session.role || "SALES_USER",
         isAdminOrManager,
@@ -847,8 +890,14 @@ export async function syncInboxAction(): Promise<{
       inReplyTo?: string;
     }> = [];
 
+    let imapAttempted = false;
+    let imapError: string | null = null;
+    let attemptedImapHost = "";
+
     // Attempt live IMAP synchronization if credentials exist
     if (imapConfig && imapConfig.host && imapConfig.username && imapConfig.encryptedPassword) {
+      imapAttempted = true;
+      attemptedImapHost = imapConfig.host;
       const password = decryptSecret(imapConfig.encryptedPassword);
       if (password) {
         try {
@@ -863,13 +912,47 @@ export async function syncInboxAction(): Promise<{
             25
           );
 
-          if (fetchRes.success && fetchRes.messages.length > 0) {
-            fetchedMessages = fetchRes.messages;
+          if (fetchRes.success) {
+            if (fetchRes.messages.length > 0) {
+              fetchedMessages = fetchRes.messages;
+            }
+          } else {
+            imapError = fetchRes.error || "IMAP server rejected connection.";
           }
         } catch (fetchErr) {
+          imapError = (fetchErr as Error)?.message || "Failed to connect to IMAP server.";
           console.warn("IMAP live fetch fallback:", fetchErr);
         }
+      } else {
+        imapError = "Could not decrypt stored IMAP password.";
       }
+    }
+
+    if (imapError) {
+      let advice = "";
+      if (attemptedImapHost.includes("zoho")) {
+        advice = " For Zoho Mail: 1) Ensure 'IMAP Access' is checked in Zoho Settings > Mail Accounts > IMAP, 2) Use a dedicated Zoho App Password, 3) Host must match your region (e.g. imappro.zoho.in for India).";
+      } else if (attemptedImapHost.includes("gmail") || attemptedImapHost.includes("google")) {
+        advice = " For Gmail: Generate a 16-character App Password at myaccount.google.com/apppasswords and enable IMAP in Gmail Settings.";
+      }
+
+      return {
+        success: false,
+        count: 0,
+        syncedReplies: 0,
+        connectedEmail: activeEmail,
+        error: `IMAP Sync Failed (${attemptedImapHost}): ${imapError}.${advice}`,
+      };
+    }
+
+    if (!imapAttempted && !mockInboxStore.some((e) => e.organizationId === organizationId)) {
+      return {
+        success: false,
+        count: 0,
+        syncedReplies: 0,
+        connectedEmail: activeEmail,
+        error: "Inbound IMAP is not configured yet. Please configure your incoming email (IMAP) in Settings > Email Settings to sync incoming messages.",
+      };
     }
 
     let newCount = 0;

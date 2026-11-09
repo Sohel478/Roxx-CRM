@@ -299,7 +299,17 @@ export function EmailSettingsTab() {
       setImapPort(993);
       setImapSecure(true);
     } else if (host.includes("zoho")) {
-      setImapHost("imappro.zoho.com");
+      if (host.includes(".zoho.in")) {
+        setImapHost("imappro.zoho.in");
+      } else if (host.includes(".zoho.eu")) {
+        setImapHost("imappro.zoho.eu");
+      } else if (host.includes(".zoho.com.au")) {
+        setImapHost("imappro.zoho.com.au");
+      } else if (host.includes(".zoho.jp")) {
+        setImapHost("imappro.zoho.jp");
+      } else {
+        setImapHost("imappro.zoho.com");
+      }
       setImapPort(993);
       setImapSecure(true);
     } else if (host.startsWith("smtp.")) {
@@ -1270,6 +1280,25 @@ export function EmailSettingsTab() {
             </div>
           )}
 
+          {/* Zoho IMAP Checklist Banner */}
+          <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-blue-900">
+              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Zoho Mail IMAP Setup Requirements (Crucial for Inbound Sync)</span>
+            </div>
+            <ul className="text-[11px] text-blue-800 space-y-1.5 list-disc list-inside">
+              <li>
+                <strong>Enable IMAP Access in Zoho Mail:</strong> Log into Zoho Webmail (<a href="https://mail.zoho.in" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">mail.zoho.in</a> for India or <a href="https://mail.zoho.com" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">mail.zoho.com</a>) &gt; click <strong>Settings (gear icon)</strong> &gt; <strong>Mail Accounts</strong> &gt; select your account &gt; under <strong>IMAP</strong>, ensure the checkbox <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">☑️ IMAP Access</code> is checked and saved! (Zoho leaves this unchecked by default).
+              </li>
+              <li>
+                <strong>Regional Host:</strong> India accounts (<code className="font-mono">.in</code>) MUST use <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">imappro.zoho.in</code>. Global accounts use <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">imappro.zoho.com</code>. Port is <strong>993</strong> with <strong>SSL/TLS Encrypted</strong> checked.
+              </li>
+              <li>
+                <strong>Dedicated App Password:</strong> Use the Zoho App Password (generated in <a href="https://accounts.zoho.in/home#security/app_password" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">accounts.zoho.in &gt; App Passwords</a>), not your normal Zoho login password.
+              </li>
+            </ul>
+          </div>
+
           {/* Quick sync helper */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex items-center justify-between flex-wrap gap-3">
             <div>
@@ -1315,7 +1344,45 @@ export function EmailSettingsTab() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">IMAP Server Host *</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">IMAP Server Host *</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Zoho:</span>
+                    <button
+                      type="button"
+                      onClick={() => setImapHost("imappro.zoho.in")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        imapHost === "imappro.zoho.in"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .in (India)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImapHost("imappro.zoho.com")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        imapHost === "imappro.zoho.com"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .com (US)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImapHost("imappro.zoho.eu")}
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium transition-colors ${
+                        imapHost === "imappro.zoho.eu"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      .eu (EU)
+                    </button>
+                  </div>
+                </div>
                 <div className="relative flex items-center">
                   <Server className="absolute left-3 w-4 h-4 text-slate-400" />
                   <Input
@@ -1327,7 +1394,7 @@ export function EmailSettingsTab() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Gmail: imap.gmail.com | Outlook: outlook.office365.com | Zoho: imappro.zoho.com
+                  Gmail: imap.gmail.com | Outlook: outlook.office365.com | Zoho: imappro.zoho.in
                 </p>
               </div>
 
