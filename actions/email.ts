@@ -1018,9 +1018,17 @@ export async function testImapConnectionAction(
     });
 
     if (!verifyResult.success) {
+      let advice = "";
+      const errStr = (verifyResult.error || "").toLowerCase();
+      if (errStr.includes("enable imap") || errStr.includes("administrator")) {
+        advice = " Zoho Admin Action Required: IMAP protocol access is disabled in the Zoho Mail Admin Console. An administrator must log in to mailadmin.zoho.in > Users > select this mailbox > Mail Settings / Protocol Access > Toggle IMAP to ON.";
+      } else if (host.includes("zoho")) {
+        advice = " For Zoho Mail: 1) Ensure 'IMAP Access' is checked in Zoho Settings > Mail Accounts > IMAP, 2) Use a dedicated Zoho App Password, 3) Host must match your region (e.g. imappro.zoho.in for India).";
+      }
+
       return {
         success: false,
-        error: verifyResult.error || "Failed to connect to IMAP server.",
+        error: `${verifyResult.error || "Failed to connect to IMAP server."}${advice ? " " + advice : ""}`,
       };
     }
 

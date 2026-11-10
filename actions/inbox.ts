@@ -970,7 +970,9 @@ export async function syncInboxAction(): Promise<{
 
     if (imapError) {
       let advice = "";
-      if (attemptedImapHost.includes("zoho")) {
+      if (imapError.toLowerCase().includes("enable imap") || imapError.toLowerCase().includes("administrator")) {
+        advice = " Zoho Organization Action Required: IMAP is disabled in your Zoho Admin Console. An administrator must go to Zoho Mail Admin Console (mailadmin.zoho.in) > Users > select this user > Mail Settings (or Protocol Access) > Toggle 'IMAP' to ENABLED. Also verify 'IMAP Access' is checked in mail.zoho.in > Settings > Mail Accounts > IMAP.";
+      } else if (attemptedImapHost.includes("zoho")) {
         advice = " For Zoho Mail: 1) Ensure 'IMAP Access' is checked in Zoho Settings > Mail Accounts > IMAP, 2) Use a dedicated Zoho App Password, 3) Host must match your region (e.g. imappro.zoho.in for India).";
       } else if (attemptedImapHost.includes("gmail") || attemptedImapHost.includes("google")) {
         advice = " For Gmail: Generate a 16-character App Password at myaccount.google.com/apppasswords and enable IMAP in Gmail Settings.";

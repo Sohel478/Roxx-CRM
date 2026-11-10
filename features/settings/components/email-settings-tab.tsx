@@ -1291,6 +1291,9 @@ export function EmailSettingsTab() {
                 <strong>Enable IMAP Access in Zoho Mail:</strong> Log into Zoho Webmail (<a href="https://mail.zoho.in" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">mail.zoho.in</a> for India or <a href="https://mail.zoho.com" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">mail.zoho.com</a>) &gt; click <strong>Settings (gear icon)</strong> &gt; <strong>Mail Accounts</strong> &gt; select your account &gt; under <strong>IMAP</strong>, ensure the checkbox <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">☑️ IMAP Access</code> is checked and saved! (Zoho leaves this unchecked by default).
               </li>
               <li>
+                <strong>Zoho Admin Console (If getting "Please contact your administrator"):</strong> In business/workplace domains, your Zoho administrator must also permit IMAP for the user: open <a href="https://mailadmin.zoho.in" target="_blank" rel="noreferrer" className="underline font-bold text-blue-900">mailadmin.zoho.in</a> &gt; <strong>Users</strong> &gt; click on the user &gt; <strong>Mail Settings / Protocol Access</strong> &gt; toggle <strong>IMAP</strong> to <strong>ON / ENABLED</strong>.
+              </li>
+              <li>
                 <strong>Regional Host:</strong> India accounts (<code className="font-mono">.in</code>) MUST use <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">imappro.zoho.in</code>. Global accounts use <code className="bg-blue-100 px-1 py-0.5 rounded font-bold text-blue-900">imappro.zoho.com</code>. Port is <strong>993</strong> with <strong>SSL/TLS Encrypted</strong> checked.
               </li>
               <li>
