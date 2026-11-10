@@ -99,6 +99,7 @@ export function InlineComposer({
   // Call / Meeting fields
   const [callOutcome, setCallOutcome] = useState("Connected");
   const [duration, setDuration] = useState<number>(15);
+  const [enableTracking, setEnableTracking] = useState<boolean>(false);
 
   // Task fields
   const [taskPriority, setTaskPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
@@ -241,6 +242,7 @@ export function InlineComposer({
         body: description.trim(),
         entityType,
         entityId,
+        disableTracking: !enableTracking,
       });
 
       if (res.success) {
@@ -460,6 +462,28 @@ export function InlineComposer({
                   className="text-xs font-semibold"
                 />
               </div>
+            </div>
+
+            {/* Deliverability & Tracking Control */}
+            <div className="flex items-center justify-between text-[11px] pt-1.5 px-0.5 flex-wrap gap-2">
+              <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 hover:text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={enableTracking}
+                  onChange={(e) => setEnableTracking(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 focus:ring-blue-500"
+                />
+                <span>Track email opens &amp; link clicks</span>
+              </label>
+              {!enableTracking ? (
+                <span className="text-emerald-700 font-semibold text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  🛡️ Pure Human Delivery (Max Spam Deliverability)
+                </span>
+              ) : (
+                <span className="text-slate-400 text-[10px]">
+                  Adds 1x1 tracking pixel
+                </span>
+              )}
             </div>
           </div>
         )}

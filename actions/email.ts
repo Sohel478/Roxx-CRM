@@ -460,7 +460,7 @@ export async function sendLeadEmailAction(
       };
     }
 
-    const { to, subject, body, entityId, entityType } = parsed.data;
+    const { to, subject, body, entityId, entityType, disableTracking } = parsed.data;
 
     // Fetch tenant's SMTP configuration
     let config: MockSmtpConfig | null = null;
@@ -564,7 +564,7 @@ export async function sendLeadEmailAction(
 
     const dispatchId = `direct_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const trackingOpts =
-      entityType === "lead" && entityId
+      !disableTracking && entityType === "lead" && entityId
         ? {
             campaignId: dispatchId,
             leadId: entityId,
@@ -1118,8 +1118,13 @@ export async function checkDomainDeliverabilityAction(): Promise<{
       spfRecord = "v=spf1 include:spf.protection.outlook.com ~all";
       spfInstructions = "Add a TXT record for host '@' with this Microsoft 365 SPF value.";
     } else if (host.includes("zoho")) {
-      spfRecord = "v=spf1 include:zoho.com ~all";
-      spfInstructions = "Add a TXT record for host '@' with this Zoho Mail SPF value.";
+      if (host.includes(".zoho.in")) {
+        spfRecord = "v=spf1 include:zoho.in ~all";
+        spfInstructions = "Add a TXT record for host '@' with this Zoho India SPF value.";
+      } else {
+        spfRecord = "v=spf1 include:zoho.com ~all";
+        spfInstructions = "Add a TXT record for host '@' with this Zoho Mail SPF value.";
+      }
     }
 
     // DKIM record guidance
@@ -1139,11 +1144,15 @@ export async function checkDomainDeliverabilityAction(): Promise<{
       dkimSelector = "selector1";
       dkimRecord = `selector1-${domain.replace(/\./g, "-")}._domainkey.${domain.replace(/\./g, "-")}.onmicrosoft.com`;
       dkimInstructions = "Add CNAME records as specified in Microsoft 365 Defender / Exchange Admin Center.";
+    } else if (host.includes("zoho")) {
+      dkimSelector = "zmail";
+      dkimRecord = "v=DKIM1; k=rsa; p=...(Generated in Zoho Mail Admin Console)";
+      dkimInstructions = "Go to Zoho Mail Admin (mailadmin.zoho.in) > Domains > Email Configuration > DKIM. Ensure selector 'zmail' is verified and set as Default.";
     }
 
     // DMARC record
-    let dmarcRecord = `v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@${domain}; pct=100`;
-    let dmarcInstructions = `Add a TXT record with host name '_dmarc' (or '_dmarc.${domain}') in your DNS manager.`;
+    let dmarcRecord = `v=DMARC1; p=none; rua=mailto:${fromEmail}; pct=100`;
+    let dmarcInstructions = `Add a TXT record with host name '_dmarc' in your domain's DNS manager (GoDaddy, Cloudflare, Namecheap, etc.).`;
     if (isGmailSender) {
       dmarcRecord = "v=DMARC1; p=reject; rua=mailto:mailauth-reports@google.com";
       dmarcInstructions = "Protected globally by Google's global DMARC policy.";

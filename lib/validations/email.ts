@@ -38,6 +38,7 @@ export const sendEmailSchema = z.object({
   body: z.string().min(1, "Email body is required"),
   entityType: z.enum(["lead", "opportunity", "company", "contact"]).default("lead"),
   entityId: z.string().optional(),
+  disableTracking: z.boolean().optional(),
 });
 
 export type SendEmailInput = z.infer<typeof sendEmailSchema>;
