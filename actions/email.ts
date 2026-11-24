@@ -563,8 +563,11 @@ export async function sendLeadEmailAction(
     });
 
     const dispatchId = `direct_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Pure human delivery by default: direct 1-on-1 emails should NEVER attach tracking pixels
+    // or link redirect wrappers unless explicitly requested, preventing SpamAssassin HTML_IMAGE_ONLY_12 penalties.
+    const isTrackingRequested = Boolean(input.enableTracking) && !input.disableTracking;
     const trackingOpts =
-      !disableTracking && entityType === "lead" && entityId
+      isTrackingRequested && entityType === "lead" && entityId
         ? {
             campaignId: dispatchId,
             leadId: entityId,

@@ -21,6 +21,11 @@ export const userUpdateSchema = z.object({
     errorMap: () => ({ message: "Select a valid role" }),
   }),
   isActive: z.boolean(),
+  password: z
+    .string()
+    .min(6, "New password must be at least 6 characters")
+    .optional()
+    .or(z.literal("")),
 });
 
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;

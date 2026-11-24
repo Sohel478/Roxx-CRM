@@ -242,6 +242,7 @@ export function InlineComposer({
         body: description.trim(),
         entityType,
         entityId,
+        enableTracking: Boolean(enableTracking),
         disableTracking: !enableTracking,
       });
 

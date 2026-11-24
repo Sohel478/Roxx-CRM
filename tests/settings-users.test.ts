@@ -56,6 +56,39 @@ describe("Phase 10: Settings, Users & RBAC Validations", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("validates user update payload with optional new password", () => {
+    const updateWithPassword = {
+      id: "usr_12345",
+      name: "Updated Name",
+      role: "ADMIN",
+      isActive: true,
+      password: "newSecurePassword123",
+    };
+    const parsed = userUpdateSchema.safeParse(updateWithPassword);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.password).toBe("newSecurePassword123");
+
+    // Empty string allowed (interpreted as no change)
+    const updateEmptyPassword = {
+      id: "usr_12345",
+      name: "Updated Name",
+      role: "ADMIN",
+      isActive: true,
+      password: "",
+    };
+    expect(userUpdateSchema.safeParse(updateEmptyPassword).success).toBe(true);
+
+    // Too short rejected (< 6 chars)
+    const updateShortPassword = {
+      id: "usr_12345",
+      name: "Updated Name",
+      role: "ADMIN",
+      isActive: true,
+      password: "123",
+    };
+    expect(userUpdateSchema.safeParse(updateShortPassword).success).toBe(false);
+  });
+
   it("validates organization preferences settings", () => {
     const validSettings = {
       name: "Roxx Global Technologies Ltd.",

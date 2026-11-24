@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Eye,
+  EyeOff,
   CheckCircle2,
   XCircle,
   MoreVertical,
@@ -54,6 +55,8 @@ export function TeamMembersTab({ users, onRefresh, maxSeats = 20 }: TeamMembersT
   const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState<UserRole>("SALES_USER");
   const [editIsActive, setEditIsActive] = useState(true);
+  const [editPassword, setEditPassword] = useState("");
+  const [showEditPassword, setShowEditPassword] = useState(false);
 
   const openInviteModal = () => {
     setInviteName("");
@@ -90,6 +93,8 @@ export function TeamMembersTab({ users, onRefresh, maxSeats = 20 }: TeamMembersT
     setEditName(u.name);
     setEditRole(u.role);
     setEditIsActive(u.isActive);
+    setEditPassword("");
+    setShowEditPassword(false);
     setFormError(null);
   };
 
@@ -98,18 +103,25 @@ export function TeamMembersTab({ users, onRefresh, maxSeats = 20 }: TeamMembersT
     if (!userToEdit) return;
     setFormError(null);
 
+    if (editPassword.trim() && editPassword.trim().length < 6) {
+      setFormError("New password must be at least 6 characters long.");
+      return;
+    }
+
     startTransition(async () => {
       const res = await updateUserAction({
         id: userToEdit.id,
         name: editName,
         role: editRole,
         isActive: editIsActive,
+        password: editPassword.trim() || undefined,
       });
 
       if (!res.success) {
         setFormError(res.error || "Failed to update user");
       } else {
         setUserToEdit(null);
+        setEditPassword("");
         onRefresh();
       }
     });
@@ -453,6 +465,38 @@ export function TeamMembersTab({ users, onRefresh, maxSeats = 20 }: TeamMembersT
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              New Password
+            </label>
+            <div className="relative">
+              <KeyRound className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <Input
+                type={showEditPassword ? "text" : "password"}
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="Leave blank to keep existing password"
+                className="pl-9 pr-9 text-xs"
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowEditPassword(!showEditPassword)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+                tabIndex={-1}
+              >
+                {showEditPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Leave blank to keep current password. Minimum 6 characters if setting a new password.
+            </p>
           </div>
 
           <div className="flex items-center gap-3 pt-2">

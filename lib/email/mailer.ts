@@ -165,16 +165,25 @@ export async function sendSmtpEmail(
 
     const cleanBodyText = mail.body.trim();
 
-    // Natural human HTML formatting: direct paragraph elements in dir="ltr"
+    // Natural human HTML formatting: standard clean HTML5 envelope
     // matches human compose windows in Gmail/Apple Mail rather than marketing templates
     const paragraphsHtml = cleanBodyText
       .split(/\n\n+/)
       .map((p) => `<div style="margin-bottom: 12px;">${p.replace(/\n/g, "<br/>")}</div>`)
       .join("");
 
-    let naturalHtml = `<div dir="ltr" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222222;">
+    let naturalHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222222;">
+<div dir="ltr">
 ${paragraphsHtml}
-</div>`;
+</div>
+</body>
+</html>`;
 
     if (mail.tracking) {
       naturalHtml = injectTrackingIntoHtml(naturalHtml, {

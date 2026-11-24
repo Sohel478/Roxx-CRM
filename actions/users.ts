@@ -391,11 +391,16 @@ export async function updateUserAction(
     };
   }
 
-  const { id, name, role, isActive } = parsed.data;
+  const { id, name, role, isActive, password } = parsed.data;
 
   // Prevent self-deactivation or demotion of current admin
   if (session.id === id && !isActive) {
     return { success: false, error: "You cannot deactivate your own account." };
+  }
+
+  let hashedPassword: string | undefined = undefined;
+  if (password && password.trim().length > 0) {
+    hashedPassword = await hashPassword(password.trim());
   }
 
   try {
@@ -412,13 +417,24 @@ export async function updateUserAction(
       });
     }
 
+    const updateData: {
+      name: string;
+      roleId: string;
+      isActive: boolean;
+      passwordHash?: string;
+    } = {
+      name,
+      roleId: dbRole.id,
+      isActive,
+    };
+
+    if (hashedPassword) {
+      updateData.passwordHash = hashedPassword;
+    }
+
     const updated = await prisma.user.update({
       where: { id },
-      data: {
-        name,
-        roleId: dbRole.id,
-        isActive,
-      },
+      data: updateData,
       include: { role: true },
     });
 
@@ -430,7 +446,12 @@ export async function updateUserAction(
           action: "USER_UPDATED",
           entityType: "User",
           entityId: updated.id,
-          newValues: { name: updated.name, role: dbRole.name, isActive: updated.isActive },
+          newValues: {
+            name: updated.name,
+            role: dbRole.name,
+            isActive: updated.isActive,
+            passwordReset: Boolean(hashedPassword),
+          },
         },
       });
     } catch {
@@ -465,6 +486,7 @@ export async function updateUserAction(
       name,
       role,
       isActive,
+      ...(hashedPassword ? { passwordHash: hashedPassword } : {}),
     };
     persistMockUsers();
 
@@ -477,7 +499,7 @@ export async function updateUserAction(
       entityType: "User",
       entityId: id,
       oldValues: { name: oldUser.name, role: oldUser.role, isActive: oldUser.isActive },
-      newValues: { name, role, isActive },
+      newValues: { name, role, isActive, passwordReset: Boolean(hashedPassword) },
       ipAddress: "127.0.0.1",
       createdAt: new Date().toISOString(),
     });
