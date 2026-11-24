@@ -10,9 +10,22 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const isServerActionMismatch = Boolean(
+    error?.message?.includes("Server Action") ||
+    error?.message?.includes("was not found on the server")
+  );
+
   useEffect(() => {
     console.error("Root Layout Global Error:", error);
   }, [error]);
+
+  const handleTryAgain = () => {
+    if (isServerActionMismatch) {
+      window.location.reload();
+    } else {
+      reset();
+    }
+  };
 
   return (
     <html lang="en">
@@ -39,10 +52,10 @@ export default function GlobalError({
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <button
               type="button"
-              onClick={() => reset()}
+              onClick={handleTryAgain}
               className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
             >
-              Try Again
+              {isServerActionMismatch ? "Reload Page" : "Try Again"}
             </button>
 
             <a

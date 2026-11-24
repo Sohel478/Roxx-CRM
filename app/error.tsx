@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { AlertTriangle, RotateCcw, LogIn, RefreshCw } from "lucide-react";
+import { AlertTriangle, RotateCcw, LogIn, RefreshCw, Sparkles } from "lucide-react";
 
 export default function ErrorBoundary({
   error,
@@ -10,10 +10,23 @@ export default function ErrorBoundary({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const isServerActionMismatch = Boolean(
+    error?.message?.includes("Server Action") ||
+    error?.message?.includes("was not found on the server")
+  );
+
   useEffect(() => {
     // Log error for debugging
     console.error("Application Error:", error);
   }, [error]);
+
+  const handleTryAgain = () => {
+    if (isServerActionMismatch) {
+      window.location.reload();
+    } else {
+      reset();
+    }
+  };
 
   const handleClearSessionAndLogin = () => {
     try {
@@ -38,10 +51,22 @@ export default function ErrorBoundary({
           <p className="text-sm text-slate-500">
             The application encountered a temporary issue while loading this page.
           </p>
-          {error?.message && error.message !== "NEXT_REDIRECT" && (
-            <p className="text-xs text-red-600 bg-red-50 py-1.5 px-3 rounded-lg border border-red-100 max-w-sm mx-auto break-words">
-              {error.message}
-            </p>
+          {isServerActionMismatch ? (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-left text-xs text-blue-900 space-y-1">
+              <p className="font-semibold text-blue-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                New Version Deployed
+              </p>
+              <p className="text-blue-700">
+                A new update was just deployed. Click below to reload the page with the latest version.
+              </p>
+            </div>
+          ) : (
+            error?.message && error.message !== "NEXT_REDIRECT" && (
+              <p className="text-xs text-red-600 bg-red-50 py-1.5 px-3 rounded-lg border border-red-100 max-w-sm mx-auto break-words">
+                {error.message}
+              </p>
+            )
           )}
           {error?.digest && (
             <p className="text-xs font-mono text-slate-400 bg-slate-100 py-1 px-2 rounded-md inline-block">
@@ -53,11 +78,11 @@ export default function ErrorBoundary({
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
             type="button"
-            onClick={() => reset()}
+            onClick={handleTryAgain}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Try Again</span>
+            <span>{isServerActionMismatch ? "Reload Page" : "Try Again"}</span>
           </button>
 
           <button
